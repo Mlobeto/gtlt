@@ -1,6 +1,7 @@
 # GTLT — ERD Fase 1 (detalle)
 
-**Estado:** cerrado para bajar a Prisma  
+**Documento padre:** [arquitectura.md](./arquitectura.md)  
+**Estado:** migrado en DB local (`20260809003221_init`)  
 **Fuente de verdad del schema:** `apps/api/prisma/schema.prisma`  
 **Convenciones:** UUID en todas las PK (generables offline) · entidades operativas con `tenant_id` + `tambo_id` · eventos append-only salvo ficha `Animal` (LWW)
 
@@ -152,7 +153,8 @@ Al transferir: actualizar `Animal.tamboId` + insertar este evento. Los eventos h
 **Uso en parts:** contar turnos `ACTIVE` desde `PartInstance.installedAt` para `usage_counter`.
 
 ### 2.9 ControlLechero + ControlLecheroLine
-Evento periódico (~6 meses), fuente distinta a la carga diaria.
+Evento periódico (~6 meses), fuente distinta a la carga diaria.  
+**Append-only** con el mismo patrón que `MilkingSession` (`status` + `correctsControlId`). Las líneas no se corrigen solas: se anula el header y se crean líneas nuevas.
 
 **ControlLechero**
 | Campo | Tipo | Notas |
@@ -162,6 +164,8 @@ Evento periódico (~6 meses), fuente distinta a la carga diaria.
 | performedAt | datetime | |
 | source | ControlLecheroSource | `EXTERNAL_TECHNICIAN` ahora; `FLOW_METER` futuro |
 | technicianName | string? | |
+| status | RecordStatus | `ACTIVE` \| `VOIDED` |
+| correctsControlId | UUID? FK self | |
 | notes | string? | |
 | createdById | UUID FK | |
 | clientMutationId | string? | |
@@ -192,12 +196,14 @@ Estructura alineada a lo que un caudalímetro podría empujar después (sesión 
 | coldTankTemperatureC | Decimal? | temp lado tanque/tambo |
 | truckTemperatureC | Decimal? | temp declarada industria/camión (plus por temperatura) |
 | coldEquipmentInstanceId | UUID? FK PartInstance | equipo de frío BRANDED involucrado |
+| status | RecordStatus | `ACTIVE` \| `VOIDED` |
+| correctsDeliveryId | UUID? FK self | |
 | notes | string? | |
 | createdById | UUID FK | |
 | clientMutationId | string? | |
 | createdAt / updatedAt | datetime | |
 
-**Índices:** `(tenantId, tamboId, periodStart)`.
+**Índices:** `(tenantId, tamboId, periodStart)` · `(coldEquipmentInstanceId)` (entregas por equipo / EKC 202).
 
 ### 2.11 HealthEvent (append-only)
 | Campo | Tipo | Notas |
@@ -289,7 +295,9 @@ Override de umbral por tenant.
 **Índices:**  
 - `(tenantId, tamboId, replacedAt)`  
 - `(tenantId, tamboId, bajadaNumber, partTypeId)`  
-- recomendado partial unique vigencia: `(tamboId, partTypeId, bajadaNumber)` WHERE `replacedAt IS NULL` (SQL raw; `bajadaNumber` null-safe a definir en SQL)
+- partial unique vigencia: **dos** índices (ver `docs/partial-indexes.sql`) — por bajada (`bajada_number IS NOT NULL`) y a nivel tambo (`bajada_number IS NULL`), porque en Postgres `NULL != NULL`
+
+**Reglas app:** `docs/reglas-negocio-app.md` (`bajadaNumber` vs `appliesPerBajada` / `bajadaCount`).
 
 ### 2.16 ColdEquipmentDetail (1:1 PartInstance BRANDED)
 | Campo | Tipo | Notas |
@@ -317,6 +325,7 @@ En entidades syncables desde mobile: `id` cliente, `clientMutationId` unique por
 | Sync pull por cursor | `(tenantId, tamboId, updatedAt)` en fichas/eventos |
 | Piezas vigentes de un tambo | `PartInstance (tenantId, tamboId, replacedAt)` |
 | Entregas del período | `MilkDelivery (tenantId, tamboId, periodStart)` |
+| Entregas de un equipo de frío | `MilkDelivery (coldEquipmentInstanceId)` |
 
 ---
 
@@ -334,19 +343,20 @@ En entidades syncables desde mobile: `id` cliente, `clientMutationId` unique por
 
 ## 5. Partial indexes (migración SQL — no expresables en Prisma)
 
-Documentados en el schema como comentarios; aplicar cuando existan migraciones:
+SQL listo para pegar en la migration: **`docs/partial-indexes.sql`**.
 
 1. `MilkingSession`: UNIQUE `(tambo_id, session_date, shift) WHERE status = 'ACTIVE'`
 2. `Animal`: UNIQUE `(tambo_id, ear_tag) WHERE status IN ('ACTIVE','DRY') AND deleted_at IS NULL`
-3. `PartInstance` (recomendado): UNIQUE vigencia por tipo/bajada WHERE `replaced_at IS NULL`
+3. `PartInstance`: dos UNIQUE parciales (por bajada / a nivel tambo) WHERE `replaced_at IS NULL`
 
 ---
 
 ## 6. Decisiones de modelado aplicadas (cerradas)
 
 - Alcance de tambo a nivel **Membership** (lista), no por rol.
-- `MilkingSession` append-only con `correctsSessionId` + `ACTIVE`/`VOIDED`.
+- Append-only con corrección: `MilkingSession`, `ControlLechero`, `MilkDelivery` (`ACTIVE`/`VOIDED` + `corrects*Id`).
 - Caravana única por **tambo** entre activos.
 - Transferencia de animal: `tamboId` mutable + `AnimalTransferEvent`.
 - Mantenimiento: `PartType` + `PartInstance` (+ `ColdEquipmentDetail`), no stub vacío `MilkingEquipment`.
 - `photoUrl` = string URL (storage TBD) en `Animal` y `PartInstance`.
+- Reglas app de `PartInstance.bajadaNumber`: `docs/reglas-negocio-app.md`.

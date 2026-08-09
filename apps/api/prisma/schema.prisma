@@ -15,7 +15,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url  = env("DATABASE_URL")
 }
 
 // -----------------------------------------------------------------------------
@@ -300,29 +300,40 @@ model MilkingSession {
 
 /// Control lechero periódico (~6 meses): producción por animal / por bajada.
 /// Header + líneas — misma forma que podría alimentar un caudalímetro (source=FLOW_METER).
+///
+/// Append-only (misma regla que MilkingSession; la omisión inicial del patrón de
+/// corrección se corrige aquí): status ACTIVE/VOIDED + correctsControlId.
+/// Corregir = VOIDED del header previo + nuevo header ACTIVE con líneas nuevas.
 model ControlLechero {
-  id               String               @id @default(uuid()) @db.Uuid
-  tenantId         String               @map("tenant_id") @db.Uuid
-  tamboId          String               @map("tambo_id") @db.Uuid
-  performedAt      DateTime             @map("performed_at")
-  source           ControlLecheroSource @default(EXTERNAL_TECHNICIAN)
-  technicianName   String?              @map("technician_name")
-  notes            String?
-  createdById      String               @map("created_by_id") @db.Uuid
-  clientMutationId String?              @map("client_mutation_id")
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  id                String               @id @default(uuid()) @db.Uuid
+  tenantId          String               @map("tenant_id") @db.Uuid
+  tamboId           String               @map("tambo_id") @db.Uuid
+  performedAt       DateTime             @map("performed_at")
+  source            ControlLecheroSource @default(EXTERNAL_TECHNICIAN)
+  technicianName    String?              @map("technician_name")
+  status            RecordStatus         @default(ACTIVE)
+  correctsControlId String?              @map("corrects_control_id") @db.Uuid
+  notes             String?
+  createdById       String               @map("created_by_id") @db.Uuid
+  clientMutationId  String?              @map("client_mutation_id")
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
-  tenant    Tenant              @relation(fields: [tenantId], references: [id])
-  tambo     Tambo               @relation(fields: [tamboId], references: [id])
-  createdBy User                @relation("ControlCreatedBy", fields: [createdById], references: [id])
-  lines     ControlLecheroLine[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  tambo           Tambo            @relation(fields: [tamboId], references: [id])
+  createdBy       User             @relation("ControlCreatedBy", fields: [createdById], references: [id])
+  correctsControl ControlLechero?  @relation("ControlCorrection", fields: [correctsControlId], references: [id])
+  correctedBy     ControlLechero[] @relation("ControlCorrection")
+  lines           ControlLecheroLine[]
 
   @@index([tenantId, tamboId, performedAt])
+  @@index([correctsControlId])
   @@index([tenantId, clientMutationId])
   @@map("control_lecheros")
 }
 
+/// Líneas inmutables bajo un ControlLechero. No tienen status propio:
+/// la corrección se hace a nivel header (ver ControlLechero).
 model ControlLecheroLine {
   id               String   @id @default(uuid()) @db.Uuid
   tenantId         String   @map("tenant_id") @db.Uuid
@@ -344,31 +355,38 @@ model ControlLecheroLine {
 }
 
 /// Reconciliación de entrega: tanque frío vs camión + temperaturas (plus por temperatura).
+/// Append-only: status ACTIVE/VOIDED + correctsDeliveryId (consistencia con MilkingSession).
 model MilkDelivery {
-  id                      String   @id @default(uuid()) @db.Uuid
-  tenantId                String   @map("tenant_id") @db.Uuid
-  tamboId                 String   @map("tambo_id") @db.Uuid
-  periodStart             DateTime @map("period_start")
-  periodEnd               DateTime @map("period_end")
-  coldTankLiters          Decimal  @map("cold_tank_liters") @db.Decimal(12, 2)
-  truckDeclaredLiters     Decimal  @map("truck_declared_liters") @db.Decimal(12, 2)
+  id                      String       @id @default(uuid()) @db.Uuid
+  tenantId                String       @map("tenant_id") @db.Uuid
+  tamboId                 String       @map("tambo_id") @db.Uuid
+  periodStart             DateTime     @map("period_start")
+  periodEnd               DateTime     @map("period_end")
+  coldTankLiters          Decimal      @map("cold_tank_liters") @db.Decimal(12, 2)
+  truckDeclaredLiters     Decimal      @map("truck_declared_liters") @db.Decimal(12, 2)
   /// Temperatura lado tambo / tanque (°C)
-  coldTankTemperatureC    Decimal? @map("cold_tank_temperature_c") @db.Decimal(5, 2)
+  coldTankTemperatureC    Decimal?     @map("cold_tank_temperature_c") @db.Decimal(5, 2)
   /// Temperatura declarada por camión/industria (°C) — comparar plus por temperatura
-  truckTemperatureC       Decimal? @map("truck_temperature_c") @db.Decimal(5, 2)
-  coldEquipmentInstanceId String?  @map("cold_equipment_instance_id") @db.Uuid
+  truckTemperatureC       Decimal?     @map("truck_temperature_c") @db.Decimal(5, 2)
+  coldEquipmentInstanceId String?      @map("cold_equipment_instance_id") @db.Uuid
+  status                  RecordStatus @default(ACTIVE)
+  correctsDeliveryId      String?      @map("corrects_delivery_id") @db.Uuid
   notes                   String?
-  createdById             String   @map("created_by_id") @db.Uuid
-  clientMutationId        String?  @map("client_mutation_id")
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  createdById             String       @map("created_by_id") @db.Uuid
+  clientMutationId        String?      @map("client_mutation_id")
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
 
-  tenant                Tenant        @relation(fields: [tenantId], references: [id])
-  tambo                 Tambo         @relation(fields: [tamboId], references: [id])
-  createdBy             User          @relation("DeliveryCreatedBy", fields: [createdById], references: [id])
-  coldEquipmentInstance PartInstance? @relation(fields: [coldEquipmentInstanceId], references: [id])
+  tenant                Tenant         @relation(fields: [tenantId], references: [id])
+  tambo                 Tambo          @relation(fields: [tamboId], references: [id])
+  createdBy             User           @relation("DeliveryCreatedBy", fields: [createdById], references: [id])
+  coldEquipmentInstance PartInstance?  @relation(fields: [coldEquipmentInstanceId], references: [id])
+  correctsDelivery      MilkDelivery?  @relation("DeliveryCorrection", fields: [correctsDeliveryId], references: [id])
+  correctedBy           MilkDelivery[] @relation("DeliveryCorrection")
 
   @@index([tenantId, tamboId, periodStart])
+  @@index([coldEquipmentInstanceId])
+  @@index([correctsDeliveryId])
   @@index([tenantId, clientMutationId])
   /// FASE 2: lecturas automáticas del EKC 202 podrían precargar temp/volumen del tanque.
   /// FASE 3 COSTOS: liquidación / precio industria puede colgarse de esta reconciliación.
@@ -486,6 +504,11 @@ model TenantPartTypeConfig {
 ///
 /// Alertas automáticas por umbral: lógica de aplicación sobre estos datos — no implementar aquí.
 ///
+/// REGLAS APP (no expresables como FK/CHECK entre tablas) — ver docs/reglas-negocio-app.md:
+/// - si PartType.appliesPerBajada = true  → bajadaNumber OBLIGATORIO
+/// - si PartType.appliesPerBajada = false → bajadaNumber debe ser NULL
+/// - si bajadaNumber != null → 1 <= bajadaNumber <= Tambo.bajadaCount
+///
 /// FASE 2 SENSORES: vacuómetro / sensor de bomba / lectura EKC 202 se modelan como
 /// Sensor|SensorReading asociados a Tambo y/o a esta PartInstance (frío BRANDED),
 /// sin mezclar telemetría dentro de PartInstance.
@@ -495,6 +518,7 @@ model PartInstance {
   tamboId          String    @map("tambo_id") @db.Uuid
   partTypeId       String    @map("part_type_id") @db.Uuid
   /// Nullable: solo grupo de ordeñe por bajada. Piezas a nivel tambo (ej. frío) → null.
+  /// Validación app: ver comentario del model + docs/reglas-negocio-app.md
   bajadaNumber     Int?      @map("bajada_number")
   installedAt      DateTime  @map("installed_at")
   /// Texto libre opcional; la mayoría de piezas genéricas no tienen marca identificable.
@@ -519,9 +543,11 @@ model PartInstance {
   @@index([tenantId, tamboId, replacedAt])
   @@index([tenantId, tamboId, bajadaNumber, partTypeId])
   @@index([tenantId, clientMutationId])
-  /// PARTIAL UNIQUE recomendado (migración SQL):
-  /// una instancia vigente por (tambo_id, part_type_id, bajada_number)
-  /// WHERE replaced_at IS NULL  (tratar NULL bajada_number de forma explícita en SQL)
+  /// PARTIAL UNIQUE (migración SQL — docs/partial-indexes.sql): DOS índices,
+  /// porque en Postgres NULL != NULL y un único índice con bajada_number no
+  /// impediría dos equipos de frío vigentes en el mismo tambo.
+  ///   1) (tambo_id, part_type_id, bajada_number) WHERE replaced_at IS NULL AND bajada_number IS NOT NULL
+  ///   2) (tambo_id, part_type_id)              WHERE replaced_at IS NULL AND bajada_number IS NULL
   @@map("part_instances")
 }
 
