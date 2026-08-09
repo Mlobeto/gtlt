@@ -88,6 +88,14 @@ No hay capa `Organization` separada.
 
 ## 5. Offline-first (cerrado)
 
+### Spike implementado (`apps/mobile`)
+
+- Expo + **expo-sqlite** (no WatermelonDB todavía — validar protocolo primero)
+- Outbox local → `POST /health-events` con UUID/`clientMutationId`
+- Cache local de animales + retiros vigentes (`active-withdrawals`)
+- UI mínima: login, guardar tratamiento local, Sync push/pull
+- Ver `apps/mobile/README.md`
+
 ### Enfoque
 
 ```
@@ -215,7 +223,7 @@ gtlt/
       .env               # local, gitignored
       .env.example
     web/                 # previsto
-    mobile/              # previsto
+    mobile/              # spike offline Expo + SQLite/outbox
   packages/
     shared/              # previsto: zod, enums, tipos de sync
   docs/                  # arquitectura y producto
@@ -241,11 +249,12 @@ gtlt/
 - [x] Seed demo user/tenant (`admin@gtlt.local` / `demo1234`)  
 - [x] Endpoint negocio `MilkingSession`: `GET/POST /milking-sessions`, `POST /milking-sessions/:id/correct`  
 - [x] Endpoints `Animal` + `HealthEvent` (incl. `GET /health-events/active-withdrawals` para cache offline)  
+- [x] Spike offline mobile (`apps/mobile`): Expo + `expo-sqlite` + outbox + push `HealthEvent`  
 
 ### Pendiente (próximos pasos naturales)
 
-- [ ] Spike offline (Expo + SQLite/WatermelonDB + push de un evento)  
-- [ ] Apps web/mobile  
+- [ ] App web dueño  
+- [ ] Endurecer mobile (WatermelonDB o sync protocol v1, voz, UX ordeñe)  
 - [ ] Definir proveedor de storage para `photoUrl`  
 - [ ] RLS Postgres (post-MVP datos reales)  
 
