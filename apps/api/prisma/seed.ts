@@ -1,6 +1,11 @@
-import { PrismaClient, PartReplacementPattern } from "@prisma/client";
+import { PrismaClient, PartReplacementPattern, type Role } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
+
+/** Credenciales solo para desarrollo local — ver docs/arquitectura.md */
+const DEMO_EMAIL = "admin@gtlt.local";
+const DEMO_PASSWORD = "demo1234";
 
 type PartTypeSeed = {
   code: string;
@@ -115,7 +120,7 @@ const PART_TYPES: PartTypeSeed[] = [
   },
 ];
 
-async function main() {
+async function seedPartTypes() {
   for (const part of PART_TYPES) {
     await prisma.partType.upsert({
       where: { code: part.code },
@@ -132,6 +137,73 @@ async function main() {
 
   const count = await prisma.partType.count();
   console.log(`PartType seed OK: ${count} tipos en catálogo.`);
+}
+
+async function seedDemoTenant() {
+  const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
+
+  const user = await prisma.user.upsert({
+    where: { email: DEMO_EMAIL },
+    create: {
+      email: DEMO_EMAIL,
+      name: "Admin Demo",
+      passwordHash,
+    },
+    update: {
+      name: "Admin Demo",
+      passwordHash,
+    },
+  });
+
+  let tenant = await prisma.tenant.findFirst({
+    where: { name: "Tenant Demo GTLT" },
+  });
+
+  if (!tenant) {
+    tenant = await prisma.tenant.create({
+      data: { name: "Tenant Demo GTLT" },
+    });
+  }
+
+  let tambo = await prisma.tambo.findFirst({
+    where: { tenantId: tenant.id, name: "Tambo Demo" },
+  });
+
+  if (!tambo) {
+    tambo = await prisma.tambo.create({
+      data: {
+        tenantId: tenant.id,
+        name: "Tambo Demo",
+        bajadaCount: 8,
+      },
+    });
+  }
+
+  const roles: Role[] = ["DUENIO", "ADMIN"];
+
+  const membership = await prisma.membership.upsert({
+    where: {
+      tenantId_userId: { tenantId: tenant.id, userId: user.id },
+    },
+    create: {
+      tenantId: tenant.id,
+      userId: user.id,
+      roles,
+    },
+    update: { roles },
+  });
+
+  console.log("Demo seed OK:");
+  console.log(`  email:    ${DEMO_EMAIL}`);
+  console.log(`  password: ${DEMO_PASSWORD}`);
+  console.log(`  tenant:   ${tenant.id} (${tenant.name})`);
+  console.log(`  tambo:    ${tambo.id} (${tambo.name})`);
+  console.log(`  membership roles: ${membership.roles.join(", ")}`);
+}
+
+async function main() {
+  await seedPartTypes();
+  await seedDemoTenant();
 }
 
 main()

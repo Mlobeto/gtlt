@@ -178,12 +178,21 @@ Fórmula `usageCounter` y reglas de `bajadaNumber`: comentarios en schema + [reg
 
 ---
 
-## 7. Autenticación y permisos (diseño; no implementado)
+## 7. Autenticación y permisos (mínimo implementado)
 
-- User global; JWT (o sesión) con `sub`, `tenant_id` activo, `role`(s), opcional claims de tambos.  
-- Cambio de tambo/tenant activo revalida membership.  
-- Al **push** offline el servidor re-valida permisos (el rol pudo cambiar).  
-- Matriz fina de permisos: a definir en API cuando existan endpoints; borrador conceptual en conversaciones previas (tambero carga; dueño ve; admin configura; vet sanidad/repro).
+**Ubicación:** `apps/api/src/`
+
+| Pieza | Detalle |
+|---|---|
+| Login | `POST /auth/login` `{ email, password, tenantId? }` → JWT |
+| JWT claims | `sub` (userId), `tenantId`, `roles[]`, `tamboIds` (`null` = todos) |
+| Me | `GET /auth/me` — user, tenant, tambos visibles |
+| Scope | Queries de negocio usan siempre `tenantId` del token; tambos filtrados si `tamboIds` no es null |
+| Roles helper | `requireRoles(...)` para endpoints futuros |
+
+**Demo local** (seed): `admin@gtlt.local` / `demo1234` (roles `DUENIO`+`ADMIN`, 1 tambo).
+
+Pendiente: refresh tokens, invite vet, matriz fina por endpoint, revalidación de rol en sync push.
 
 ---
 
@@ -192,9 +201,16 @@ Fórmula `usageCounter` y reglas de `bajadaNumber`: comentarios en schema + [reg
 ```
 gtlt/
   apps/
-    api/                 # Node + Prisma + PostgreSQL  ← existe
+    api/                 # Express + Prisma + JWT  ← auth mínima
+      src/
+        index.ts
+        app.ts
+        routes/
+        middleware/
+        lib/
       prisma/
         schema.prisma
+        seed.ts
         migrations/
       .env               # local, gitignored
       .env.example
@@ -221,10 +237,11 @@ gtlt/
 - [x] Repo GitHub: `https://github.com/Mlobeto/gtlt`  
 - [x] Node 24 LTS + deps de `apps/api` instaladas  
 - [x] Seed de `PartType` (`apps/api/prisma/seed.ts`, idempotente por `code`)  
+- [x] API mínima Express + JWT + scope tenant/tambo (`npm run dev` en `apps/api`)  
+- [x] Seed demo user/tenant (`admin@gtlt.local` / `demo1234`)  
 
 ### Pendiente (próximos pasos naturales)
 
-- [ ] Scaffold API (auth + scope tenant/tambo)  
 - [ ] Spike offline (Expo + SQLite/WatermelonDB + push de un evento)  
 - [ ] Apps web/mobile  
 - [ ] Definir proveedor de storage para `photoUrl`  
@@ -236,9 +253,12 @@ gtlt/
 
 ```powershell
 cd C:\Users\merce\Desktop\gtlt\apps\api
-# .env con DATABASE_URL apuntando a localhost/gtlt
+# .env: DATABASE_URL + JWT_SECRET
 npx prisma migrate dev
-npx prisma studio
+npm run prisma:seed
+npm run dev
+# http://localhost:3001/health
+# POST /auth/login  { "email":"admin@gtlt.local", "password":"demo1234" }
 ```
 
 Índices parciales viven **dentro** de la migración `20260809003221_init` (también documentados en `partial-indexes.sql` como referencia).
