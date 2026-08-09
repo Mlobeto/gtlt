@@ -9,6 +9,7 @@ Este es el **documento canónico** de arquitectura. Cuando una decisión cambie,
 | Documento | Contenido |
 |---|---|
 | [vision-producto-tambo.md](./vision-producto-tambo.md) | ICP, fases de producto, diferenciadores |
+| [diseno.md](./diseno.md) | Colores, tipografía, formularios (blanco / verde / amarillo) |
 | [erd.md](./erd.md) | ERD detallado (campos, relaciones, índices) |
 | [reglas-negocio-app.md](./reglas-negocio-app.md) | Validaciones que viven en la API, no en la DB |
 | [partial-indexes.sql](./partial-indexes.sql) | SQL de unicidades parciales (referencia) |
@@ -24,6 +25,15 @@ SaaS multitenant para **tambos chicos** (hasta ~20 bajadas, no robotizados) en A
 **Dolor central del MVP:** cargar datos en el momento del ordeñe, con las manos ocupadas y **sin conexión**, identificando animales por **caravana visual** (sin RFID).
 
 Roles: **tambero**, **dueño**, **admin**, **veterinario**.
+
+### UX e idioma (regla de producto — no negociable)
+
+- **Solo español** en toda UI visible al usuario final (mobile y web). Sin inglés en botones, errores ni estados.
+- Pensado para personas con **poca familiaridad con apps**: pocas pantallas, textos cortos, verbos claros (“Guardar”, “Enviar”, “Sin internet”).
+- Evitar jerga técnica: no mostrar sync/pending/API/token/offline en inglés; preferir “Sin señal”, “Guardado en el teléfono”, “Falta enviar”, “Listo”.
+- Botones grandes, un trabajo por pantalla, confirmaciones simples.
+- Errores en español llano (“No se pudo conectar. Revisá el Wi‑Fi o los datos.”).
+- Detalle: [ux-usuario.md](./ux-usuario.md).
 
 ---
 
@@ -249,7 +259,7 @@ gtlt/
 - [x] Seed demo user/tenant (`admin@gtlt.local` / `demo1234`)  
 - [x] Endpoint negocio `MilkingSession`: `GET/POST /milking-sessions`, `POST /milking-sessions/:id/correct`  
 - [x] Endpoints `Animal` + `HealthEvent` (incl. `GET /health-events/active-withdrawals` para cache offline)  
-- [x] Spike offline mobile (`apps/mobile`): Expo + `expo-sqlite` + outbox + push `HealthEvent`  
+- [x] Spike offline mobile (`apps/mobile`): Expo **SDK 54** + `expo-sqlite` + outbox + push `HealthEvent` (alineado a Expo Go de tienda)  
 
 ### Pendiente (próximos pasos naturales)
 

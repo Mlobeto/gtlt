@@ -12,7 +12,6 @@ import {
 import { StatusBar } from "expo-status-bar";
 import NetInfo from "@react-native-community/netinfo";
 import { fetchTambos, login as apiLogin } from "./src/api";
-import { API_URL } from "./src/config";
 import {
   countPendingOutbox,
   getDb,
@@ -32,6 +31,18 @@ import {
   pullServerState,
   queueHealthEventOffline,
 } from "./src/sync";
+import { colors, font, radius, space, touch } from "./src/theme";
+
+function tipoLegible(type: string): string {
+  switch (type) {
+    case "TREATMENT":
+      return "Tratamiento";
+    case "MASTITIS":
+      return "Mastitis";
+    default:
+      return "Otro";
+  }
+}
 
 export default function App() {
   const [ready, setReady] = useState(false);
@@ -46,7 +57,7 @@ export default function App() {
   const [email, setEmail] = useState("admin@gtlt.local");
   const [password, setPassword] = useState("demo1234");
   const [earTag, setEarTag] = useState("101");
-  const [productName, setProductName] = useState("Antibiotico demo");
+  const [productName, setProductName] = useState("");
   const [daysWithdrawal, setDaysWithdrawal] = useState("3");
 
   const refreshLocal = useCallback(async (tamboId: string) => {
@@ -65,7 +76,7 @@ export default function App() {
         await refreshLocal(existing.tamboId);
       }
       if (mounted) setReady(true);
-    })().catch((err) => setStatus(String(err)));
+    })().catch(() => setStatus("No se pudo abrir la app. Cerrala y volvé a entrar."));
 
     const unsub = NetInfo.addEventListener((state) => {
       setOnline(Boolean(state.isConnected && state.isInternetReachable !== false));
@@ -78,12 +89,12 @@ export default function App() {
 
   async function handleLogin() {
     setBusy(true);
-    setStatus("Login...");
+    setStatus("Entrando...");
     try {
       const res = await apiLogin(email.trim(), password);
       const tambos = await fetchTambos(res.accessToken);
       if (!tambos.items.length) {
-        throw new Error("No hay tambos para este usuario");
+        throw new Error("No encontramos un tambo para esta cuenta.");
       }
       const tambo = tambos.items[0];
       const next: Session = {
@@ -96,9 +107,9 @@ export default function App() {
       await pullServerState(next.token, next.tamboId);
       setSession(next);
       await refreshLocal(next.tamboId);
-      setStatus(`Sesión OK · ${tambo.name}`);
-    } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Login falló");
+      setStatus(`Listo. Estás en ${tambo.name}.`);
+    } catch {
+      setStatus("No se pudo entrar. Revisá usuario, contraseña o la señal.");
     } finally {
       setBusy(false);
     }
@@ -110,14 +121,16 @@ export default function App() {
     setWithdrawals([]);
     setAnimals([]);
     setPending(0);
-    setStatus("Sesión cerrada");
+    setStatus("Saliste de la cuenta.");
   }
 
   async function handleQueueEvent() {
     if (!session) return;
     const animal = animals.find((a) => a.ear_tag === earTag.trim());
     if (!animal) {
-      setStatus(`No hay animal local con caravana ${earTag}. Hacé Sync primero.`);
+      setStatus(
+        `No encontramos la caravana ${earTag}. Tocá “Actualizar” con señal y revisá el número.`,
+      );
       return;
     }
 
@@ -135,16 +148,16 @@ export default function App() {
         type: "TREATMENT",
         productName: productName.trim() || undefined,
         milkWithdrawalUntil: until,
-        notes: "Spike offline",
+        notes: "Carga desde el celular",
       });
       await refreshLocal(session.tamboId);
       setStatus(
         online
-          ? "Guardado local (pending). Tocá Sync para subir."
-          : "Guardado OFFLINE. Se subirá cuando haya red + Sync.",
+          ? "Guardado en el teléfono. Tocá “Enviar” para subirlo."
+          : "Guardado sin señal. Cuando haya internet, tocá “Enviar”.",
       );
-    } catch (err) {
-      setStatus(err instanceof Error ? err.message : "No se pudo guardar");
+    } catch {
+      setStatus("No se pudo guardar. Probá de nuevo.");
     } finally {
       setBusy(false);
     }
@@ -153,19 +166,23 @@ export default function App() {
   async function handleSync() {
     if (!session) return;
     if (!online) {
-      setStatus("Sin red: no se puede sincronizar ahora");
+      setStatus("Ahora no hay señal. Los datos siguen guardados en el teléfono.");
       return;
     }
     setBusy(true);
-    setStatus("Sincronizando...");
+    setStatus("Enviando...");
     try {
       const result = await fullSync(session.token, session.tamboId);
       await refreshLocal(session.tamboId);
-      setStatus(
-        `Sync OK · subidos ${result.synced}, fallidos ${result.failed}, pending ${result.pendingLeft}`,
-      );
-    } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Sync falló");
+      if (result.failed > 0) {
+        setStatus("Algunos no se pudieron enviar. Tocá “Enviar” de nuevo.");
+      } else if (result.synced === 0 && result.pendingLeft === 0) {
+        setStatus("Todo al día. No había nada pendiente.");
+      } else {
+        setStatus("Listo. Ya se envió todo.");
+      }
+    } catch {
+      setStatus("No se pudo enviar. Revisá la señal y probá de nuevo.");
     } finally {
       setBusy(false);
     }
@@ -174,7 +191,8 @@ export default function App() {
   if (!ready) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator />
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Cargando...</Text>
       </View>
     );
   }
@@ -183,10 +201,13 @@ export default function App() {
     <SafeAreaView style={styles.safe}>
       <StatusBar style="dark" />
       <View style={styles.header}>
-        <Text style={styles.title}>GTLT · spike offline</Text>
-        <Text style={styles.meta}>
-          API {API_URL} · {online ? "online" : "OFFLINE"} · pending {pending}
-        </Text>
+        <Text style={styles.title}>GTLT Tambos</Text>
+        <View style={[styles.chip, online ? styles.chipOk : styles.chipWarn]}>
+          <Text style={[styles.chipText, !online && styles.chipTextWarn]}>
+            {online ? "Con señal" : "Sin señal"}
+            {pending > 0 ? ` · ${pending} sin enviar` : ""}
+          </Text>
+        </View>
         {session ? (
           <Text style={styles.meta}>
             {session.userName} · {session.tamboName}
@@ -196,175 +217,282 @@ export default function App() {
 
       {!session ? (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Login</Text>
+          <Text style={styles.cardTitle}>Entrar</Text>
+          <Text style={styles.help}>Usá el usuario y la clave que te dieron.</Text>
+          <Text style={styles.label}>Usuario o correo</Text>
           <TextInput
             style={styles.input}
             autoCapitalize="none"
             value={email}
             onChangeText={setEmail}
-            placeholder="email"
+            placeholder="Ej: juan@correo.com"
+            placeholderTextColor={colors.textMuted}
           />
+          <Text style={styles.label}>Contraseña</Text>
           <TextInput
             style={styles.input}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
-            placeholder="password"
+            placeholder="Tu contraseña"
+            placeholderTextColor={colors.textMuted}
           />
+          {status ? (
+            <View style={styles.feedback}>
+              <Text style={styles.feedbackText}>{status}</Text>
+            </View>
+          ) : null}
           <Pressable
             style={[styles.button, busy && styles.buttonDisabled]}
             onPress={handleLogin}
             disabled={busy}
           >
-            <Text style={styles.buttonText}>Entrar + pull inicial</Text>
+            <Text style={styles.buttonText}>Entrar</Text>
           </Pressable>
         </View>
       ) : (
         <>
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Nuevo tratamiento (local-first)</Text>
+            <Text style={styles.cardTitle}>Cargar tratamiento</Text>
+            <Text style={styles.help}>
+              Anotá la caravana. Se guarda aunque no haya señal.
+            </Text>
+            <Text style={styles.label}>Número de caravana</Text>
             <TextInput
               style={styles.input}
               value={earTag}
               onChangeText={setEarTag}
-              placeholder="Caravana"
+              placeholder="Ej: 101"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="number-pad"
             />
+            <Text style={styles.label}>Remedio o producto</Text>
             <TextInput
               style={styles.input}
               value={productName}
               onChangeText={setProductName}
-              placeholder="Producto"
+              placeholder="Ej: antibiótico"
+              placeholderTextColor={colors.textMuted}
             />
+            <Text style={styles.label}>Días de retiro de leche</Text>
             <TextInput
               style={styles.input}
               keyboardType="number-pad"
               value={daysWithdrawal}
               onChangeText={setDaysWithdrawal}
-              placeholder="Días de retiro"
+              placeholder="Ej: 3"
+              placeholderTextColor={colors.textMuted}
             />
-            <View style={styles.row}>
-              <Pressable
-                style={[styles.button, styles.flex, busy && styles.buttonDisabled]}
-                onPress={handleQueueEvent}
-                disabled={busy}
-              >
-                <Text style={styles.buttonText}>Guardar local</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.buttonSecondary, styles.flex, busy && styles.buttonDisabled]}
-                onPress={handleSync}
-                disabled={busy}
-              >
-                <Text style={styles.buttonSecondaryText}>Sync</Text>
-              </Pressable>
-            </View>
+            {status ? (
+              <View style={styles.feedback}>
+                <Text style={styles.feedbackText}>{status}</Text>
+              </View>
+            ) : null}
+            <Pressable
+              style={[styles.button, busy && styles.buttonDisabled]}
+              onPress={handleQueueEvent}
+              disabled={busy}
+            >
+              <Text style={styles.buttonText}>Guardar</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+              onPress={handleSync}
+              disabled={busy}
+            >
+              <Text style={styles.buttonSecondaryText}>Enviar / Actualizar</Text>
+            </Pressable>
             <Pressable onPress={handleLogout}>
-              <Text style={styles.link}>Cerrar sesión</Text>
+              <Text style={styles.link}>Salir</Text>
             </Pressable>
           </View>
 
-          <Text style={styles.section}>Retiros vigentes (SQLite)</Text>
+          <Text style={styles.section}>Vacas con retiro de leche</Text>
           <FlatList
             data={withdrawals}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.list}
             ListEmptyComponent={
-              <Text style={styles.empty}>No hay retiros vigentes en cache local.</Text>
+              <Text style={styles.empty}>No hay vacas en retiro por ahora.</Text>
             }
             renderItem={({ item }) => (
               <View style={styles.item}>
                 <Text style={styles.itemTitle}>
-                  #{item.ear_tag ?? "?"} · {item.type}
-                  {item.pending ? " · PENDING" : ""}
+                  Caravana {item.ear_tag ?? "?"} · {tipoLegible(item.type)}
                 </Text>
                 <Text style={styles.itemMeta}>
-                  {item.product_name ?? "sin producto"} · hasta{" "}
+                  {item.product_name
+                    ? `Producto: ${item.product_name}`
+                    : "Sin producto"}
+                </Text>
+                <Text style={styles.itemMeta}>
+                  Retiro hasta:{" "}
                   {item.milk_withdrawal_until
-                    ? new Date(item.milk_withdrawal_until).toLocaleString()
+                    ? new Date(item.milk_withdrawal_until).toLocaleString("es-AR")
                     : "-"}
                 </Text>
+                {item.pending ? (
+                  <Text style={styles.pendingBadge}>Falta enviar</Text>
+                ) : null}
               </View>
             )}
           />
         </>
       )}
-
-      {status ? <Text style={styles.status}>{status}</Text> : null}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#f4f1ea", padding: 16 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  header: { marginBottom: 12, gap: 4 },
-  title: { fontSize: 22, fontWeight: "700", color: "#1f2a1f" },
-  meta: { color: "#5c665c", fontSize: 12 },
-  card: {
-    backgroundColor: "#fffdf8",
-    borderRadius: 12,
-    padding: 14,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: "#e4ddd0",
-    marginBottom: 12,
+  safe: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    padding: space.lg,
   },
-  cardTitle: { fontSize: 16, fontWeight: "600", color: "#1f2a1f" },
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: space.md,
+    backgroundColor: colors.bg,
+  },
+  loadingText: { color: colors.textMuted, fontSize: font.body },
+  header: { marginBottom: space.md, gap: space.sm },
+  title: {
+    fontSize: font.display,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  meta: { color: colors.textMuted, fontSize: font.meta },
+  chip: {
+    alignSelf: "flex-start",
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: radius.sm,
+  },
+  chipOk: { backgroundColor: colors.primarySoft },
+  chipWarn: { backgroundColor: colors.accentSoft },
+  chipText: {
+    color: colors.primary,
+    fontWeight: "700",
+    fontSize: font.meta,
+  },
+  chipTextWarn: { color: colors.accentText },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: space.lg,
+    gap: space.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: space.md,
+  },
+  cardTitle: {
+    fontSize: font.title,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  help: {
+    color: colors.textMuted,
+    fontSize: font.body,
+    lineHeight: 24,
+  },
+  label: {
+    fontSize: font.label,
+    fontWeight: "600",
+    color: colors.text,
+  },
   input: {
     borderWidth: 1,
-    borderColor: "#d5cec2",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: "#fff",
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: space.lg,
+    paddingVertical: 14,
+    backgroundColor: colors.bg,
+    fontSize: font.input,
+    color: colors.text,
+    minHeight: touch.min,
   },
-  row: { flexDirection: "row", gap: 8 },
-  flex: { flex: 1 },
   button: {
-    backgroundColor: "#2f5d3a",
-    paddingVertical: 12,
-    borderRadius: 8,
+    backgroundColor: colors.primary,
+    paddingVertical: space.lg,
+    borderRadius: radius.md,
     alignItems: "center",
+    minHeight: touch.min,
+    justifyContent: "center",
   },
   buttonSecondary: {
-    backgroundColor: "#e8f0ea",
-    paddingVertical: 12,
-    borderRadius: 8,
+    backgroundColor: colors.primarySoft,
+    paddingVertical: space.lg,
+    borderRadius: radius.md,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#2f5d3a",
+    borderColor: colors.primary,
+    minHeight: touch.min,
+    justifyContent: "center",
   },
   buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: "#fff", fontWeight: "600" },
-  buttonSecondaryText: { color: "#2f5d3a", fontWeight: "600" },
-  link: { color: "#6b4f3a", textAlign: "center", marginTop: 4 },
+  buttonText: {
+    color: colors.bg,
+    fontWeight: "700",
+    fontSize: font.button,
+  },
+  buttonSecondaryText: {
+    color: colors.primary,
+    fontWeight: "700",
+    fontSize: font.button,
+  },
+  link: {
+    color: colors.textMuted,
+    textAlign: "center",
+    fontSize: font.body,
+    paddingVertical: space.sm,
+  },
   section: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginBottom: 8,
-    color: "#1f2a1f",
+    fontSize: font.title,
+    fontWeight: "700",
+    marginBottom: space.sm,
+    color: colors.text,
   },
-  list: { paddingBottom: 80, gap: 8 },
+  list: { paddingBottom: 100, gap: space.md },
   item: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: space.lg,
     borderWidth: 1,
-    borderColor: "#e4ddd0",
+    borderColor: colors.border,
+    gap: space.xs,
   },
-  itemTitle: { fontWeight: "600", color: "#1f2a1f" },
-  itemMeta: { color: "#5c665c", marginTop: 4, fontSize: 12 },
-  empty: { color: "#7a847a", fontStyle: "italic" },
-  status: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 16,
-    backgroundColor: "#1f2a1f",
-    color: "#fff",
-    padding: 10,
-    borderRadius: 8,
+  itemTitle: {
+    fontWeight: "700",
+    color: colors.text,
+    fontSize: 17,
+  },
+  itemMeta: { color: colors.textMuted, fontSize: 15 },
+  pendingBadge: {
+    marginTop: space.sm,
+    alignSelf: "flex-start",
+    backgroundColor: colors.accentSoft,
+    color: colors.accentText,
     overflow: "hidden",
-    fontSize: 12,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+    borderRadius: radius.sm,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  empty: { color: colors.textMuted, fontSize: font.body },
+  feedback: {
+    backgroundColor: colors.accentSoft,
+    borderRadius: radius.md,
+    padding: space.md,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  feedbackText: {
+    color: colors.accentText,
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: "600",
   },
 });

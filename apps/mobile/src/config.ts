@@ -1,7 +1,8 @@
 /**
- * En emulador Android: http://10.0.2.2:3001
- * En dispositivo físico: http://<IP-LAN-de-tu-PC>:3001
- * En Expo web / iOS simulator: http://localhost:3001
+ * En el celular físico NO sirve localhost (apunta al teléfono).
+ * Usá la IP LAN de la PC (la misma que aparece en exp://IP:808x).
+ *
+ * Override: $env:EXPO_PUBLIC_API_URL="http://192.168.x.x:3001"
  */
 export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
+  process.env.EXPO_PUBLIC_API_URL ?? "http://192.168.0.213:3001";

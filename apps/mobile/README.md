@@ -31,11 +31,15 @@ $env:EXPO_PUBLIC_API_URL="http://192.168.x.x:3001"
 
 ## Correr
 
+Requiere **Expo Go SDK 54** en el teléfono (la del Play Store).
+
 ```powershell
 cd apps\mobile
-npm start
-# luego `w` (web) o Expo Go
+npx expo start -c
 ```
+
+En la terminal tiene que decir `Using Expo Go` (si dice `development build`, apretá `s` para cambiar).
+Luego escaneá el QR.
 
 ## Flujo de prueba
 

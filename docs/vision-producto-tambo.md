@@ -11,6 +11,7 @@
 - Conectividad **limitada o inexistente** en el momento del ordeñe
 - Muchos dueños **no viven en el tambo**, ya invierten en monitoreo remoto (cámaras)
 - Clientes actuales o potenciales de **Lobeto Tambos** (fabricante de ordeñadoras y equipos de frío, service en zona Lincoln, Pcia. Buenos Aires)
+- Usuario final **solo habla español** y suele tener **poca familiaridad con apps** → UI en español llano, pocos pasos, sin jerga técnica (ver `docs/ux-usuario.md`)
 
 ## 2. Por qué existe una oportunidad (research hasta ahora)
 
