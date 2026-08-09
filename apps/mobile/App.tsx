@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -197,148 +199,182 @@ export default function App() {
     );
   }
 
+  const hayPendientes = pending > 0;
+
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="dark" />
-      <View style={styles.header}>
-        <Text style={styles.title}>GTLT Tambos</Text>
-        <View style={[styles.chip, online ? styles.chipOk : styles.chipWarn]}>
-          <Text style={[styles.chipText, !online && styles.chipTextWarn]}>
-            {online ? "Con señal" : "Sin señal"}
-            {pending > 0 ? ` · ${pending} sin enviar` : ""}
-          </Text>
-        </View>
-        {session ? (
-          <Text style={styles.meta}>
-            {session.userName} · {session.tamboName}
-          </Text>
-        ) : null}
-      </View>
-
-      {!session ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Entrar</Text>
-          <Text style={styles.help}>Usá el usuario y la clave que te dieron.</Text>
-          <Text style={styles.label}>Usuario o correo</Text>
-          <TextInput
-            style={styles.input}
-            autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Ej: juan@correo.com"
-            placeholderTextColor={colors.textMuted}
-          />
-          <Text style={styles.label}>Contraseña</Text>
-          <TextInput
-            style={styles.input}
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Tu contraseña"
-            placeholderTextColor={colors.textMuted}
-          />
-          {status ? (
-            <View style={styles.feedback}>
-              <Text style={styles.feedbackText}>{status}</Text>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.header}>
+            <Text style={styles.title}>GTLT Tambos</Text>
+            <View style={[styles.chip, online ? styles.chipOk : styles.chipWarn]}>
+              <Text style={[styles.chipText, !online && styles.chipTextWarn]}>
+                {online ? "Con señal" : "Sin señal"}
+                {hayPendientes ? ` · ${pending} sin enviar` : ""}
+              </Text>
             </View>
-          ) : null}
-          <Pressable
-            style={[styles.button, busy && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={busy}
-          >
-            <Text style={styles.buttonText}>Entrar</Text>
-          </Pressable>
-        </View>
-      ) : (
-        <>
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Cargar tratamiento</Text>
-            <Text style={styles.help}>
-              Anotá la caravana. Se guarda aunque no haya señal.
-            </Text>
-            <Text style={styles.label}>Número de caravana</Text>
-            <TextInput
-              style={styles.input}
-              value={earTag}
-              onChangeText={setEarTag}
-              placeholder="Ej: 101"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="number-pad"
-            />
-            <Text style={styles.label}>Remedio o producto</Text>
-            <TextInput
-              style={styles.input}
-              value={productName}
-              onChangeText={setProductName}
-              placeholder="Ej: antibiótico"
-              placeholderTextColor={colors.textMuted}
-            />
-            <Text style={styles.label}>Días de retiro de leche</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="number-pad"
-              value={daysWithdrawal}
-              onChangeText={setDaysWithdrawal}
-              placeholder="Ej: 3"
-              placeholderTextColor={colors.textMuted}
-            />
-            {status ? (
-              <View style={styles.feedback}>
-                <Text style={styles.feedbackText}>{status}</Text>
-              </View>
+            {session ? (
+              <Text style={styles.meta}>
+                {session.userName} · {session.tamboName}
+              </Text>
             ) : null}
-            <Pressable
-              style={[styles.button, busy && styles.buttonDisabled]}
-              onPress={handleQueueEvent}
-              disabled={busy}
-            >
-              <Text style={styles.buttonText}>Guardar</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
-              onPress={handleSync}
-              disabled={busy}
-            >
-              <Text style={styles.buttonSecondaryText}>Enviar / Actualizar</Text>
-            </Pressable>
-            <Pressable onPress={handleLogout}>
-              <Text style={styles.link}>Salir</Text>
-            </Pressable>
           </View>
 
-          <Text style={styles.section}>Vacas con retiro de leche</Text>
-          <FlatList
-            data={withdrawals}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.list}
-            ListEmptyComponent={
-              <Text style={styles.empty}>No hay vacas en retiro por ahora.</Text>
-            }
-            renderItem={({ item }) => (
-              <View style={styles.item}>
-                <Text style={styles.itemTitle}>
-                  Caravana {item.ear_tag ?? "?"} · {tipoLegible(item.type)}
+          {!session ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Entrar</Text>
+              <Text style={styles.help}>Usá el usuario y la clave que te dieron.</Text>
+              <Text style={styles.label}>Usuario o correo</Text>
+              <TextInput
+                style={styles.input}
+                autoCapitalize="none"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="Ej: juan@correo.com"
+                placeholderTextColor={colors.textMuted}
+              />
+              <Text style={styles.label}>Contraseña</Text>
+              <TextInput
+                style={styles.input}
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Tu contraseña"
+                placeholderTextColor={colors.textMuted}
+              />
+              {status ? (
+                <View style={styles.feedback}>
+                  <Text style={styles.feedbackText}>{status}</Text>
+                </View>
+              ) : null}
+              <Pressable
+                style={[styles.button, busy && styles.buttonDisabled]}
+                onPress={handleLogin}
+                disabled={busy}
+              >
+                <Text style={styles.buttonText}>Entrar</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <>
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Cargar tratamiento</Text>
+                <Text style={styles.help}>
+                  Anotá la caravana. Se guarda aunque no haya señal.
                 </Text>
-                <Text style={styles.itemMeta}>
-                  {item.product_name
-                    ? `Producto: ${item.product_name}`
-                    : "Sin producto"}
-                </Text>
-                <Text style={styles.itemMeta}>
-                  Retiro hasta:{" "}
-                  {item.milk_withdrawal_until
-                    ? new Date(item.milk_withdrawal_until).toLocaleString("es-AR")
-                    : "-"}
-                </Text>
-                {item.pending ? (
-                  <Text style={styles.pendingBadge}>Falta enviar</Text>
+                <Text style={styles.label}>Número de caravana</Text>
+                <TextInput
+                  style={styles.input}
+                  value={earTag}
+                  onChangeText={setEarTag}
+                  placeholder="Ej: 101"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="number-pad"
+                />
+                <Text style={styles.label}>Remedio o producto</Text>
+                <TextInput
+                  style={styles.input}
+                  value={productName}
+                  onChangeText={setProductName}
+                  placeholder="Ej: antibiótico"
+                  placeholderTextColor={colors.textMuted}
+                />
+                <Text style={styles.label}>Días de retiro de leche</Text>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="number-pad"
+                  value={daysWithdrawal}
+                  onChangeText={setDaysWithdrawal}
+                  placeholder="Ej: 3"
+                  placeholderTextColor={colors.textMuted}
+                />
+                {status ? (
+                  <View style={styles.feedback}>
+                    <Text style={styles.feedbackText}>{status}</Text>
+                  </View>
                 ) : null}
+
+                {/* Si hay pendientes, Enviar va primero y en verde (acción siguiente clara). */}
+                {hayPendientes ? (
+                  <>
+                    <Pressable
+                      style={[styles.button, busy && styles.buttonDisabled]}
+                      onPress={handleSync}
+                      disabled={busy}
+                    >
+                      <Text style={styles.buttonText}>Enviar</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                      onPress={handleQueueEvent}
+                      disabled={busy}
+                    >
+                      <Text style={styles.buttonSecondaryText}>Guardar otro</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Pressable
+                      style={[styles.button, busy && styles.buttonDisabled]}
+                      onPress={handleQueueEvent}
+                      disabled={busy}
+                    >
+                      <Text style={styles.buttonText}>Guardar</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                      onPress={handleSync}
+                      disabled={busy}
+                    >
+                      <Text style={styles.buttonSecondaryText}>Enviar / Actualizar</Text>
+                    </Pressable>
+                  </>
+                )}
+
+                <Pressable onPress={handleLogout}>
+                  <Text style={styles.link}>Salir</Text>
+                </Pressable>
               </View>
-            )}
-          />
-        </>
-      )}
+
+              <Text style={styles.section}>Vacas con retiro de leche</Text>
+              {withdrawals.length === 0 ? (
+                <Text style={styles.empty}>No hay vacas en retiro por ahora.</Text>
+              ) : (
+                withdrawals.map((item) => (
+                  <View key={item.id} style={styles.item}>
+                    <Text style={styles.itemTitle}>
+                      Caravana {item.ear_tag ?? "?"} · {tipoLegible(item.type)}
+                    </Text>
+                    <Text style={styles.itemMeta}>
+                      {item.product_name
+                        ? `Producto: ${item.product_name}`
+                        : "Sin producto"}
+                    </Text>
+                    <Text style={styles.itemMeta}>
+                      Retiro hasta:{" "}
+                      {item.milk_withdrawal_until
+                        ? new Date(item.milk_withdrawal_until).toLocaleString(
+                            "es-AR",
+                          )
+                        : "-"}
+                    </Text>
+                    {item.pending ? (
+                      <Text style={styles.pendingBadge}>Falta enviar</Text>
+                    ) : null}
+                  </View>
+                ))
+              )}
+            </>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -347,7 +383,12 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  flex: { flex: 1 },
+  scrollContent: {
     padding: space.lg,
+    paddingBottom: space.xl * 2,
+    gap: space.md,
   },
   center: {
     flex: 1,
@@ -357,7 +398,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   loadingText: { color: colors.textMuted, fontSize: font.body },
-  header: { marginBottom: space.md, gap: space.sm },
+  header: { gap: space.sm },
   title: {
     fontSize: font.display,
     fontWeight: "700",
@@ -385,7 +426,6 @@ const styles = StyleSheet.create({
     gap: space.md,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: space.md,
   },
   cardTitle: {
     fontSize: font.title,
@@ -451,10 +491,9 @@ const styles = StyleSheet.create({
   section: {
     fontSize: font.title,
     fontWeight: "700",
-    marginBottom: space.sm,
     color: colors.text,
+    marginTop: space.sm,
   },
-  list: { paddingBottom: 100, gap: space.md },
   item: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,
