@@ -239,6 +239,7 @@ gtlt/
 - [x] Seed de `PartType` (`apps/api/prisma/seed.ts`, idempotente por `code`)  
 - [x] API mínima Express + JWT + scope tenant/tambo (`npm run dev` en `apps/api`)  
 - [x] Seed demo user/tenant (`admin@gtlt.local` / `demo1234`)  
+- [x] Endpoint negocio `MilkingSession`: `GET/POST /milking-sessions`, `POST /milking-sessions/:id/correct`  
 
 ### Pendiente (próximos pasos naturales)
 

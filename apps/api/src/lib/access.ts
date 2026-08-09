@@ -1,4 +1,5 @@
 import type { Membership, Role } from "@prisma/client";
+import { HttpError } from "./http-error.js";
 
 /** Dueño/admin ven todos los tambos del tenant. */
 export function hasAllTamboAccess(roles: Role[]): boolean {
@@ -21,8 +22,6 @@ export function assertTamboAccess(
 ): void {
   if (tamboIds === null) return;
   if (!tamboIds.includes(tamboId)) {
-    const err = new Error("No access to this tambo");
-    (err as Error & { status: number }).status = 403;
-    throw err;
+    throw new HttpError(403, "No access to this tambo");
   }
 }

@@ -3,6 +3,7 @@ import cors from "cors";
 import { authRouter } from "./routes/auth.js";
 import { partTypesRouter } from "./routes/part-types.js";
 import { tambosRouter } from "./routes/tambos.js";
+import { milkingSessionsRouter } from "./routes/milking-sessions.js";
 
 export function createApp() {
   const app = express();
@@ -17,6 +18,7 @@ export function createApp() {
   app.use("/auth", authRouter);
   app.use("/part-types", partTypesRouter);
   app.use("/tambos", tambosRouter);
+  app.use("/milking-sessions", milkingSessionsRouter);
 
   app.use(
     (
