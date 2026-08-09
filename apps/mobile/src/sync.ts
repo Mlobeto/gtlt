@@ -1,6 +1,7 @@
 import * as Crypto from "expo-crypto";
 import {
   createHealthEvent,
+  createMilkingSession,
   fetchActiveWithdrawals,
   fetchAnimals,
 } from "./api";
@@ -13,6 +14,7 @@ import {
   replaceAnimals,
   replaceSyncedWithdrawals,
   upsertLocalHealthEvent,
+  upsertLocalMilkingSession,
 } from "./db";
 
 export async function pullServerState(
@@ -86,6 +88,34 @@ export async function queueHealthEventOffline(input: {
   return id;
 }
 
+export async function queueMilkingSessionOffline(input: {
+  tamboId: string;
+  sessionDate: string;
+  shift: "MORNING" | "AFTERNOON";
+  totalLiters: number;
+}): Promise<string> {
+  const id = Crypto.randomUUID();
+  const payload = {
+    id,
+    tamboId: input.tamboId,
+    sessionDate: input.sessionDate,
+    shift: input.shift,
+    totalLiters: input.totalLiters,
+    clientMutationId: id,
+  };
+
+  await upsertLocalMilkingSession({
+    id,
+    tambo_id: input.tamboId,
+    session_date: input.sessionDate,
+    shift: input.shift,
+    total_liters: input.totalLiters,
+    pending: 1,
+  });
+  await enqueueOutbox(id, "MilkingSession", payload);
+  return id;
+}
+
 export async function pushOutbox(token: string): Promise<{
   synced: number;
   failed: number;
@@ -96,12 +126,20 @@ export async function pushOutbox(token: string): Promise<{
   let failed = 0;
 
   for (const row of pending) {
-    if (row.entity !== "HealthEvent") continue;
     try {
-      const payload = JSON.parse(row.payload) as Parameters<
-        typeof createHealthEvent
-      >[1];
-      await createHealthEvent(token, payload);
+      if (row.entity === "HealthEvent") {
+        const payload = JSON.parse(row.payload) as Parameters<
+          typeof createHealthEvent
+        >[1];
+        await createHealthEvent(token, payload);
+      } else if (row.entity === "MilkingSession") {
+        const payload = JSON.parse(row.payload) as Parameters<
+          typeof createMilkingSession
+        >[1];
+        await createMilkingSession(token, payload);
+      } else {
+        continue;
+      }
       await markOutboxSynced(row.mutation_id);
       synced += 1;
     } catch (err) {

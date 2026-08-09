@@ -33,6 +33,15 @@ export function getDb() {
           pending INTEGER NOT NULL DEFAULT 0
         );
 
+        CREATE TABLE IF NOT EXISTS milking_sessions_local (
+          id TEXT PRIMARY KEY NOT NULL,
+          tambo_id TEXT NOT NULL,
+          session_date TEXT NOT NULL,
+          shift TEXT NOT NULL,
+          total_liters REAL NOT NULL,
+          pending INTEGER NOT NULL DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS outbox (
           mutation_id TEXT PRIMARY KEY NOT NULL,
           entity TEXT NOT NULL,
@@ -221,6 +230,51 @@ export async function listPendingOutbox(): Promise<OutboxRow[]> {
   );
 }
 
+export type LocalMilkingSession = {
+  id: string;
+  tambo_id: string;
+  session_date: string;
+  shift: string;
+  total_liters: number;
+  pending: number;
+};
+
+export async function upsertLocalMilkingSession(
+  session: LocalMilkingSession,
+): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT INTO milking_sessions_local
+      (id, tambo_id, session_date, shift, total_liters, pending)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+      session_date = excluded.session_date,
+      shift = excluded.shift,
+      total_liters = excluded.total_liters,
+      pending = excluded.pending`,
+    [
+      session.id,
+      session.tambo_id,
+      session.session_date,
+      session.shift,
+      session.total_liters,
+      session.pending,
+    ],
+  );
+}
+
+export async function listLocalMilkingSessions(
+  tamboId: string,
+): Promise<LocalMilkingSession[]> {
+  const db = await getDb();
+  return db.getAllAsync<LocalMilkingSession>(
+    `SELECT * FROM milking_sessions_local
+     WHERE tambo_id = ?
+     ORDER BY session_date DESC, shift ASC`,
+    [tamboId],
+  );
+}
+
 export async function markOutboxSynced(mutationId: string): Promise<void> {
   const db = await getDb();
   await db.runAsync(
@@ -229,6 +283,10 @@ export async function markOutboxSynced(mutationId: string): Promise<void> {
   );
   await db.runAsync(
     "UPDATE health_events_local SET pending = 0 WHERE id = ?",
+    [mutationId],
+  );
+  await db.runAsync(
+    "UPDATE milking_sessions_local SET pending = 0 WHERE id = ?",
     [mutationId],
   );
 }

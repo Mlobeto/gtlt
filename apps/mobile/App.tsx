@@ -19,8 +19,10 @@ import {
   getDb,
   listActiveWithdrawalsLocal,
   listAnimals,
+  listLocalMilkingSessions,
   type LocalAnimal,
   type LocalHealthEvent,
+  type LocalMilkingSession,
 } from "./src/db";
 import {
   clearSession,
@@ -32,8 +34,23 @@ import {
   fullSync,
   pullServerState,
   queueHealthEventOffline,
+  queueMilkingSessionOffline,
 } from "./src/sync";
 import { colors, font, radius, space, touch } from "./src/theme";
+
+type Screen = "home" | "milking" | "treatment" | "withdrawals";
+
+/** Menú con emoji nativo — provisional; se define con más detalle después. */
+const MENU = [
+  { key: "milking" as const, emoji: "🐄", label: "Ordeñe", hint: "Litros del turno" },
+  { key: "treatment" as const, emoji: "💊", label: "Tratamiento", hint: "Remedio y días de espera" },
+  {
+    key: "withdrawals" as const,
+    emoji: "❌",
+    label: "Retiros",
+    hint: "Vacas cuya leche no se puede mezclar",
+  },
+];
 
 function tipoLegible(type: string): string {
   switch (type) {
@@ -46,13 +63,27 @@ function tipoLegible(type: string): string {
   }
 }
 
+function turnoLegible(shift: string): string {
+  return shift === "AFTERNOON" ? "Tarde" : "Mañana";
+}
+
+function hoyISO(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export default function App() {
   const [ready, setReady] = useState(false);
+  const [screen, setScreen] = useState<Screen>("home");
   const [session, setSession] = useState<Session | null>(null);
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
   const [withdrawals, setWithdrawals] = useState<LocalHealthEvent[]>([]);
   const [animals, setAnimals] = useState<LocalAnimal[]>([]);
+  const [milkings, setMilkings] = useState<LocalMilkingSession[]>([]);
   const [status, setStatus] = useState<string>("");
   const [busy, setBusy] = useState(false);
 
@@ -61,10 +92,13 @@ export default function App() {
   const [earTag, setEarTag] = useState("101");
   const [productName, setProductName] = useState("");
   const [daysWithdrawal, setDaysWithdrawal] = useState("3");
+  const [liters, setLiters] = useState("");
+  const [shift, setShift] = useState<"MORNING" | "AFTERNOON">("MORNING");
 
   const refreshLocal = useCallback(async (tamboId: string) => {
     setWithdrawals(await listActiveWithdrawalsLocal(tamboId));
     setAnimals(await listAnimals(tamboId));
+    setMilkings(await listLocalMilkingSessions(tamboId));
     setPending(await countPendingOutbox());
   }, []);
 
@@ -108,6 +142,7 @@ export default function App() {
       await saveSession(next);
       await pullServerState(next.token, next.tamboId);
       setSession(next);
+      setScreen("home");
       await refreshLocal(next.tamboId);
       setStatus(`Listo. Estás en ${tambo.name}.`);
     } catch {
@@ -120,22 +155,48 @@ export default function App() {
   async function handleLogout() {
     await clearSession();
     setSession(null);
+    setScreen("home");
     setWithdrawals([]);
     setAnimals([]);
+    setMilkings([]);
     setPending(0);
     setStatus("Saliste de la cuenta.");
   }
 
-  async function handleQueueEvent() {
+  async function handleSync() {
+    if (!session) return;
+    if (!online) {
+      setStatus("Ahora no hay señal. Los datos siguen guardados en el teléfono.");
+      return;
+    }
+    setBusy(true);
+    setStatus("Enviando...");
+    try {
+      const result = await fullSync(session.token, session.tamboId);
+      await refreshLocal(session.tamboId);
+      if (result.failed > 0) {
+        setStatus("Algunos no se pudieron enviar. Tocá “Enviar” de nuevo.");
+      } else if (result.synced === 0 && result.pendingLeft === 0) {
+        setStatus("Todo al día. No había nada pendiente.");
+      } else {
+        setStatus("Listo. Ya se envió todo.");
+      }
+    } catch {
+      setStatus("No se pudo enviar. Revisá la señal y probá de nuevo.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleQueueTreatment() {
     if (!session) return;
     const animal = animals.find((a) => a.ear_tag === earTag.trim());
     if (!animal) {
       setStatus(
-        `No encontramos la caravana ${earTag}. Tocá “Actualizar” con señal y revisá el número.`,
+        `No encontramos la caravana ${earTag}. Tocá “Enviar / Actualizar” con señal y revisá el número.`,
       );
       return;
     }
-
     const days = Number(daysWithdrawal);
     const until =
       Number.isFinite(days) && days > 0
@@ -165,26 +226,30 @@ export default function App() {
     }
   }
 
-  async function handleSync() {
+  async function handleQueueMilking() {
     if (!session) return;
-    if (!online) {
-      setStatus("Ahora no hay señal. Los datos siguen guardados en el teléfono.");
+    const value = Number(liters.replace(",", "."));
+    if (!Number.isFinite(value) || value <= 0) {
+      setStatus("Anotá cuántos litros hubo en el turno.");
       return;
     }
     setBusy(true);
-    setStatus("Enviando...");
     try {
-      const result = await fullSync(session.token, session.tamboId);
+      await queueMilkingSessionOffline({
+        tamboId: session.tamboId,
+        sessionDate: hoyISO(),
+        shift,
+        totalLiters: value,
+      });
       await refreshLocal(session.tamboId);
-      if (result.failed > 0) {
-        setStatus("Algunos no se pudieron enviar. Tocá “Enviar” de nuevo.");
-      } else if (result.synced === 0 && result.pendingLeft === 0) {
-        setStatus("Todo al día. No había nada pendiente.");
-      } else {
-        setStatus("Listo. Ya se envió todo.");
-      }
+      setLiters("");
+      setStatus(
+        online
+          ? "Ordeñe guardado. Tocá “Enviar” para subirlo."
+          : "Ordeñe guardado sin señal. Después tocá “Enviar”.",
+      );
     } catch {
-      setStatus("No se pudo enviar. Revisá la señal y probá de nuevo.");
+      setStatus("No se pudo guardar el ordeñe. Probá de nuevo.");
     } finally {
       setBusy(false);
     }
@@ -264,113 +329,296 @@ export default function App() {
             </View>
           ) : (
             <>
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Cargar tratamiento</Text>
-                <Text style={styles.help}>
-                  Anotá la caravana. Se guarda aunque no haya señal.
-                </Text>
-                <Text style={styles.label}>Número de caravana</Text>
-                <TextInput
-                  style={styles.input}
-                  value={earTag}
-                  onChangeText={setEarTag}
-                  placeholder="Ej: 101"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="number-pad"
-                />
-                <Text style={styles.label}>Remedio o producto</Text>
-                <TextInput
-                  style={styles.input}
-                  value={productName}
-                  onChangeText={setProductName}
-                  placeholder="Ej: antibiótico"
-                  placeholderTextColor={colors.textMuted}
-                />
-                <Text style={styles.label}>Días de retiro de leche</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="number-pad"
-                  value={daysWithdrawal}
-                  onChangeText={setDaysWithdrawal}
-                  placeholder="Ej: 3"
-                  placeholderTextColor={colors.textMuted}
-                />
-                {status ? (
-                  <View style={styles.feedback}>
-                    <Text style={styles.feedbackText}>{status}</Text>
-                  </View>
-                ) : null}
-
-                {/* Si hay pendientes, Enviar va primero y en verde (acción siguiente clara). */}
-                {hayPendientes ? (
-                  <>
-                    <Pressable
-                      style={[styles.button, busy && styles.buttonDisabled]}
-                      onPress={handleSync}
-                      disabled={busy}
-                    >
-                      <Text style={styles.buttonText}>Enviar</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
-                      onPress={handleQueueEvent}
-                      disabled={busy}
-                    >
-                      <Text style={styles.buttonSecondaryText}>Guardar otro</Text>
-                    </Pressable>
-                  </>
-                ) : (
-                  <>
-                    <Pressable
-                      style={[styles.button, busy && styles.buttonDisabled]}
-                      onPress={handleQueueEvent}
-                      disabled={busy}
-                    >
-                      <Text style={styles.buttonText}>Guardar</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
-                      onPress={handleSync}
-                      disabled={busy}
-                    >
-                      <Text style={styles.buttonSecondaryText}>Enviar / Actualizar</Text>
-                    </Pressable>
-                  </>
-                )}
-
-                <Pressable onPress={handleLogout}>
-                  <Text style={styles.link}>Salir</Text>
+              {screen !== "home" ? (
+                <Pressable
+                  style={styles.backRow}
+                  onPress={() => {
+                    setStatus("");
+                    setScreen("home");
+                  }}
+                >
+                  <Text style={styles.backText}>← Volver al inicio</Text>
                 </Pressable>
-              </View>
+              ) : null}
 
-              <Text style={styles.section}>Vacas con retiro de leche</Text>
-              {withdrawals.length === 0 ? (
-                <Text style={styles.empty}>No hay vacas en retiro por ahora.</Text>
-              ) : (
-                withdrawals.map((item) => (
-                  <View key={item.id} style={styles.item}>
-                    <Text style={styles.itemTitle}>
-                      Caravana {item.ear_tag ?? "?"} · {tipoLegible(item.type)}
-                    </Text>
-                    <Text style={styles.itemMeta}>
-                      {item.product_name
-                        ? `Producto: ${item.product_name}`
-                        : "Sin producto"}
-                    </Text>
-                    <Text style={styles.itemMeta}>
-                      Retiro hasta:{" "}
-                      {item.milk_withdrawal_until
-                        ? new Date(item.milk_withdrawal_until).toLocaleString(
-                            "es-AR",
-                          )
-                        : "-"}
-                    </Text>
-                    {item.pending ? (
-                      <Text style={styles.pendingBadge}>Falta enviar</Text>
-                    ) : null}
+              {screen === "home" ? (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>¿Qué querés hacer?</Text>
+                  <Text style={styles.help}>Tocá un botón grande.</Text>
+                  {MENU.map((item) => (
+                    <Pressable
+                      key={item.key}
+                      style={styles.menuButton}
+                      onPress={() => {
+                        setStatus("");
+                        setScreen(item.key);
+                      }}
+                    >
+                      <Text style={styles.menuEmoji}>{item.emoji}</Text>
+                      <View style={styles.menuTextWrap}>
+                        <Text style={styles.menuLabel}>{item.label}</Text>
+                        <Text style={styles.menuHint}>{item.hint}</Text>
+                      </View>
+                    </Pressable>
+                  ))}
+
+                  {status ? (
+                    <View style={styles.feedback}>
+                      <Text style={styles.feedbackText}>{status}</Text>
+                    </View>
+                  ) : null}
+
+                  {hayPendientes ? (
+                    <Pressable
+                      style={[styles.button, busy && styles.buttonDisabled]}
+                      onPress={handleSync}
+                      disabled={busy}
+                    >
+                      <Text style={styles.buttonText}>Enviar lo pendiente</Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                      onPress={handleSync}
+                      disabled={busy}
+                    >
+                      <Text style={styles.buttonSecondaryText}>Actualizar datos</Text>
+                    </Pressable>
+                  )}
+
+                  <Pressable onPress={handleLogout}>
+                    <Text style={styles.link}>Salir</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+
+              {screen === "milking" ? (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>🐄 Ordeñe</Text>
+                  <Text style={styles.help}>
+                    Anotá los litros totales del turno de hoy.
+                  </Text>
+                  <Text style={styles.label}>Turno</Text>
+                  <View style={styles.row}>
+                    <Pressable
+                      style={[
+                        styles.choice,
+                        shift === "MORNING" && styles.choiceOn,
+                      ]}
+                      onPress={() => setShift("MORNING")}
+                    >
+                      <Text
+                        style={[
+                          styles.choiceText,
+                          shift === "MORNING" && styles.choiceTextOn,
+                        ]}
+                      >
+                        Mañana
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.choice,
+                        shift === "AFTERNOON" && styles.choiceOn,
+                      ]}
+                      onPress={() => setShift("AFTERNOON")}
+                    >
+                      <Text
+                        style={[
+                          styles.choiceText,
+                          shift === "AFTERNOON" && styles.choiceTextOn,
+                        ]}
+                      >
+                        Tarde
+                      </Text>
+                    </Pressable>
                   </View>
-                ))
-              )}
+                  <Text style={styles.label}>Litros</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="decimal-pad"
+                    value={liters}
+                    onChangeText={setLiters}
+                    placeholder="Ej: 1250"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                  {status ? (
+                    <View style={styles.feedback}>
+                      <Text style={styles.feedbackText}>{status}</Text>
+                    </View>
+                  ) : null}
+                  {hayPendientes ? (
+                    <>
+                      <Pressable
+                        style={[styles.button, busy && styles.buttonDisabled]}
+                        onPress={handleSync}
+                        disabled={busy}
+                      >
+                        <Text style={styles.buttonText}>Enviar</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                        onPress={handleQueueMilking}
+                        disabled={busy}
+                      >
+                        <Text style={styles.buttonSecondaryText}>Guardar otro</Text>
+                      </Pressable>
+                    </>
+                  ) : (
+                    <>
+                      <Pressable
+                        style={[styles.button, busy && styles.buttonDisabled]}
+                        onPress={handleQueueMilking}
+                        disabled={busy}
+                      >
+                        <Text style={styles.buttonText}>Guardar</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                        onPress={handleSync}
+                        disabled={busy}
+                      >
+                        <Text style={styles.buttonSecondaryText}>Enviar / Actualizar</Text>
+                      </Pressable>
+                    </>
+                  )}
+                  {milkings.length > 0 ? (
+                    <>
+                      <Text style={styles.sectionInCard}>Últimos guardados</Text>
+                      {milkings.slice(0, 5).map((m) => (
+                        <Text key={m.id} style={styles.itemMeta}>
+                          {m.session_date} · {turnoLegible(m.shift)} ·{" "}
+                          {m.total_liters} L
+                          {m.pending ? " · Falta enviar" : ""}
+                        </Text>
+                      ))}
+                    </>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {screen === "treatment" ? (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>💊 Tratamiento</Text>
+                  <Text style={styles.help}>
+                    Anotá la caravana. Se guarda aunque no haya señal.
+                  </Text>
+                  <Text style={styles.label}>Número de caravana</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={earTag}
+                    onChangeText={setEarTag}
+                    placeholder="Ej: 101"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="number-pad"
+                  />
+                  <Text style={styles.label}>Remedio o producto</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={productName}
+                    onChangeText={setProductName}
+                    placeholder="Ej: antibiótico"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                  <Text style={styles.label}>Días de retiro de leche</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="number-pad"
+                    value={daysWithdrawal}
+                    onChangeText={setDaysWithdrawal}
+                    placeholder="Ej: 3"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                  {status ? (
+                    <View style={styles.feedback}>
+                      <Text style={styles.feedbackText}>{status}</Text>
+                    </View>
+                  ) : null}
+                  {hayPendientes ? (
+                    <>
+                      <Pressable
+                        style={[styles.button, busy && styles.buttonDisabled]}
+                        onPress={handleSync}
+                        disabled={busy}
+                      >
+                        <Text style={styles.buttonText}>Enviar</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                        onPress={handleQueueTreatment}
+                        disabled={busy}
+                      >
+                        <Text style={styles.buttonSecondaryText}>Guardar otro</Text>
+                      </Pressable>
+                    </>
+                  ) : (
+                    <>
+                      <Pressable
+                        style={[styles.button, busy && styles.buttonDisabled]}
+                        onPress={handleQueueTreatment}
+                        disabled={busy}
+                      >
+                        <Text style={styles.buttonText}>Guardar</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                        onPress={handleSync}
+                        disabled={busy}
+                      >
+                        <Text style={styles.buttonSecondaryText}>Enviar / Actualizar</Text>
+                      </Pressable>
+                    </>
+                  )}
+                </View>
+              ) : null}
+
+              {screen === "withdrawals" ? (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>❌ Retiros de leche</Text>
+                  <Text style={styles.help}>
+                    Vacas en espera: esa leche no se puede mezclar con el resto.
+                  </Text>
+                  {status ? (
+                    <View style={styles.feedback}>
+                      <Text style={styles.feedbackText}>{status}</Text>
+                    </View>
+                  ) : null}
+                  <Pressable
+                    style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                    onPress={handleSync}
+                    disabled={busy}
+                  >
+                    <Text style={styles.buttonSecondaryText}>Actualizar lista</Text>
+                  </Pressable>
+                  {withdrawals.length === 0 ? (
+                    <Text style={styles.empty}>No hay vacas en retiro por ahora.</Text>
+                  ) : (
+                    withdrawals.map((item) => (
+                      <View key={item.id} style={styles.item}>
+                        <Text style={styles.itemTitle}>
+                          Caravana {item.ear_tag ?? "?"} · {tipoLegible(item.type)}
+                        </Text>
+                        <Text style={styles.itemMeta}>
+                          {item.product_name
+                            ? `Producto: ${item.product_name}`
+                            : "Sin producto"}
+                        </Text>
+                        <Text style={styles.itemMeta}>
+                          Retiro hasta:{" "}
+                          {item.milk_withdrawal_until
+                            ? new Date(item.milk_withdrawal_until).toLocaleString(
+                                "es-AR",
+                              )
+                            : "-"}
+                        </Text>
+                        {item.pending ? (
+                          <Text style={styles.pendingBadge}>Falta enviar</Text>
+                        ) : null}
+                      </View>
+                    ))
+                  )}
+                </View>
+              ) : null}
             </>
           )}
         </ScrollView>
@@ -380,10 +628,7 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
+  safe: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   scrollContent: {
     padding: space.lg,
@@ -399,11 +644,7 @@ const styles = StyleSheet.create({
   },
   loadingText: { color: colors.textMuted, fontSize: font.body },
   header: { gap: space.sm },
-  title: {
-    fontSize: font.display,
-    fontWeight: "700",
-    color: colors.text,
-  },
+  title: { fontSize: font.display, fontWeight: "700", color: colors.text },
   meta: { color: colors.textMuted, fontSize: font.meta },
   chip: {
     alignSelf: "flex-start",
@@ -413,11 +654,7 @@ const styles = StyleSheet.create({
   },
   chipOk: { backgroundColor: colors.primarySoft },
   chipWarn: { backgroundColor: colors.accentSoft },
-  chipText: {
-    color: colors.primary,
-    fontWeight: "700",
-    fontSize: font.meta,
-  },
+  chipText: { color: colors.primary, fontWeight: "700", fontSize: font.meta },
   chipTextWarn: { color: colors.accentText },
   card: {
     backgroundColor: colors.surface,
@@ -427,21 +664,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  cardTitle: {
-    fontSize: font.title,
-    fontWeight: "700",
-    color: colors.text,
-  },
-  help: {
-    color: colors.textMuted,
-    fontSize: font.body,
-    lineHeight: 24,
-  },
-  label: {
-    fontSize: font.label,
-    fontWeight: "600",
-    color: colors.text,
-  },
+  cardTitle: { fontSize: font.title, fontWeight: "700", color: colors.text },
+  help: { color: colors.textMuted, fontSize: font.body, lineHeight: 24 },
+  label: { fontSize: font.label, fontWeight: "600", color: colors.text },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -453,6 +678,40 @@ const styles = StyleSheet.create({
     color: colors.text,
     minHeight: touch.min,
   },
+  menuButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.lg,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: space.lg,
+    paddingHorizontal: space.lg,
+    minHeight: 72,
+  },
+  menuEmoji: { fontSize: 36 },
+  menuTextWrap: { flex: 1, gap: 2 },
+  menuLabel: { fontSize: 20, fontWeight: "700", color: colors.text },
+  menuHint: { fontSize: 15, color: colors.textMuted },
+  backRow: { paddingVertical: space.sm },
+  backText: { fontSize: font.body, color: colors.primary, fontWeight: "600" },
+  row: { flexDirection: "row", gap: space.sm },
+  choice: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingVertical: space.lg,
+    alignItems: "center",
+    backgroundColor: colors.bg,
+  },
+  choiceOn: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
+  },
+  choiceText: { fontSize: font.body, color: colors.textMuted, fontWeight: "600" },
+  choiceTextOn: { color: colors.primary },
   button: {
     backgroundColor: colors.primary,
     paddingVertical: space.lg,
@@ -472,11 +731,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   buttonDisabled: { opacity: 0.6 },
-  buttonText: {
-    color: colors.bg,
-    fontWeight: "700",
-    fontSize: font.button,
-  },
+  buttonText: { color: colors.bg, fontWeight: "700", fontSize: font.button },
   buttonSecondaryText: {
     color: colors.primary,
     fontWeight: "700",
@@ -488,25 +743,21 @@ const styles = StyleSheet.create({
     fontSize: font.body,
     paddingVertical: space.sm,
   },
-  section: {
-    fontSize: font.title,
+  sectionInCard: {
+    fontSize: font.label,
     fontWeight: "700",
     color: colors.text,
     marginTop: space.sm,
   },
   item: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSubtle,
     borderRadius: radius.md,
     padding: space.lg,
     borderWidth: 1,
     borderColor: colors.border,
     gap: space.xs,
   },
-  itemTitle: {
-    fontWeight: "700",
-    color: colors.text,
-    fontSize: 17,
-  },
+  itemTitle: { fontWeight: "700", color: colors.text, fontSize: 17 },
   itemMeta: { color: colors.textMuted, fontSize: 15 },
   pendingBadge: {
     marginTop: space.sm,

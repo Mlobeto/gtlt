@@ -93,3 +93,22 @@ export function createHealthEvent(
     body: JSON.stringify(payload),
   });
 }
+
+export function createMilkingSession(
+  token: string,
+  payload: {
+    id: string;
+    tamboId: string;
+    sessionDate: string;
+    shift: "MORNING" | "AFTERNOON";
+    totalLiters: number;
+    notes?: string;
+    clientMutationId: string;
+  },
+) {
+  return request<{ item: { id: string } }>("/milking-sessions", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
