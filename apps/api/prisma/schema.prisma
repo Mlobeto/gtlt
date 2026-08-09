@@ -1,0 +1,542 @@
+// =============================================================================
+// GTLT — Prisma schema Fase 1
+// ERD de referencia: docs/erd.md
+//
+// NO incluye migraciones todavía.
+// Índices parciales (UNIQUE ... WHERE) se documentan abajo y van por SQL raw
+// cuando se generen migraciones.
+//
+// Storage de imágenes (photoUrl): string con URL externa — servicio TBD.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// Enums
+// -----------------------------------------------------------------------------
+
+enum Role {
+  TAMBERO
+  DUENIO
+  ADMIN
+  VETERINARIO
+}
+
+enum AnimalStatus {
+  ACTIVE
+  DRY
+  SOLD
+  DEAD
+}
+
+enum MilkingShift {
+  MORNING
+  AFTERNOON
+}
+
+enum RecordStatus {
+  ACTIVE
+  VOIDED
+}
+
+enum HealthEventType {
+  MASTITIS
+  TREATMENT
+  OTHER
+}
+
+enum ReproEventType {
+  HEAT
+  SERVICE
+  EXPECTED_CALVING
+  CALVING
+  ABORTION
+  OTHER
+}
+
+enum PartReplacementPattern {
+  USAGE_BASED
+  REACTIVE
+  BRANDED
+}
+
+enum ControlLecheroSource {
+  EXTERNAL_TECHNICIAN
+  /// Futuro: caudalímetro u otra medición automática (misma forma header+líneas)
+  FLOW_METER
+}
+
+// -----------------------------------------------------------------------------
+// Identidad / multitenancy
+// -----------------------------------------------------------------------------
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  timezone  String   @default("America/Argentina/Buenos_Aires")
+  settings  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tambos               Tambo[]
+  memberships          Membership[]
+  partTypeConfigs      TenantPartTypeConfig[]
+  animals              Animal[]
+  animalTransfers      AnimalTransferEvent[]
+  milkingSessions      MilkingSession[]
+  controlLecheros      ControlLechero[]
+  controlLecheroLines  ControlLecheroLine[]
+  milkDeliveries       MilkDelivery[]
+  healthEvents         HealthEvent[]
+  reproEvents          ReproEvent[]
+  partInstances        PartInstance[]
+
+  @@map("tenants")
+}
+
+model Tambo {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String
+  /// Cantidad de bajadas del establecimiento. Usado en fórmula de usage_counter.
+  bajadaCount Int      @map("bajada_count")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant              Tenant               @relation(fields: [tenantId], references: [id])
+  membershipTambos    MembershipTambo[]
+  animals             Animal[]
+  milkingSessions     MilkingSession[]
+  controlLecheros     ControlLechero[]
+  controlLecheroLines ControlLecheroLine[]
+  milkDeliveries      MilkDelivery[]
+  healthEvents        HealthEvent[]
+  reproEvents         ReproEvent[]
+  partInstances       PartInstance[]
+
+  transfersFrom AnimalTransferEvent[] @relation("TransferFromTambo")
+  transfersTo   AnimalTransferEvent[] @relation("TransferToTambo")
+
+  @@index([tenantId])
+  @@index([tenantId, name])
+  @@map("tambos")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String?  @unique
+  phone        String?
+  name         String
+  /// Auth provider/hash a definir — placeholder Fase 1
+  passwordHash String?  @map("password_hash")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships         Membership[]
+  animalsCreated      Animal[]              @relation("AnimalCreatedBy")
+  transfersCreated    AnimalTransferEvent[] @relation("TransferCreatedBy")
+  sessionsCreated     MilkingSession[]      @relation("SessionCreatedBy")
+  controlsCreated     ControlLechero[]      @relation("ControlCreatedBy")
+  deliveriesCreated   MilkDelivery[]        @relation("DeliveryCreatedBy")
+  healthEventsCreated HealthEvent[]         @relation("HealthCreatedBy")
+  reproEventsCreated  ReproEvent[]          @relation("ReproCreatedBy")
+  partsCreated        PartInstance[]        @relation("PartCreatedBy")
+
+  @@map("users")
+}
+
+/// Membresía user↔tenant con uno o más roles.
+/// Alcance de tambos: ver MembershipTambo + reglas en comentario de esa tabla.
+model Membership {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  roles     Role[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant            @relation(fields: [tenantId], references: [id])
+  user   User              @relation(fields: [userId], references: [id])
+  tambos MembershipTambo[]
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+/// Lista de tambos permitidos a nivel Membership (no por rol).
+/// Regla app: si roles incluye DUENIO o ADMIN → acceso a todos los tambos del tenant
+/// (MembershipTambo opcional/ignorado). Si solo TAMBERO/VETERINARIO → alcance = estas filas.
+/// Caso cruzado (rol distinto por tambo) fuera de Fase 1.
+model MembershipTambo {
+  id           String @id @default(uuid()) @db.Uuid
+  tenantId     String @map("tenant_id") @db.Uuid
+  membershipId String @map("membership_id") @db.Uuid
+  tamboId      String @map("tambo_id") @db.Uuid
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  tambo      Tambo      @relation(fields: [tamboId], references: [id])
+
+  @@unique([membershipId, tamboId])
+  @@index([tenantId, tamboId])
+  @@map("membership_tambos")
+}
+
+// -----------------------------------------------------------------------------
+// Animales
+// -----------------------------------------------------------------------------
+
+/// Ficha editable (LWW / version). Única entidad "perfil" del MVP offline.
+model Animal {
+  id        String       @id @default(uuid()) @db.Uuid
+  tenantId  String       @map("tenant_id") @db.Uuid
+  /// Mutable: el animal puede cambiar de tambo dentro del tenant.
+  tamboId   String       @map("tambo_id") @db.Uuid
+  earTag    String       @map("ear_tag")
+  status    AnimalStatus @default(ACTIVE)
+  birthDate DateTime?    @map("birth_date") @db.Date
+  enteredAt DateTime?    @map("entered_at") @db.Date
+  /// URL a storage externo (servicio TBD). No blob en DB.
+  photoUrl  String?      @map("photo_url")
+  /// Futuro RFID / chip — no usado en Fase 1.
+  electronicId String?   @map("electronic_id")
+  notes     String?
+  version   Int          @default(1)
+  clientMutationId String? @map("client_mutation_id")
+  createdById String?    @map("created_by_id") @db.Uuid
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  deletedAt DateTime?    @map("deleted_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  tambo     Tambo  @relation(fields: [tamboId], references: [id])
+  createdBy User?  @relation("AnimalCreatedBy", fields: [createdById], references: [id])
+
+  transfers           AnimalTransferEvent[]
+  healthEvents        HealthEvent[]
+  reproEvents         ReproEvent[]
+  controlLecheroLines ControlLecheroLine[]
+
+  @@index([tenantId, tamboId, status])
+  @@index([tenantId, tamboId, earTag])
+  @@index([tenantId, tamboId, updatedAt])
+  @@index([tenantId, clientMutationId])
+  /// PARTIAL UNIQUE (migración SQL):
+  /// UNIQUE (tambo_id, ear_tag) WHERE status IN ('ACTIVE','DRY') AND deleted_at IS NULL
+  @@map("animals")
+}
+
+/// Historial liviano de movimiento entre tambos del mismo tenant (append-only).
+model AnimalTransferEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  animalId       String   @map("animal_id") @db.Uuid
+  fromTamboId    String   @map("from_tambo_id") @db.Uuid
+  toTamboId      String   @map("to_tambo_id") @db.Uuid
+  transferredAt  DateTime @map("transferred_at")
+  notes          String?
+  createdById    String   @map("created_by_id") @db.Uuid
+  clientMutationId String? @map("client_mutation_id")
+  createdAt      DateTime @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  animal    Animal @relation(fields: [animalId], references: [id])
+  fromTambo Tambo  @relation("TransferFromTambo", fields: [fromTamboId], references: [id])
+  toTambo   Tambo  @relation("TransferToTambo", fields: [toTamboId], references: [id])
+  createdBy User   @relation("TransferCreatedBy", fields: [createdById], references: [id])
+
+  @@index([tenantId, animalId, transferredAt])
+  @@index([tenantId, toTamboId, transferredAt])
+  @@index([tenantId, clientMutationId])
+  @@map("animal_transfer_events")
+}
+
+// -----------------------------------------------------------------------------
+// Producción — tres entidades separadas
+// -----------------------------------------------------------------------------
+
+/// Litros totales por turno (mañana/tarde), por tambo/día.
+/// Append-only: corrección = VOIDED del anterior + nuevo ACTIVE con correctsSessionId.
+model MilkingSession {
+  id                 String        @id @default(uuid()) @db.Uuid
+  tenantId           String        @map("tenant_id") @db.Uuid
+  tamboId            String        @map("tambo_id") @db.Uuid
+  sessionDate        DateTime      @map("session_date") @db.Date
+  shift              MilkingShift
+  totalLiters        Decimal       @map("total_liters") @db.Decimal(12, 2)
+  status             RecordStatus  @default(ACTIVE)
+  correctsSessionId  String?       @map("corrects_session_id") @db.Uuid
+  notes              String?
+  createdById        String        @map("created_by_id") @db.Uuid
+  clientMutationId   String?       @map("client_mutation_id")
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+  tambo           Tambo           @relation(fields: [tamboId], references: [id])
+  createdBy       User            @relation("SessionCreatedBy", fields: [createdById], references: [id])
+  correctsSession MilkingSession? @relation("SessionCorrection", fields: [correctsSessionId], references: [id])
+  correctedBy     MilkingSession[] @relation("SessionCorrection")
+
+  @@index([tenantId, tamboId, sessionDate])
+  @@index([tenantId, tamboId, createdAt])
+  @@index([correctsSessionId])
+  @@index([tenantId, clientMutationId])
+  /// PARTIAL UNIQUE (migración SQL):
+  /// UNIQUE (tambo_id, session_date, shift) WHERE status = 'ACTIVE'
+  ///
+  /// FASE 3 COSTOS: precio/litro y mano de obra pueden referenciar esta fila por id.
+  /// FASE 2 SENSORES: sensor de bomba podría autogenerar horario/existencia de sesión.
+  @@map("milking_sessions")
+}
+
+/// Control lechero periódico (~6 meses): producción por animal / por bajada.
+/// Header + líneas — misma forma que podría alimentar un caudalímetro (source=FLOW_METER).
+model ControlLechero {
+  id               String               @id @default(uuid()) @db.Uuid
+  tenantId         String               @map("tenant_id") @db.Uuid
+  tamboId          String               @map("tambo_id") @db.Uuid
+  performedAt      DateTime             @map("performed_at")
+  source           ControlLecheroSource @default(EXTERNAL_TECHNICIAN)
+  technicianName   String?              @map("technician_name")
+  notes            String?
+  createdById      String               @map("created_by_id") @db.Uuid
+  clientMutationId String?              @map("client_mutation_id")
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  tenant    Tenant              @relation(fields: [tenantId], references: [id])
+  tambo     Tambo               @relation(fields: [tamboId], references: [id])
+  createdBy User                @relation("ControlCreatedBy", fields: [createdById], references: [id])
+  lines     ControlLecheroLine[]
+
+  @@index([tenantId, tamboId, performedAt])
+  @@index([tenantId, clientMutationId])
+  @@map("control_lecheros")
+}
+
+model ControlLecheroLine {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  tamboId          String   @map("tambo_id") @db.Uuid
+  controlLecheroId String   @map("control_lechero_id") @db.Uuid
+  animalId         String   @map("animal_id") @db.Uuid
+  bajadaNumber     Int      @map("bajada_number")
+  liters           Decimal  @db.Decimal(12, 2)
+  createdAt        DateTime @default(now())
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+  tambo          Tambo          @relation(fields: [tamboId], references: [id])
+  controlLechero ControlLechero @relation(fields: [controlLecheroId], references: [id], onDelete: Cascade)
+  animal         Animal         @relation(fields: [animalId], references: [id])
+
+  @@index([controlLecheroId])
+  @@index([tenantId, tamboId, animalId])
+  @@map("control_lechero_lines")
+}
+
+/// Reconciliación de entrega: tanque frío vs camión + temperaturas (plus por temperatura).
+model MilkDelivery {
+  id                      String   @id @default(uuid()) @db.Uuid
+  tenantId                String   @map("tenant_id") @db.Uuid
+  tamboId                 String   @map("tambo_id") @db.Uuid
+  periodStart             DateTime @map("period_start")
+  periodEnd               DateTime @map("period_end")
+  coldTankLiters          Decimal  @map("cold_tank_liters") @db.Decimal(12, 2)
+  truckDeclaredLiters     Decimal  @map("truck_declared_liters") @db.Decimal(12, 2)
+  /// Temperatura lado tambo / tanque (°C)
+  coldTankTemperatureC    Decimal? @map("cold_tank_temperature_c") @db.Decimal(5, 2)
+  /// Temperatura declarada por camión/industria (°C) — comparar plus por temperatura
+  truckTemperatureC       Decimal? @map("truck_temperature_c") @db.Decimal(5, 2)
+  coldEquipmentInstanceId String?  @map("cold_equipment_instance_id") @db.Uuid
+  notes                   String?
+  createdById             String   @map("created_by_id") @db.Uuid
+  clientMutationId        String?  @map("client_mutation_id")
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  tenant                Tenant        @relation(fields: [tenantId], references: [id])
+  tambo                 Tambo         @relation(fields: [tamboId], references: [id])
+  createdBy             User          @relation("DeliveryCreatedBy", fields: [createdById], references: [id])
+  coldEquipmentInstance PartInstance? @relation(fields: [coldEquipmentInstanceId], references: [id])
+
+  @@index([tenantId, tamboId, periodStart])
+  @@index([tenantId, clientMutationId])
+  /// FASE 2: lecturas automáticas del EKC 202 podrían precargar temp/volumen del tanque.
+  /// FASE 3 COSTOS: liquidación / precio industria puede colgarse de esta reconciliación.
+  @@map("milk_deliveries")
+}
+
+// -----------------------------------------------------------------------------
+// Eventos por animal
+// -----------------------------------------------------------------------------
+
+model HealthEvent {
+  id                  String          @id @default(uuid()) @db.Uuid
+  tenantId            String          @map("tenant_id") @db.Uuid
+  /// Tambo al momento del evento (no se reescribe si el animal se transfiere después).
+  tamboId             String          @map("tambo_id") @db.Uuid
+  animalId            String          @map("animal_id") @db.Uuid
+  type                HealthEventType
+  eventAt             DateTime        @map("event_at")
+  productName         String?         @map("product_name")
+  /// Fin de retiro de leche — cache offline de vigentes para no mezclar leche en riesgo.
+  milkWithdrawalUntil DateTime?       @map("milk_withdrawal_until")
+  notes               String?
+  createdById         String          @map("created_by_id") @db.Uuid
+  clientMutationId    String?         @map("client_mutation_id")
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  deletedAt           DateTime?       @map("deleted_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  tambo     Tambo  @relation(fields: [tamboId], references: [id])
+  animal    Animal @relation(fields: [animalId], references: [id])
+  createdBy User   @relation("HealthCreatedBy", fields: [createdById], references: [id])
+
+  @@index([tenantId, tamboId, milkWithdrawalUntil])
+  @@index([tenantId, tamboId, eventAt])
+  @@index([tenantId, animalId, eventAt])
+  @@index([tenantId, tamboId, updatedAt])
+  @@index([tenantId, clientMutationId])
+  /// FASE 3 COSTOS: costo de fármaco + leche descartada se calculan referenciando este evento.
+  @@map("health_events")
+}
+
+model ReproEvent {
+  id                String        @id @default(uuid()) @db.Uuid
+  tenantId          String        @map("tenant_id") @db.Uuid
+  tamboId           String        @map("tambo_id") @db.Uuid
+  animalId          String        @map("animal_id") @db.Uuid
+  type              ReproEventType
+  eventAt           DateTime      @map("event_at")
+  expectedCalvingAt DateTime?     @map("expected_calving_at") @db.Date
+  notes             String?
+  createdById       String        @map("created_by_id") @db.Uuid
+  clientMutationId  String?       @map("client_mutation_id")
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt         DateTime?     @map("deleted_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  tambo     Tambo  @relation(fields: [tamboId], references: [id])
+  animal    Animal @relation(fields: [animalId], references: [id])
+  createdBy User   @relation("ReproCreatedBy", fields: [createdById], references: [id])
+
+  @@index([tenantId, tamboId, eventAt])
+  @@index([tenantId, animalId, eventAt])
+  @@index([tenantId, tamboId, updatedAt])
+  @@index([tenantId, clientMutationId])
+  @@map("repro_events")
+}
+
+// -----------------------------------------------------------------------------
+// Mantenimiento de equipo (PartType catálogo + PartInstance)
+// Reemplaza el stub genérico MilkingEquipment.
+// -----------------------------------------------------------------------------
+
+/// Catálogo global de tipos de pieza (no es por tenant).
+model PartType {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  code                  String                 @unique
+  name                  String
+  pattern               PartReplacementPattern
+  /// Default 2000 para USAGE_BASED; override por tenant en TenantPartTypeConfig.
+  defaultUsageThreshold Int?                   @map("default_usage_threshold")
+  /// true = pertenece al grupo de ordeñe por bajada (centralizador, copas, pezoneras, tubos).
+  appliesPerBajada      Boolean                @map("applies_per_bajada") @default(false)
+  description           String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  instances      PartInstance[]
+  tenantConfigs  TenantPartTypeConfig[]
+
+  @@map("part_types")
+}
+
+model TenantPartTypeConfig {
+  id             String @id @default(uuid()) @db.Uuid
+  tenantId       String @map("tenant_id") @db.Uuid
+  partTypeId     String @map("part_type_id") @db.Uuid
+  usageThreshold Int    @map("usage_threshold")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  partType PartType @relation(fields: [partTypeId], references: [id])
+
+  @@unique([tenantId, partTypeId])
+  @@map("tenant_part_type_configs")
+}
+
+/// Pieza real instalada en un tambo (y bajada si aplica).
+/// Al reemplazar: setear replacedAt (no borrar) y crear una PartInstance nueva.
+///
+/// usageCounter (solo USAGE_BASED) — CALCULADO por la app, no carga manual:
+///   (vacas_en_ordeño_del_tambo / tambo.bajadaCount)
+///     × (nº de MilkingSession ACTIVE del tambo desde installedAt)
+/// donde vacas_en_ordeño ≈ count Animal status=ACTIVE en ese tambo.
+///
+/// Alertas automáticas por umbral: lógica de aplicación sobre estos datos — no implementar aquí.
+///
+/// FASE 2 SENSORES: vacuómetro / sensor de bomba / lectura EKC 202 se modelan como
+/// Sensor|SensorReading asociados a Tambo y/o a esta PartInstance (frío BRANDED),
+/// sin mezclar telemetría dentro de PartInstance.
+model PartInstance {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  tamboId          String    @map("tambo_id") @db.Uuid
+  partTypeId       String    @map("part_type_id") @db.Uuid
+  /// Nullable: solo grupo de ordeñe por bajada. Piezas a nivel tambo (ej. frío) → null.
+  bajadaNumber     Int?      @map("bajada_number")
+  installedAt      DateTime  @map("installed_at")
+  /// Texto libre opcional; la mayoría de piezas genéricas no tienen marca identificable.
+  brandModel       String?   @map("brand_model")
+  /// URL storage externo (TBD). Puede ser el dato principal de identificación visual.
+  photoUrl         String?   @map("photo_url")
+  usageCounter     Decimal?  @map("usage_counter") @db.Decimal(14, 2)
+  replacedAt       DateTime? @map("replaced_at")
+  notes            String?
+  createdById      String?   @map("created_by_id") @db.Uuid
+  clientMutationId String?   @map("client_mutation_id")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tenant        Tenant               @relation(fields: [tenantId], references: [id])
+  tambo         Tambo                @relation(fields: [tamboId], references: [id])
+  partType      PartType             @relation(fields: [partTypeId], references: [id])
+  createdBy     User?                @relation("PartCreatedBy", fields: [createdById], references: [id])
+  coldDetail    ColdEquipmentDetail?
+  milkDeliveries MilkDelivery[]
+
+  @@index([tenantId, tamboId, replacedAt])
+  @@index([tenantId, tamboId, bajadaNumber, partTypeId])
+  @@index([tenantId, clientMutationId])
+  /// PARTIAL UNIQUE recomendado (migración SQL):
+  /// una instancia vigente por (tambo_id, part_type_id, bajada_number)
+  /// WHERE replaced_at IS NULL  (tratar NULL bajada_number de forma explícita en SQL)
+  @@map("part_instances")
+}
+
+/// Campos propios del equipo de frío (PartType.pattern = BRANDED), 1:1 con PartInstance.
+model ColdEquipmentDetail {
+  partInstanceId   String  @id @map("part_instance_id") @db.Uuid
+  brand            String
+  model            String
+  capacityLiters   Decimal @map("capacity_liters") @db.Decimal(12, 2)
+  /// Capacidad de frío — unidad/formato a confirmar en UI; string flexible en Fase 1.
+  coolingCapacity  String  @map("cooling_capacity")
+  /// ej. EKC 202 (con Modbus/LON) vs EKC 101 (sin salida). Gancho integración Fase 2.
+  controllerModel  String? @map("controller_model")
+
+  partInstance PartInstance @relation(fields: [partInstanceId], references: [id], onDelete: Cascade)
+
+  @@map("cold_equipment_details")
+}
