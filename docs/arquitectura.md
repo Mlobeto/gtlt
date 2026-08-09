@@ -240,6 +240,7 @@ gtlt/
 - [x] API mínima Express + JWT + scope tenant/tambo (`npm run dev` en `apps/api`)  
 - [x] Seed demo user/tenant (`admin@gtlt.local` / `demo1234`)  
 - [x] Endpoint negocio `MilkingSession`: `GET/POST /milking-sessions`, `POST /milking-sessions/:id/correct`  
+- [x] Endpoints `Animal` + `HealthEvent` (incl. `GET /health-events/active-withdrawals` para cache offline)  
 
 ### Pendiente (próximos pasos naturales)
 

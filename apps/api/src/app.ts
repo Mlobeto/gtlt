@@ -4,6 +4,8 @@ import { authRouter } from "./routes/auth.js";
 import { partTypesRouter } from "./routes/part-types.js";
 import { tambosRouter } from "./routes/tambos.js";
 import { milkingSessionsRouter } from "./routes/milking-sessions.js";
+import { animalsRouter } from "./routes/animals.js";
+import { healthEventsRouter } from "./routes/health-events.js";
 
 export function createApp() {
   const app = express();
@@ -19,6 +21,8 @@ export function createApp() {
   app.use("/part-types", partTypesRouter);
   app.use("/tambos", tambosRouter);
   app.use("/milking-sessions", milkingSessionsRouter);
+  app.use("/animals", animalsRouter);
+  app.use("/health-events", healthEventsRouter);
 
   app.use(
     (
