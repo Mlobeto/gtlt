@@ -220,11 +220,10 @@ gtlt/
 - [x] Índice simple `milk_deliveries.cold_equipment_instance_id`  
 - [x] Repo GitHub: `https://github.com/Mlobeto/gtlt`  
 - [x] Node 24 LTS + deps de `apps/api` instaladas  
+- [x] Seed de `PartType` (`apps/api/prisma/seed.ts`, idempotente por `code`)  
 
 ### Pendiente (próximos pasos naturales)
 
-- [ ] Commit de migrations / package.json / docs actualizados  
-- [ ] Seed de `PartType` (catálogo inicial)  
 - [ ] Scaffold API (auth + scope tenant/tambo)  
 - [ ] Spike offline (Expo + SQLite/WatermelonDB + push de un evento)  
 - [ ] Apps web/mobile  
