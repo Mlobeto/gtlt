@@ -187,9 +187,10 @@ healthEventsRouter.delete(
   requireRoles("TAMBERO", "DUENIO", "ADMIN", "VETERINARIO"),
   async (req, res) => {
     const auth = req.auth!;
+    const eventId = String(req.params.id);
     const existing = await prisma.healthEvent.findFirst({
       where: {
-        id: req.params.id,
+        id: eventId,
         tenantId: auth.tenantId,
         deletedAt: null,
       },

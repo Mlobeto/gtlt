@@ -193,12 +193,34 @@ async function seedDemoTenant() {
     update: { roles },
   });
 
+  const existingAnimal = await prisma.animal.findFirst({
+    where: {
+      tenantId: tenant.id,
+      tamboId: tambo.id,
+      earTag: "101",
+      deletedAt: null,
+    },
+  });
+  if (!existingAnimal) {
+    await prisma.animal.create({
+      data: {
+        tenantId: tenant.id,
+        tamboId: tambo.id,
+        earTag: "101",
+        status: "ACTIVE",
+        notes: "Vaca demo para pruebas",
+        createdById: user.id,
+      },
+    });
+  }
+
   console.log("Demo seed OK:");
   console.log(`  email:    ${DEMO_EMAIL}`);
   console.log(`  password: ${DEMO_PASSWORD}`);
   console.log(`  tenant:   ${tenant.id} (${tenant.name})`);
   console.log(`  tambo:    ${tambo.id} (${tambo.name})`);
   console.log(`  membership roles: ${membership.roles.join(", ")}`);
+  console.log(`  animal:   caravana 101`);
 }
 
 async function main() {

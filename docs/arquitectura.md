@@ -24,7 +24,7 @@ SaaS multitenant para **tambos chicos** (hasta ~20 bajadas, no robotizados) en A
 
 **Dolor central del MVP:** cargar datos en el momento del ordeñe, con las manos ocupadas y **sin conexión**, identificando animales por **caravana visual** (sin RFID).
 
-Roles: **tambero**, **dueño**, **admin**, **veterinario**.
+Roles: **tambero**, **dueño**, **admin**, **veterinario**, **técnico** (externo; whitelist de equipo/service).
 
 ### UX e idioma (regla de producto — no negociable)
 
@@ -176,6 +176,8 @@ Reemplaza el stub vacío `MilkingEquipment`:
 - **`PartInstance`** — pieza instalada; `bajadaNumber` nullable; `photoUrl`; `usageCounter` calculado  
 - **`ColdEquipmentDetail`** — 1:1 con instancia BRANDED (marca, modelo, capacidad, controlador EKC)
 
+**UI (decisión):** alta/reemplazo en **mobile** por **`TAMBERO` o `DUENIO`**; alertas/pedidos en web dueño (Fase 2). Ver [reglas-negocio-app.md](./reglas-negocio-app.md) y [ux-usuario.md](./ux-usuario.md).
+
 **Grupo de ordeñe (lógico):** por bajada, hasta 4 instancias vigentes (centralizador, copas, pezoneras, tubos cortos).
 
 **Unicidad de vigencia** (dos índices parciales — Postgres `NULL != NULL`):
@@ -193,6 +195,8 @@ Fórmula `usageCounter` y reglas de `bajadaNumber`: comentarios en schema + [reg
 | 2 — Caudalímetro | `ControlLechero.source = FLOW_METER` |
 | 3 — Costos | Tablas de precios/insumos que **referencian** sesiones, health events, deliveries |
 | RFID | `Animal.electronicId` |
+
+**Bomba de vacío (diseño):** la app no detecta el motor; se usa contacto auxiliar del **contactor** (ON/OFF) + gateway → API. El relé térmico (97-98) es señal de **falla**, no de marcha. Detalle y checklist de campo: [sensores-bomba-vacio.md](./sensores-bomba-vacio.md).
 
 ---
 
@@ -264,8 +268,12 @@ gtlt/
 ### Pendiente (próximos pasos naturales)
 
 - [ ] App web dueño  
-- [ ] Endurecer mobile (WatermelonDB o sync protocol v1, voz, UX ordeñe)  
-- [ ] Definir proveedor de storage para `photoUrl`  
+- [ ] Endurecer mobile (WatermelonDB o sync protocol v1)  
+- [x] API + mobile tambero: ReproEvent, MilkDelivery, ControlLechero; ordeñe con retiros en turno, sanidad mastitis/tratamiento, corrección litros, sync auto al recuperar señal  
+- [ ] Spike voz nativa: wake word **GTLT** (Porcupine) + STT — ver `docs/ux-usuario.md`. Requiere **development build** (no Expo Go).  
+- [ ] Definir proveedor de storage para `photoUrl` (hoy la ficha mobile guarda foto **local**; sync de imagen a nube pendiente)  
+- [x] Ficha animal mobile: listado, alta/edición, historial sanidad/repro, foto local (`GET/PATCH /animals/:id`)  
+- [x] Rol `TECNICO` + invitación + `ServiceRequest` + guard whitelist + `PartInstance` API  
 - [ ] RLS Postgres (post-MVP datos reales)  
 
 ---

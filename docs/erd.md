@@ -333,7 +333,7 @@ En entidades syncables desde mobile: `id` cliente, `clientMutationId` unique por
 
 | Fase | Enganche |
 |---|---|
-| Sensores (vacuómetro, bomba, EKC 202) | Nueva entidad `Sensor` / `SensorReading` FK → `Tambo` y/o `PartInstance` (frío). `MilkingSession` podría autocompletarse por sensor de bomba. |
+| Sensores (vacuómetro, bomba, EKC 202) | Nueva entidad `Sensor` / `SensorReading` FK → `Tambo` y/o `PartInstance` (frío). `MilkingSession` podría autocompletarse por sensor de bomba. Diseño bomba de vacío: [sensores-bomba-vacio.md](./sensores-bomba-vacio.md). |
 | Caudalímetro | `ControlLechero.source = FLOW_METER` (+ líneas); no mezclar con total diario de `MilkingSession` hasta definir producto |
 | Costos | Tablas de precios/insumos que referencian `MilkingSession`, `HealthEvent`, etc. por id — no al revés |
 | RFID | `Animal.electronicId` |

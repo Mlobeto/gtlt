@@ -1,7 +1,7 @@
 import type { Membership, Role } from "@prisma/client";
 import { HttpError } from "./http-error.js";
 
-/** Dueño/admin ven todos los tambos del tenant. */
+/** Dueño/admin ven todos los tambos del tenant. TECNICO nunca. */
 export function hasAllTamboAccess(roles: Role[]): boolean {
   return roles.includes("DUENIO") || roles.includes("ADMIN");
 }

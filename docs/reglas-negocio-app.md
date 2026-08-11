@@ -15,6 +15,11 @@ Validaciones que **no** se expresan como constraint de PostgreSQL (dependen de o
    - Al reemplazar una pieza: setear `replacedAt` en la instancia anterior y crear una nueva fila (no update in-place del tipo/instalación).
    - La unicidad de “una vigente por (tambo, tipo, bajada|tambo-level)” la garantiza SQL en `docs/partial-indexes.sql`.
 
+4. **Quién carga / reemplaza (decisión de producto)**
+   - Alta y reemplazo de piezas de ordeñe y frío: **mobile**, en el tambo.
+   - Pueden hacerlo **`TAMBERO` o `DUENIO`** (también `ADMIN` si aplica).
+   - Alertas de vida útil / pedidos / resumen remoto: web dueño (Fase 2); no bloquean la carga en mobile.
+
 ## Correcciones append-only
 
 Aplica a `MilkingSession`, `ControlLechero` (header) y `MilkDelivery`:
@@ -26,4 +31,12 @@ Aplica a `MilkingSession`, `ControlLechero` (header) y `MilkDelivery`:
 ## Membership / tambos
 
 - `DUENIO` o `ADMIN` → acceso a todos los tambos del tenant.
-- Solo `TAMBERO` / `VETERINARIO` → alcance = filas de `MembershipTambo`.
+- Solo `TAMBERO` / `VETERINARIO` / `TECNICO` → alcance = filas de `MembershipTambo`.
+- `TECNICO` **nunca** acceso automático a todos los tambos; es actor externo (puede ser de distintos fabricantes; `companyName` texto libre en Membership).
+- `Membership.status`: `PENDING` (invitación) | `ACTIVE`. Login solo con `ACTIVE`.
+- API: sesión solo-`TECNICO` tiene **lista blanca** de recursos (`part-types`, `part-instances`, `service-requests`, `tambos`, `auth`). Animales/producción/sanidad/repro denegados a nivel guard global.
+
+## ServiceRequest
+
+- Ticket de service: estados `OPEN` → … → `RESOLVED` / `CANCELLED`.
+- **No** usa patrón `VOIDED`/`corrects*Id`. Mal cargado → `CANCELLED` + solicitud nueva.

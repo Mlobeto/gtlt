@@ -24,9 +24,28 @@ const createSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
-  photoUrl: z.string().url().optional(),
-  notes: z.string().max(2000).optional(),
+  photoUrl: z.string().max(2000).url().optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
   clientMutationId: z.string().min(1).max(100).optional(),
+});
+
+const patchSchema = z.object({
+  earTag: z.string().trim().min(1).max(50).optional(),
+  status: statusSchema.optional(),
+  birthDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .nullable(),
+  enteredAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .nullable(),
+  photoUrl: z.string().max(2000).url().optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+  clientMutationId: z.string().min(1).max(100).optional(),
+  version: z.number().int().positive().optional(),
 });
 
 const listSchema = z.object({
@@ -43,6 +62,11 @@ function mapPrismaError(err: unknown): never {
     );
   }
   throw err;
+}
+
+function dateOnly(d: Date | null | undefined): string | null {
+  if (!d) return null;
+  return d.toISOString().slice(0, 10);
 }
 
 animalsRouter.get("/", authenticate, async (req, res) => {
@@ -69,6 +93,145 @@ animalsRouter.get("/", authenticate, async (req, res) => {
 
   res.json({ items });
 });
+
+/** Ficha + historial sanitario/reproductivo reciente (para UI dueño/tambero/vet). */
+animalsRouter.get("/:id", authenticate, async (req, res) => {
+  const auth = req.auth!;
+  const id = String(req.params.id);
+
+  const animal = await prisma.animal.findFirst({
+    where: { id, tenantId: auth.tenantId, deletedAt: null },
+  });
+  if (!animal) throw new HttpError(404, "Animal not found");
+  await requireTamboInTenant(auth, animal.tamboId);
+
+  const [healthEvents, reproEvents, controlLines] = await Promise.all([
+    prisma.healthEvent.findMany({
+      where: { tenantId: auth.tenantId, animalId: id, deletedAt: null },
+      orderBy: { eventAt: "desc" },
+      take: 50,
+    }),
+    prisma.reproEvent.findMany({
+      where: { tenantId: auth.tenantId, animalId: id, deletedAt: null },
+      orderBy: { eventAt: "desc" },
+      take: 50,
+    }),
+    prisma.controlLecheroLine.findMany({
+      where: { tenantId: auth.tenantId, animalId: id },
+      include: {
+        controlLechero: { select: { id: true, performedAt: true, status: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+    }),
+  ]);
+
+  const history = [
+    ...healthEvents.map((e) => ({
+      kind: "health" as const,
+      id: e.id,
+      at: e.eventAt.toISOString(),
+      type: e.type,
+      summary: e.productName ?? e.type,
+      notes: e.notes,
+      milkWithdrawalUntil: e.milkWithdrawalUntil?.toISOString() ?? null,
+    })),
+    ...reproEvents.map((e) => ({
+      kind: "repro" as const,
+      id: e.id,
+      at: e.eventAt.toISOString(),
+      type: e.type,
+      summary: e.type,
+      notes: e.notes,
+      expectedCalvingAt: dateOnly(e.expectedCalvingAt),
+    })),
+    ...controlLines
+      .filter((l) => l.controlLechero.status === "ACTIVE")
+      .map((l) => ({
+        kind: "control" as const,
+        id: l.id,
+        at: l.controlLechero.performedAt.toISOString(),
+        type: "CONTROL_LECHERO",
+        summary: `Bajada ${l.bajadaNumber} · ${l.liters} L`,
+        notes: null as string | null,
+      })),
+  ].sort((a, b) => (a.at < b.at ? 1 : -1));
+
+  res.json({
+    item: {
+      ...animal,
+      birthDate: dateOnly(animal.birthDate),
+      enteredAt: dateOnly(animal.enteredAt),
+    },
+    history,
+  });
+});
+
+animalsRouter.patch(
+  "/:id",
+  authenticate,
+  requireRoles("TAMBERO", "DUENIO", "ADMIN", "VETERINARIO"),
+  async (req, res) => {
+    const parsed = patchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid body", details: parsed.error.flatten() });
+      return;
+    }
+
+    const auth = req.auth!;
+    const id = String(req.params.id);
+    const data = parsed.data;
+
+    const existing = await prisma.animal.findFirst({
+      where: { id, tenantId: auth.tenantId, deletedAt: null },
+    });
+    if (!existing) throw new HttpError(404, "Animal not found");
+    await requireTamboInTenant(auth, existing.tamboId);
+
+    if (data.version != null && data.version !== existing.version) {
+      throw new HttpError(409, "Conflict: animal was updated elsewhere (version mismatch)");
+    }
+
+    try {
+      const item = await prisma.animal.update({
+        where: { id },
+        data: {
+          ...(data.earTag != null ? { earTag: data.earTag } : {}),
+          ...(data.status != null ? { status: data.status } : {}),
+          ...(data.birthDate !== undefined
+            ? {
+                birthDate: data.birthDate
+                  ? new Date(`${data.birthDate}T00:00:00.000Z`)
+                  : null,
+              }
+            : {}),
+          ...(data.enteredAt !== undefined
+            ? {
+                enteredAt: data.enteredAt
+                  ? new Date(`${data.enteredAt}T00:00:00.000Z`)
+                  : null,
+              }
+            : {}),
+          ...(data.photoUrl !== undefined ? { photoUrl: data.photoUrl } : {}),
+          ...(data.notes !== undefined ? { notes: data.notes } : {}),
+          ...(data.clientMutationId != null
+            ? { clientMutationId: data.clientMutationId }
+            : {}),
+          version: { increment: 1 },
+        },
+      });
+      res.json({
+        item: {
+          ...item,
+          birthDate: dateOnly(item.birthDate),
+          enteredAt: dateOnly(item.enteredAt),
+        },
+      });
+    } catch (err) {
+      mapPrismaError(err);
+    }
+  },
+);
 
 animalsRouter.post(
   "/",

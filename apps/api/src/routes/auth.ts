@@ -36,7 +36,7 @@ authRouter.post("/login", async (req, res) => {
   }
 
   const memberships = await prisma.membership.findMany({
-    where: { userId: user.id },
+    where: { userId: user.id, status: "ACTIVE" },
     include: {
       tenant: { select: { id: true, name: true } },
       tambos: { select: { tamboId: true } },
@@ -44,7 +44,15 @@ authRouter.post("/login", async (req, res) => {
   });
 
   if (memberships.length === 0) {
-    res.status(403).json({ error: "User has no tenant membership" });
+    const pending = await prisma.membership.count({
+      where: { userId: user.id, status: "PENDING" },
+    });
+    res.status(403).json({
+      error: pending
+        ? "Invitation pending: accept invite before login"
+        : "User has no tenant membership",
+      code: pending ? "MEMBERSHIP_PENDING" : "NO_MEMBERSHIP",
+    });
     return;
   }
 

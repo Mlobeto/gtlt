@@ -23,7 +23,14 @@
     },
     "plugins": [
       "expo-sqlite",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "GTLT necesita fotos para la ficha de cada vaca.",
+          "cameraPermission": "GTLT necesita la cámara para sacar la foto de la vaca."
+        }
+      ]
     ]
   }
 }

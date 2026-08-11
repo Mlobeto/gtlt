@@ -36,8 +36,9 @@ Los competidores relevados (VISUAL Tambo, Uniform-Agri, Infotambo, Gestambo, DIR
 | **Dueño** | Visibilidad remota, alertas, no operar el día a día | Muchas veces lejos del tambo, con conexión normal — puede tener más de un tambo |
 | **Admin** | Configuración general | Rol independiente en el modelo; en la práctica muchas veces la misma persona que el dueño, resuelto en el frontend, no colapsado en el backend |
 | **Veterinario** | Ver historial sanitario/reproductivo, cargar en visitas puntuales | Acceso periódico, no diario |
+| **Técnico** | Ver equipo del tambo + atender solicitudes de service | Actor **externo** (no es gente del tambo); invitado a tambos puntuales. Puede ser de Lobeto u **otros fabricantes** — no modelamos “pertenece a una sola empresa” |
 
-Los cuatro roles son independientes en el modelo de datos (un mismo Membership puede tener varios roles asignados). Cómo se combinan en la práctica para cada tambo se resuelve en el frontend/configuración, no en el modelo.
+Los roles son independientes en el modelo de datos (un mismo Membership puede tener varios roles asignados). El técnico se invita por email/teléfono a un tambo; no ve animales ni producción. Cómo se combinan en la práctica se resuelve en el frontend/configuración, no colapsando roles en el backend.
 
 ## 4. Diferenciadores clave (validados o hipotéticos)
 

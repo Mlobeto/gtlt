@@ -48,3 +48,25 @@ Luego escaneá el QR.
 3. Debe aparecer en “Retiros vigentes” con `PENDING`
 4. Volver online → **Sync**
 5. `pending` baja a 0; el evento queda en Postgres (`/health-events/active-withdrawals`)
+
+## Spike voz (Modo Ordeñe)
+
+Decisión de producto: `docs/ux-usuario.md` (wake word **GTLT**, mic solo con turno activo).
+
+Hoy en Expo Go se puede probar el **flujo sin micrófono nativo**:
+
+1. Ordeñe → **Empezar turno**
+2. **Hablar** → escribir (o pegar) p. ej. `101 posible mastitis` o `101 celo`
+3. Confirmar en pantalla → outbox (`HealthEvent` o `ReproEvent`)
+
+El micrófono real (wake word Porcupine + STT) **no corre en Expo Go**: hace falta development build. Plan B: botón **Hablar**.
+
+## Sync automático
+
+Al recuperar señal (y al volver a la app), se intenta enviar el outbox solo. **Enviar** queda como respaldo.
+
+## Pantallas tambero
+
+Ordeñe · **Vacas** (ficha, foto local, historial) · Sanidad · Repro · Entrega · Control lechero · Retiros
+
+La foto de la vaca se guarda en el teléfono; subir a storage en la nube queda pendiente.

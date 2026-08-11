@@ -27,6 +27,28 @@ enum Role {
   DUENIO
   ADMIN
   VETERINARIO
+  /// Actor externo (service). Siempre acotado a MembershipTambo; ver whitelist API.
+  TECNICO
+}
+
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+}
+
+enum ServiceRequestCategory {
+  VACUUM_PUMP
+  COLD_EQUIPMENT
+  MILKING_GROUP
+  OTHER
+}
+
+enum ServiceRequestStatus {
+  OPEN
+  ACKNOWLEDGED
+  IN_PROGRESS
+  RESOLVED
+  CANCELLED
 }
 
 enum AnimalStatus {
@@ -97,6 +119,7 @@ model Tenant {
   healthEvents         HealthEvent[]
   reproEvents          ReproEvent[]
   partInstances        PartInstance[]
+  serviceRequests      ServiceRequest[]
 
   @@map("tenants")
 }
@@ -121,6 +144,7 @@ model Tambo {
   healthEvents        HealthEvent[]
   reproEvents         ReproEvent[]
   partInstances       PartInstance[]
+  serviceRequests     ServiceRequest[]
 
   transfersFrom AnimalTransferEvent[] @relation("TransferFromTambo")
   transfersTo   AnimalTransferEvent[] @relation("TransferToTambo")
@@ -149,19 +173,26 @@ model User {
   healthEventsCreated HealthEvent[]         @relation("HealthCreatedBy")
   reproEventsCreated  ReproEvent[]          @relation("ReproCreatedBy")
   partsCreated        PartInstance[]        @relation("PartCreatedBy")
+  serviceRequestsCreated  ServiceRequest[]  @relation("ServiceRequestCreatedBy")
+  serviceRequestsAssigned ServiceRequest[]  @relation("ServiceRequestAssignedTo")
 
   @@map("users")
 }
 
 /// Membresía user↔tenant con uno o más roles.
 /// Alcance de tambos: ver MembershipTambo + reglas en comentario de esa tabla.
+/// TECNICO: actor externo (puede ser de distintos fabricantes); companyName texto libre.
+/// status PENDING hasta que acepta la invitación; login solo con ACTIVE.
 model Membership {
-  id        String   @id @default(uuid()) @db.Uuid
-  tenantId  String   @map("tenant_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  roles     Role[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String           @id @default(uuid()) @db.Uuid
+  tenantId    String           @map("tenant_id") @db.Uuid
+  userId      String           @map("user_id") @db.Uuid
+  roles       Role[]
+  status      MembershipStatus @default(ACTIVE)
+  /// Ej. "Lobeto Tambos" — no es entidad Fabricante todavía.
+  companyName String?          @map("company_name")
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   tenant Tenant            @relation(fields: [tenantId], references: [id])
   user   User              @relation(fields: [userId], references: [id])
@@ -169,12 +200,14 @@ model Membership {
 
   @@unique([tenantId, userId])
   @@index([userId])
+  @@index([tenantId, status])
   @@map("memberships")
 }
 
 /// Lista de tambos permitidos a nivel Membership (no por rol).
 /// Regla app: si roles incluye DUENIO o ADMIN → acceso a todos los tambos del tenant
-/// (MembershipTambo opcional/ignorado). Si solo TAMBERO/VETERINARIO → alcance = estas filas.
+/// (MembershipTambo opcional/ignorado). Si solo TAMBERO/VETERINARIO/TECNICO → alcance = estas filas.
+/// TECNICO nunca tiene acceso automático a todos los tambos.
 /// Caso cruzado (rol distinto por tambo) fuera de Fase 1.
 model MembershipTambo {
   id           String @id @default(uuid()) @db.Uuid
@@ -537,8 +570,9 @@ model PartInstance {
   tambo         Tambo                @relation(fields: [tamboId], references: [id])
   partType      PartType             @relation(fields: [partTypeId], references: [id])
   createdBy     User?                @relation("PartCreatedBy", fields: [createdById], references: [id])
-  coldDetail    ColdEquipmentDetail?
-  milkDeliveries MilkDelivery[]
+  coldDetail      ColdEquipmentDetail?
+  milkDeliveries  MilkDelivery[]
+  serviceRequests ServiceRequest[]
 
   @@index([tenantId, tamboId, replacedAt])
   @@index([tenantId, tamboId, bajadaNumber, partTypeId])
@@ -549,6 +583,33 @@ model PartInstance {
   ///   1) (tambo_id, part_type_id, bajada_number) WHERE replaced_at IS NULL AND bajada_number IS NOT NULL
   ///   2) (tambo_id, part_type_id)              WHERE replaced_at IS NULL AND bajada_number IS NULL
   @@map("part_instances")
+}
+
+/// Ticket de service (no usa patrón VOIDED/corrects*: mal cargado → CANCELLED + uno nuevo).
+model ServiceRequest {
+  id                      String                 @id @default(uuid()) @db.Uuid
+  tenantId                String                 @map("tenant_id") @db.Uuid
+  tamboId                 String                 @map("tambo_id") @db.Uuid
+  category                ServiceRequestCategory
+  relatedPartInstanceId   String?                @map("related_part_instance_id") @db.Uuid
+  description             String
+  status                  ServiceRequestStatus   @default(OPEN)
+  assignedTechnicianUserId String?               @map("assigned_technician_user_id") @db.Uuid
+  createdById             String                 @map("created_by_id") @db.Uuid
+  resolvedAt              DateTime?              @map("resolved_at")
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+
+  tenant              Tenant         @relation(fields: [tenantId], references: [id])
+  tambo               Tambo          @relation(fields: [tamboId], references: [id])
+  relatedPartInstance PartInstance?  @relation(fields: [relatedPartInstanceId], references: [id])
+  assignedTechnician  User?          @relation("ServiceRequestAssignedTo", fields: [assignedTechnicianUserId], references: [id])
+  createdBy           User           @relation("ServiceRequestCreatedBy", fields: [createdById], references: [id])
+
+  @@index([tenantId, tamboId, status])
+  @@index([tenantId, assignedTechnicianUserId, status])
+  @@index([relatedPartInstanceId])
+  @@map("service_requests")
 }
 
 /// Campos propios del equipo de frío (PartType.pattern = BRANDED), 1:1 con PartInstance.
