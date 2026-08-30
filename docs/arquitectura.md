@@ -193,10 +193,61 @@ Fórmula `usageCounter` y reglas de `bajadaNumber`: comentarios en schema + [reg
 |---|---|
 | 2 — Sensores | `Sensor` / `SensorReading` → `Tambo` y/o `PartInstance` (vacuómetro, bomba, EKC 202) |
 | 2 — Caudalímetro | `ControlLechero.source = FLOW_METER` |
+| 2 — Dashboard interna / soporte | `SupportTicket` + `AppPrototypeConfig` + panel web de desarrolladora |
 | 3 — Costos | Tablas de precios/insumos que **referencian** sesiones, health events, deliveries |
 | RFID | `Animal.electronicId` |
 
 **Bomba de vacío (diseño):** la app no detecta el motor; se usa contacto auxiliar del **contactor** (ON/OFF) + gateway → API. El relé térmico (97-98) es señal de **falla**, no de marcha. Detalle y checklist de campo: [sensores-bomba-vacio.md](./sensores-bomba-vacio.md).
+
+### Dashboard de desarrolladora y soporte — ✅ IMPLEMENTADO
+
+Adicionalmente al producto del tambo, el sistema tiene una capa web interna para la persona que desarrolla y mantiene el prototipo.
+
+**Objetivo:**
+- Ver a qué tenant pertenece cada consulta de soporte
+- Mantener una vista de tickets de soporte por cliente
+- Revisar el estado del prototipo y la versión activa
+- Guardar enlaces y notas internas del proyecto (código, prototipo, pruebas, credenciales demo)
+
+**Stack:**
+- **Frontend:** React 19 + TypeScript + Tailwind CSS v4 + Vite (http://localhost:5173)
+- **Autenticación:** JWT (mismo token que mobile); roles DUENIO, ADMIN, DESARROLLADORA
+- **Almacenamiento:** localStorage para JWT; todo persistido en PostgreSQL vía API
+
+**Componentes implementados:**
+- **LoginPage:** formulario con credenciales demo (admin@gtlt.local / demo1234)
+- **DashboardPage:** contenedor con navegación por tabs
+- **TicketsTab:** listado de tickets, filtro por estado, modal inline para actualizar estado y agregar notas internas
+- **PrototypeTab:** listado de versiones, botón para crear nueva, formulario con nombre/versión/URLs/notas, enlaces a código y prototipo activo
+
+**Modelos de base de datos:**
+- `SupportTicket`: tenantId, userId, tamboId, category, subject, description, priority, status, internalNote, timestamps
+- `AppPrototypeConfig`: tenantId, name, version, codeUrl, prototypeUrl, notes, active flag, timestamps
+
+**Permisos:**
+- DUENIO/ADMIN: ver todos los tickets, actualizar estado y notas, crear versiones
+- DESARROLLADORA: ver tickets, crear versiones (read + limited write)
+- Otros roles: acceso denegado (requireRoles guard)
+
+**Flujo de uso:**
+1. Desarrollador abre http://localhost:5173 en navegador
+2. Ingresa credenciales (demo@gmail.com/demo1234 o cuenta real)
+3. Ve tab de "Tickets de Soporte" — lista todos, filtra por estado, hace clic para editar
+4. Ve tab de "Configuración del Prototipo" — lista versiones activas, crea nuevas con URLs y notas
+5. Al activar una versión, las demás se desactivan (flag único por tenant)
+
+Esto no reemplaza la app del tambo, sino que complementa el ciclo de soporte y validación del desarrollo.
+
+**Inicio rápido:**
+```bash
+# Terminal 1: API
+cd apps/api && npm run dev
+
+# Terminal 2: Web Dashboard
+cd apps/web && npm run dev
+```
+
+Documentación completa: [apps/web/README.md](../apps/web/README.md)
 
 ---
 

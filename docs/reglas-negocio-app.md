@@ -48,3 +48,50 @@ Aplica a `MilkingSession`, `ControlLechero` (header) y `MilkDelivery`:
 - Dueño/admin aprueba (`POST .../approve` → `OPEN`) o rechaza (`POST .../reject` → `CANCELLED`).
 - Notificación in-app al dueño **siempre** que haya pedido (`SERVICE_REQUESTED` o `SERVICE_PENDING_APPROVAL`). Push Expo/WhatsApp después.
 - Al aprobar/rechazar se notifica al tambero que creó el pedido.
+
+## SupportTicket
+
+Los tickets de soporte son una capa extra pensada para el ciclo de desarrollo y soporte del prototipo.
+
+1. **Entrada del usuario**
+   - Un **tenant** o usuario autenticado puede enviar una consulta desde la app móvil o desde la web del cliente.
+   - Incluye: categoría, asunto, descripción, prioridad y opcionalmente tambo asociado.
+
+2. **Categorias**
+   - `BUG`: falla funcional
+   - `QUESTION`: consulta de uso
+   - `IMPROVEMENT`: sugerencia o mejora
+   - `OTHER`: otro caso
+
+3. **Estados**
+   - `OPEN` → recién generado
+   - `IN_REVIEW` → siendo revisado por equipo interno
+   - `IN_PROGRESS` → ya está asignado o en tratamiento
+   - `CLOSED` → resuelto
+
+4. **Responsabilidad interna**
+   - El equipo de desarrollo debe responder desde un dashboard web, no desde la app del tambo.
+   - Se debe conservar una nota interna opcional para seguimiento técnico / desarrollo.
+
+5. **Relación con tenant**
+   - Todo ticket queda asociado a `tenantId` y, si aplica, a `tamboId` y `userId`.
+   - Esto permite filtrar por cliente, por tambo y por estado en la vista admin.
+
+## AppPrototypeConfig
+
+La configuración del prototipo debe quedar centralizada para usarla en el dashboard de desarrolladora.
+
+1. **Datos relevantes**
+   - nombre del prototipo
+   - versión actual
+   - URL del código
+   - URL del prototipo / demo
+   - notas de testing o despliegue
+   - activo/inactivo
+
+2. **Uso esperado**
+   - El dashboard interno debe leer esta configuración y mostrarla en una tarjeta principal.
+   - Sirve como punto de referencia para QA, usuarios demo y soporte técnico.
+
+3. **No reemplaza**
+   - Esta configuración no reemplaza la app del tambo ni su flujo de soporte; solo centraliza la info del prototipo activo para el equipo.

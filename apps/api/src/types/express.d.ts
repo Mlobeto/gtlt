@@ -8,10 +8,19 @@ export type AuthContext = {
   tamboIds: string[] | null;
 };
 
+export type DeviceAuthContext = {
+  id: string;
+  tenantId: string;
+  tamboId: string;
+  bajadaNumber: number | null;
+  kind: "FLOW_METER" | "RFID_READER" | "VACUUM_PUMP_SENSOR";
+};
+
 declare global {
   namespace Express {
     interface Request {
       auth?: AuthContext;
+      device?: DeviceAuthContext;
     }
   }
 }

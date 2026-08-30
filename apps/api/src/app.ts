@@ -13,6 +13,10 @@ import { membershipsRouter } from "./routes/memberships.js";
 import { partInstancesRouter } from "./routes/part-instances.js";
 import { serviceRequestsRouter } from "./routes/service-requests.js";
 import { notificationsRouter } from "./routes/notifications.js";
+import { supportTicketsRouter } from "./routes/support-tickets.js";
+import { appPrototypeConfigRouter } from "./routes/app-prototype-config.js";
+import { flowSessionsRouter } from "./routes/flow-sessions.js";
+import { flowSessionsDeviceRouter } from "./routes/flow-sessions-device.js";
 import { softAuthenticate } from "./middleware/soft-authenticate.js";
 import { technicianResourceGuard } from "./middleware/technician-guard.js";
 
@@ -37,12 +41,16 @@ export function createApp() {
   app.use("/part-instances", partInstancesRouter);
   app.use("/service-requests", serviceRequestsRouter);
   app.use("/notifications", notificationsRouter);
+  app.use("/support-tickets", supportTicketsRouter);
+  app.use("/app-prototype-config", appPrototypeConfigRouter);
   app.use("/milking-sessions", milkingSessionsRouter);
   app.use("/animals", animalsRouter);
   app.use("/health-events", healthEventsRouter);
   app.use("/repro-events", reproEventsRouter);
   app.use("/milk-deliveries", milkDeliveriesRouter);
   app.use("/control-lecheros", controlLecherosRouter);
+  app.use("/device", flowSessionsDeviceRouter);
+  app.use("/flow-sessions", flowSessionsRouter);
 
   app.use(
     (

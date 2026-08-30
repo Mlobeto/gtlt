@@ -27,6 +27,8 @@ enum Role {
   DUENIO
   ADMIN
   VETERINARIO
+  /// Persona que desarrolla y mantiene el prototipo — acceso web/mobile a panel de soporte y tickets
+  DESARROLLADORA
   /// Actor externo (service). Siempre acotado a MembershipTambo; ver whitelist API.
   TECNICO
 }
@@ -63,6 +65,27 @@ enum NotificationType {
   SERVICE_PENDING_APPROVAL
   SERVICE_APPROVED
   SERVICE_REJECTED
+}
+
+enum SupportTicketCategory {
+  BUG
+  QUESTION
+  IMPROVEMENT
+  OTHER
+}
+
+enum SupportTicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_REVIEW
+  IN_PROGRESS
+  CLOSED
 }
 
 enum AnimalStatus {
@@ -109,6 +132,24 @@ enum ControlLecheroSource {
   FLOW_METER
 }
 
+enum DeviceKind {
+  FLOW_METER
+  RFID_READER
+  VACUUM_PUMP_SENSOR
+}
+
+enum FlowIdentificationSource {
+  RFID
+  VOICE
+  UNASSIGNED
+}
+
+enum FlowSessionStatus {
+  OPEN
+  CLOSED
+  DISCARDED
+}
+
 // -----------------------------------------------------------------------------
 // Identidad / multitenancy
 // -----------------------------------------------------------------------------
@@ -135,6 +176,10 @@ model Tenant {
   partInstances        PartInstance[]
   serviceRequests      ServiceRequest[]
   notifications        Notification[]
+  supportTickets       SupportTicket[]
+  appPrototypeConfigs  AppPrototypeConfig[]
+  devices              Device[]
+  flowSessions         FlowSession[]
 
   @@map("tenants")
 }
@@ -163,6 +208,9 @@ model Tambo {
   partInstances       PartInstance[]
   serviceRequests     ServiceRequest[]
   notifications       Notification[]
+  supportTickets      SupportTicket[]
+  devices             Device[]
+  flowSessions        FlowSession[]
 
   transfersFrom AnimalTransferEvent[] @relation("TransferFromTambo")
   transfersTo   AnimalTransferEvent[] @relation("TransferToTambo")
@@ -195,6 +243,7 @@ model User {
   serviceRequestsAssigned ServiceRequest[]  @relation("ServiceRequestAssignedTo")
   serviceRequestsApproved ServiceRequest[]  @relation("ServiceRequestApprovedBy")
   notifications           Notification[]
+  supportTickets          SupportTicket[]
 
   @@map("users")
 }
@@ -277,6 +326,7 @@ model Animal {
   healthEvents        HealthEvent[]
   reproEvents         ReproEvent[]
   controlLecheroLines ControlLecheroLine[]
+  flowSessions        FlowSession[]
 
   @@index([tenantId, tamboId, status])
   @@index([tenantId, tamboId, earTag])
@@ -310,6 +360,69 @@ model AnimalTransferEvent {
   @@index([tenantId, toTamboId, transferredAt])
   @@index([tenantId, clientMutationId])
   @@map("animal_transfer_events")
+}
+
+model Device {
+  id           String     @id @default(uuid()) @db.Uuid
+  tenantId     String     @map("tenant_id") @db.Uuid
+  tamboId      String     @map("tambo_id") @db.Uuid
+  bajadaNumber Int?       @map("bajada_number")
+  kind         DeviceKind
+  deviceToken  String     @unique @map("device_token")
+  label        String?
+  lastSeenAt   DateTime?  @map("last_seen_at")
+  createdAt    DateTime   @default(now())
+
+  tenant      Tenant        @relation(fields: [tenantId], references: [id])
+  tambo       Tambo         @relation(fields: [tamboId], references: [id])
+  flowSessions FlowSession[]
+
+  @@index([tenantId, tamboId, bajadaNumber])
+  @@map("devices")
+}
+
+model FlowSession {
+  id                   String                  @id @default(uuid()) @db.Uuid
+  tenantId             String                  @map("tenant_id") @db.Uuid
+  tamboId              String                  @map("tambo_id") @db.Uuid
+  bajadaNumber         Int                     @map("bajada_number")
+  deviceId             String                  @map("device_id") @db.Uuid
+  startedAt            DateTime                @map("started_at")
+  endedAt              DateTime?               @map("ended_at")
+  status               FlowSessionStatus       @default(OPEN)
+
+  animalId             String?                 @map("animal_id") @db.Uuid
+  identificationSource FlowIdentificationSource @default(UNASSIGNED)
+  electronicIdRaw      String?                 @map("electronic_id_raw")
+
+  pulseCount           Int?                    @map("pulse_count")
+  areaUnderCurve       Decimal?                @map("area_under_curve") @db.Decimal(12, 4)
+  estimatedLiters      Decimal?                @map("estimated_liters") @db.Decimal(12, 2)
+
+  createdAt            DateTime                @default(now())
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  tambo       Tambo       @relation(fields: [tamboId], references: [id])
+  device      Device      @relation(fields: [deviceId], references: [id])
+  animal      Animal?     @relation(fields: [animalId], references: [id])
+  pulses      FlowPulse[]
+
+  @@index([tenantId, tamboId, bajadaNumber, status])
+  @@index([tenantId, animalId])
+  @@map("flow_sessions")
+}
+
+model FlowPulse {
+  id            String   @id @default(uuid()) @db.Uuid
+  flowSessionId String   @map("flow_session_id") @db.Uuid
+  sequence      Int
+  deltaTSeconds Decimal  @map("delta_t_seconds") @db.Decimal(8, 3)
+  createdAt     DateTime @default(now())
+
+  flowSession FlowSession @relation(fields: [flowSessionId], references: [id], onDelete: Cascade)
+
+  @@index([flowSessionId, sequence])
+  @@map("flow_pulses")
 }
 
 // -----------------------------------------------------------------------------
@@ -657,6 +770,47 @@ model Notification {
 
   @@index([tenantId, userId, readAt, createdAt])
   @@map("notifications")
+}
+
+model SupportTicket {
+  id          String                @id @default(uuid()) @db.Uuid
+  tenantId    String                @map("tenant_id") @db.Uuid
+  tamboId     String?               @map("tambo_id") @db.Uuid
+  userId      String                @map("user_id") @db.Uuid
+  category    SupportTicketCategory
+  subject     String
+  description String
+  priority    SupportTicketPriority @default(MEDIUM)
+  status      SupportTicketStatus   @default(OPEN)
+  internalNote String?               @map("internal_note")
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tambo  Tambo? @relation(fields: [tamboId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, tamboId, status])
+  @@map("support_tickets")
+}
+
+model AppPrototypeConfig {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String?  @map("tenant_id") @db.Uuid
+  name         String   @default("Prototipo")
+  version      String?
+  codeUrl      String?  @map("code_url")
+  prototypeUrl String?  @map("prototype_url")
+  notes        String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, active])
+  @@map("app_prototype_configs")
 }
 
 /// Campos propios del equipo de frío (PartType.pattern = BRANDED), 1:1 con PartInstance.
