@@ -99,6 +99,17 @@ export function getDb() {
           status TEXT NOT NULL DEFAULT 'ACTIVE'
         );
 
+        CREATE TABLE IF NOT EXISTS weight_events_local (
+          id TEXT PRIMARY KEY NOT NULL,
+          tambo_id TEXT NOT NULL,
+          animal_id TEXT NOT NULL,
+          weight_kg REAL NOT NULL,
+          method TEXT NOT NULL DEFAULT 'VISUAL_ESTIMATE',
+          measured_at TEXT NOT NULL,
+          notes TEXT,
+          pending INTEGER NOT NULL DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS outbox (
           mutation_id TEXT PRIMARY KEY NOT NULL,
           entity TEXT NOT NULL,
@@ -126,6 +137,9 @@ export function getDb() {
       await ensureColumn(db, "animals", "photo_url", "photo_url TEXT");
       await ensureColumn(db, "animals", "photo_local_uri", "photo_local_uri TEXT");
       await ensureColumn(db, "animals", "notes", "notes TEXT");
+      await ensureColumn(db, "animals", "breed", "breed TEXT");
+      await ensureColumn(db, "animals", "mother_id", "mother_id TEXT");
+      await ensureColumn(db, "animals", "sire_id", "sire_id TEXT");
       await ensureColumn(
         db,
         "animals",
@@ -172,6 +186,9 @@ export type LocalAnimal = {
   photo_url: string | null;
   photo_local_uri: string | null;
   notes: string | null;
+  breed: string | null;
+  mother_id: string | null;
+  sire_id: string | null;
   version: number;
   pending: number;
 };
@@ -184,6 +201,18 @@ export type LocalHealthEvent = {
   event_at: string;
   product_name: string | null;
   milk_withdrawal_until: string | null;
+  notes: string | null;
+  pending: number;
+  ear_tag?: string;
+};
+
+export type LocalWeightEvent = {
+  id: string;
+  tambo_id: string;
+  animal_id: string;
+  weight_kg: number;
+  method: string;
+  measured_at: string;
   notes: string | null;
   pending: number;
   ear_tag?: string;
@@ -223,8 +252,8 @@ export async function replaceAnimals(
       await db.runAsync(
         `INSERT INTO animals
           (id, tambo_id, ear_tag, status, birth_date, entered_at, photo_url,
-           photo_local_uri, notes, version, pending)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+           photo_local_uri, notes, breed, mother_id, sire_id, version, pending)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
          ON CONFLICT(id) DO UPDATE SET
           ear_tag = excluded.ear_tag,
           status = excluded.status,
@@ -232,6 +261,9 @@ export async function replaceAnimals(
           entered_at = excluded.entered_at,
           photo_url = excluded.photo_url,
           notes = excluded.notes,
+          breed = excluded.breed,
+          mother_id = excluded.mother_id,
+          sire_id = excluded.sire_id,
           version = excluded.version,
           pending = 0,
           photo_local_uri = COALESCE(animals.photo_local_uri, excluded.photo_local_uri)`,
@@ -245,6 +277,9 @@ export async function replaceAnimals(
           a.photo_url,
           prev?.photo_local_uri ?? null,
           a.notes,
+          a.breed,
+          a.mother_id,
+          a.sire_id,
           a.version,
         ],
       );
@@ -257,8 +292,8 @@ export async function upsertLocalAnimal(animal: LocalAnimal): Promise<void> {
   await db.runAsync(
     `INSERT INTO animals
       (id, tambo_id, ear_tag, status, birth_date, entered_at, photo_url,
-       photo_local_uri, notes, version, pending)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       photo_local_uri, notes, breed, mother_id, sire_id, version, pending)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
       ear_tag = excluded.ear_tag,
       status = excluded.status,
@@ -267,6 +302,9 @@ export async function upsertLocalAnimal(animal: LocalAnimal): Promise<void> {
       photo_url = excluded.photo_url,
       photo_local_uri = excluded.photo_local_uri,
       notes = excluded.notes,
+      breed = excluded.breed,
+      mother_id = excluded.mother_id,
+      sire_id = excluded.sire_id,
       version = excluded.version,
       pending = excluded.pending`,
     [
@@ -279,6 +317,9 @@ export async function upsertLocalAnimal(animal: LocalAnimal): Promise<void> {
       animal.photo_url,
       animal.photo_local_uri,
       animal.notes,
+      animal.breed,
+      animal.mother_id,
+      animal.sire_id,
       animal.version,
       animal.pending,
     ],
@@ -345,6 +386,54 @@ export async function upsertLocalHealthEvent(
       event.pending,
     ],
   );
+}
+
+export async function listWeightEventsForAnimal(
+  animalId: string,
+): Promise<LocalWeightEvent[]> {
+  const db = await getDb();
+  return db.getAllAsync<LocalWeightEvent>(
+    `SELECT w.*, a.ear_tag AS ear_tag
+     FROM weight_events_local w
+     LEFT JOIN animals a ON a.id = w.animal_id
+     WHERE w.animal_id = ?
+     ORDER BY w.measured_at DESC`,
+    [animalId],
+  );
+}
+
+export async function upsertLocalWeightEvent(
+  event: Omit<LocalWeightEvent, "ear_tag">,
+): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT INTO weight_events_local
+      (id, tambo_id, animal_id, weight_kg, method, measured_at, notes, pending)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+      weight_kg = excluded.weight_kg,
+      method = excluded.method,
+      measured_at = excluded.measured_at,
+      notes = excluded.notes,
+      pending = excluded.pending`,
+    [
+      event.id,
+      event.tambo_id,
+      event.animal_id,
+      event.weight_kg,
+      event.method,
+      event.measured_at,
+      event.notes,
+      event.pending,
+    ],
+  );
+}
+
+export async function markWeightEventSynced(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE weight_events_local SET pending = 0 WHERE id = ?", [
+    id,
+  ]);
 }
 
 export async function replaceSyncedWithdrawals(

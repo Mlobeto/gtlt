@@ -14,6 +14,7 @@ import {
   fetchMilkingSessions,
   fetchReproEvents,
   updateAnimal,
+  createWeightEvent,
 } from "./api";
 import {
   countPendingOutbox,
@@ -35,6 +36,8 @@ import {
   upsertLocalMilkDelivery,
   upsertLocalMilkingSession,
   upsertLocalReproEvent,
+  upsertLocalWeightEvent,
+  markWeightEventSynced,
 } from "./db";
 
 function dateOnly(v: string | Date | null | undefined): string | null {
@@ -82,6 +85,9 @@ export async function pullServerState(
       entered_at: dateOnly(a.enteredAt),
       photo_url: a.photoUrl,
       notes: a.notes,
+      breed: a.breed ?? null,
+      mother_id: a.motherId ?? null,
+      sire_id: a.sireId ?? null,
       version: a.version ?? 1,
     })),
   );
@@ -171,6 +177,9 @@ export async function queueAnimalCreateOffline(input: {
   status?: "ACTIVE" | "DRY";
   birthDate?: string | null;
   notes?: string | null;
+  breed?: string | null;
+  motherId?: string | null;
+  sireId?: string | null;
   photoLocalUri?: string | null;
 }): Promise<string> {
   const id = Crypto.randomUUID();
@@ -181,6 +190,9 @@ export async function queueAnimalCreateOffline(input: {
     status: input.status ?? "ACTIVE",
     birthDate: input.birthDate ?? null,
     notes: input.notes ?? null,
+    breed: input.breed ?? null,
+    motherId: input.motherId ?? null,
+    sireId: input.sireId ?? null,
     clientMutationId: id,
   };
 
@@ -194,6 +206,9 @@ export async function queueAnimalCreateOffline(input: {
     photo_url: null,
     photo_local_uri: input.photoLocalUri ?? null,
     notes: input.notes ?? null,
+    breed: input.breed ?? null,
+    mother_id: input.motherId ?? null,
+    sire_id: input.sireId ?? null,
     version: 1,
     pending: 1,
   });
@@ -208,6 +223,9 @@ export async function queueAnimalUpdateOffline(input: {
   status: "ACTIVE" | "DRY" | "SOLD" | "DEAD";
   birthDate?: string | null;
   notes?: string | null;
+  breed?: string | null;
+  motherId?: string | null;
+  sireId?: string | null;
   photoLocalUri?: string | null;
   photoUrl?: string | null;
   version: number;
@@ -219,6 +237,9 @@ export async function queueAnimalUpdateOffline(input: {
     status: input.status,
     birthDate: input.birthDate ?? null,
     notes: input.notes ?? null,
+    breed: input.breed ?? null,
+    motherId: input.motherId ?? null,
+    sireId: input.sireId ?? null,
     photoUrl: input.photoUrl ?? null,
     version: input.version,
     clientMutationId: mutationId,
@@ -234,6 +255,9 @@ export async function queueAnimalUpdateOffline(input: {
     photo_url: input.photoUrl ?? null,
     photo_local_uri: input.photoLocalUri ?? null,
     notes: input.notes ?? null,
+    breed: input.breed ?? null,
+    mother_id: input.motherId ?? null,
+    sire_id: input.sireId ?? null,
     version: input.version,
     pending: 1,
   });
@@ -309,6 +333,41 @@ export async function queueReproEventOffline(input: {
     pending: 1,
   });
   await enqueueOutbox(id, "ReproEvent", payload);
+  return id;
+}
+
+export async function queueWeightEventOffline(input: {
+  tamboId: string;
+  animalId: string;
+  weightKg: number;
+  method?: "SCALE" | "TAPE" | "VISUAL_ESTIMATE";
+  notes?: string;
+}): Promise<string> {
+  const id = Crypto.randomUUID();
+  const measuredAt = new Date().toISOString();
+  const method = input.method ?? "VISUAL_ESTIMATE";
+  const payload = {
+    id,
+    tamboId: input.tamboId,
+    animalId: input.animalId,
+    weightKg: input.weightKg,
+    method,
+    measuredAt,
+    notes: input.notes,
+    clientMutationId: id,
+  };
+
+  await upsertLocalWeightEvent({
+    id,
+    tambo_id: input.tamboId,
+    animal_id: input.animalId,
+    weight_kg: input.weightKg,
+    method,
+    measured_at: measuredAt,
+    notes: input.notes ?? null,
+    pending: 1,
+  });
+  await enqueueOutbox(id, "WeightEvent", payload);
   return id;
 }
 
@@ -530,6 +589,9 @@ export async function pushOutbox(token: string): Promise<{
           status?: "ACTIVE" | "DRY" | "SOLD" | "DEAD";
           birthDate?: string | null;
           notes?: string | null;
+          breed?: string | null;
+          motherId?: string | null;
+          sireId?: string | null;
           photoUrl?: string | null;
           version?: number;
           clientMutationId?: string;
@@ -539,12 +601,24 @@ export async function pushOutbox(token: string): Promise<{
           status: payload.status,
           birthDate: payload.birthDate,
           notes: payload.notes,
+          breed: payload.breed,
+          motherId: payload.motherId,
+          sireId: payload.sireId,
           photoUrl: payload.photoUrl,
           version: payload.version,
           clientMutationId: payload.clientMutationId,
         });
         await markOutboxSynced(row.mutation_id);
         await markAnimalSynced(payload.id);
+        synced += 1;
+        continue;
+      } else if (row.entity === "WeightEvent") {
+        const payload = JSON.parse(row.payload) as Parameters<
+          typeof createWeightEvent
+        >[1];
+        await createWeightEvent(token, payload);
+        await markOutboxSynced(row.mutation_id);
+        await markWeightEventSynced(payload.id ?? row.mutation_id);
         synced += 1;
         continue;
       } else {

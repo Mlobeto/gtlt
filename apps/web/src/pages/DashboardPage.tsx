@@ -3,6 +3,7 @@ import { TicketsTab } from '../components/TicketsTab'
 import { PrototypeTab } from '../components/PrototypeTab'
 import { AccountsTab } from '../components/AccountsTab'
 import { PlansTab } from '../components/PlansTab'
+import { AnimalsTab } from '../components/AnimalsTab'
 import type { AuthToken } from '../types/auth'
 
 interface DashboardPageProps {
@@ -10,13 +11,16 @@ interface DashboardPageProps {
   onLogout: () => void
 }
 
-type Tab = 'tickets' | 'prototype' | 'accounts' | 'plans'
+type Tab = 'tickets' | 'prototype' | 'accounts' | 'plans' | 'animals'
 
 export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
   const isOwner = auth.roles.includes('DUENIO')
   const isDeveloper = auth.roles.includes('DESARROLLADORA')
   const tabs: { id: Tab; label: string }[] = isOwner
-    ? [{ id: 'tickets', label: 'Tickets de Soporte' }]
+    ? [
+        { id: 'tickets', label: 'Tickets de Soporte' },
+        { id: 'animals', label: 'Animales' },
+      ]
     : [
         { id: 'tickets', label: 'Tickets de Soporte' },
         { id: 'prototype', label: 'Configuración del Prototipo' },
@@ -95,6 +99,7 @@ export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
           {activeTab === 'prototype' && isDeveloper && <PrototypeTab auth={auth} />}
           {activeTab === 'accounts' && isDeveloper && <AccountsTab auth={auth} />}
           {activeTab === 'plans' && isDeveloper && <PlansTab auth={auth} />}
+          {activeTab === 'animals' && isOwner && <AnimalsTab auth={auth} />}
         </div>
       </main>
     </div>

@@ -72,6 +72,9 @@ export function fetchAnimals(token: string, tamboId: string) {
       enteredAt: string | null;
       photoUrl: string | null;
       notes: string | null;
+      breed: string | null;
+      motherId: string | null;
+      sireId: string | null;
       version: number;
     }[];
   }>(`/animals?tamboId=${encodeURIComponent(tamboId)}`, { token });
@@ -112,6 +115,9 @@ export function createAnimal(
     enteredAt?: string | null;
     photoUrl?: string | null;
     notes?: string | null;
+    breed?: string | null;
+    motherId?: string | null;
+    sireId?: string | null;
     clientMutationId: string;
   },
 ) {
@@ -132,6 +138,9 @@ export function updateAnimal(
     enteredAt?: string | null;
     photoUrl?: string | null;
     notes?: string | null;
+    breed?: string | null;
+    motherId?: string | null;
+    sireId?: string | null;
     version?: number;
     clientMutationId?: string;
   },
@@ -144,6 +153,60 @@ export function updateAnimal(
       body: JSON.stringify(payload),
     },
   );
+}
+
+/** Timeline unificado (health/repro/transfer/control/peso/fotos) para la ficha del animal. */
+export function fetchAnimalTimeline(token: string, animalId: string) {
+  return request<{
+    items: {
+      kind: string;
+      id: string;
+      at: string;
+      type: string;
+      summary: string;
+      notes: string | null;
+    }[];
+  }>(`/animals/${animalId}/timeline`, { token });
+}
+
+export function fetchSires(token: string) {
+  return request<{
+    items: { id: string; name: string; isExternal: boolean }[];
+  }>("/sires", { token });
+}
+
+export function createSire(
+  token: string,
+  payload: { name: string; isExternal?: boolean },
+) {
+  return request<{ item: { id: string; name: string; isExternal: boolean } }>(
+    "/sires",
+    {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function createWeightEvent(
+  token: string,
+  payload: {
+    id?: string;
+    tamboId: string;
+    animalId: string;
+    weightKg: number;
+    method?: "SCALE" | "TAPE" | "VISUAL_ESTIMATE";
+    measuredAt: string;
+    notes?: string;
+    clientMutationId?: string;
+  },
+) {
+  return request<{ item: { id: string } }>("/weight-events", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
 }
 
 export function fetchActiveWithdrawals(token: string, tamboId: string) {

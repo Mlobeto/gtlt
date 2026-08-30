@@ -138,4 +138,28 @@ export const api = {
     if (!res.ok) throw new Error('Failed to update plan')
     return res.json()
   },
+
+  async getTambos(token: string) {
+    const res = await fetch(`${API_URL}/tambos`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error('Failed to fetch tambos')
+    return res.json()
+  },
+
+  async getAnimals(token: string, tamboId: string) {
+    const res = await fetch(`${API_URL}/animals?tamboId=${encodeURIComponent(tamboId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error('Failed to fetch animals')
+    return res.json()
+  },
+
+  async getAnimalTimeline(token: string, animalId: string) {
+    const res = await fetch(`${API_URL}/animals/${animalId}/timeline`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error('Failed to fetch animal timeline')
+    return res.json()
+  },
 }

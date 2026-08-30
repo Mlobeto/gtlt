@@ -53,3 +53,27 @@ export interface AdminTenant {
     plan: { code: 'STANDARD' | 'LIFETIME'; name: string; priceUsd: string | null; priceArs: number }
   } | null
 }
+
+export interface Tambo {
+  id: string
+  name: string
+  bajadaCount: number
+}
+
+export interface Animal {
+  id: string
+  tamboId: string
+  earTag: string
+  status: 'ACTIVE' | 'DRY' | 'SOLD' | 'DEAD'
+  birthDate: string | null
+  breed?: string | null
+}
+
+export interface TimelineItem {
+  kind: string
+  id: string
+  at: string
+  type: string
+  summary: string
+  notes: string | null
+}

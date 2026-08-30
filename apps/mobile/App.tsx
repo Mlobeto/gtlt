@@ -21,8 +21,11 @@ import {
   acceptTechnicianInviteRegister,
   approveServiceRequest,
   createServiceRequest,
+  createSire,
+  fetchAnimalTimeline,
   fetchNotifications,
   fetchServiceRequests,
+  fetchSires,
   fetchTambos,
   inviteTechnician,
   isOwnerOrAdmin,
@@ -48,6 +51,7 @@ import {
   listLocalMilkingSessions,
   listLocalReproEvents,
   listReproEventsForAnimal,
+  listWeightEventsForAnimal,
   type LocalAnimal,
   type LocalControlLechero,
   type LocalHealthEvent,
@@ -72,6 +76,7 @@ import {
   queueMilkingCorrectionOffline,
   queueMilkingSessionOffline,
   queueReproEventOffline,
+  queueWeightEventOffline,
 } from "./src/sync";
 import { colors, font, radius, space, touch } from "./src/theme";
 import {
@@ -173,6 +178,16 @@ function turnoLegible(shift: string): string {
   return shift === "AFTERNOON" ? "Tarde" : "Mañana";
 }
 
+/** Label en español para items del timeline del servidor (kinds: weight, photo, transfer, control). */
+function timelineItemLabel(kind: string, type: string, summary: string): string {
+  if (kind === "health" || kind === "repro") return tipoLegible(type);
+  if (kind === "weight") return `Peso: ${summary}`;
+  if (kind === "photo") return type === "CONSULT" ? "Foto de consulta" : "Foto de perfil";
+  if (kind === "transfer") return `Traslado: ${summary}`;
+  if (kind === "control") return summary;
+  return summary;
+}
+
 function hoyISO(): string {
   const d = new Date();
   const y = d.getFullYear();
@@ -235,6 +250,16 @@ export default function App() {
   const [formBirthDate, setFormBirthDate] = useState("");
   const [formNotes, setFormNotes] = useState("");
   const [formPhotoUri, setFormPhotoUri] = useState<string | null>(null);
+  const [formBreed, setFormBreed] = useState("");
+  const [formMotherEarTag, setFormMotherEarTag] = useState("");
+  const [formSireId, setFormSireId] = useState<string | null>(null);
+  const [sires, setSires] = useState<{ id: string; name: string; isExternal: boolean }[]>([]);
+  const [newSireName, setNewSireName] = useState("");
+  const [showWeightForm, setShowWeightForm] = useState(false);
+  const [weightKgInput, setWeightKgInput] = useState("");
+  const [weightMethod, setWeightMethod] = useState<"SCALE" | "TAPE" | "VISUAL_ESTIMATE">(
+    "VISUAL_ESTIMATE",
+  );
   const [pregnancy, setPregnancy] = useState<PregnancySummary | null>(null);
   const [loginMode, setLoginMode] = useState<"login" | "acceptInvite">("login");
   const [inviteTenantId, setInviteTenantId] = useState("");
@@ -780,12 +805,14 @@ export default function App() {
     setSelectedAnimalId(id);
     const animal = await getLocalAnimal(id);
     setAnimalDetail(animal);
-    const [health, repro] = await Promise.all([
+    const [health, repro, weights] = await Promise.all([
       listHealthEventsForAnimal(id),
       listReproEventsForAnimal(id),
+      listWeightEventsForAnimal(id),
     ]);
     setPregnancy(derivePregnancy(repro));
-    const history: AnimalHistoryItem[] = [
+
+    const localHistory: AnimalHistoryItem[] = [
       ...health.map((h) => ({
         kind: "health",
         id: h.id,
@@ -800,9 +827,57 @@ export default function App() {
         label: tipoLegible(r.type),
         detail: reproHistoryDetail(r),
       })),
-    ].sort((a, b) => (a.at < b.at ? 1 : -1));
-    setAnimalHistory(history);
+      ...weights.map((w) => ({
+        kind: "weight",
+        id: w.id,
+        at: w.measured_at,
+        label: `Peso: ${w.weight_kg} kg`,
+        detail: w.pending ? "Falta enviar" : undefined,
+      })),
+    ];
+
+    if (session && onlineRef.current) {
+      try {
+        const timeline = await fetchAnimalTimeline(session.token, id);
+        const serverItems: AnimalHistoryItem[] = timeline.items.map((it) => ({
+          kind: it.kind,
+          id: it.id,
+          at: it.at,
+          label: timelineItemLabel(it.kind, it.type, it.summary),
+          detail: it.notes ?? undefined,
+        }));
+        const pendingLocalWeights = weights
+          .filter((w) => w.pending === 1)
+          .map((w) => ({
+            kind: "weight",
+            id: w.id,
+            at: w.measured_at,
+            label: `Peso: ${w.weight_kg} kg`,
+            detail: "Falta enviar",
+          }));
+        const merged = [...serverItems, ...pendingLocalWeights].sort((a, b) =>
+          a.at < b.at ? 1 : -1,
+        );
+        setAnimalHistory(merged);
+        setScreen("animalDetail");
+        return;
+      } catch {
+        // Sin señal o error del servidor: seguimos con el historial local.
+      }
+    }
+
+    setAnimalHistory(localHistory.sort((a, b) => (a.at < b.at ? 1 : -1)));
     setScreen("animalDetail");
+  }
+
+  async function loadSiresBestEffort() {
+    if (!session || !onlineRef.current) return;
+    try {
+      const res = await fetchSires(session.token);
+      setSires(res.items);
+    } catch {
+      // sin señal: se mantiene la lista ya cargada (puede quedar vacía)
+    }
   }
 
   function openAnimalCreate() {
@@ -812,6 +887,10 @@ export default function App() {
     setFormBirthDate("");
     setFormNotes("");
     setFormPhotoUri(null);
+    setFormBreed("");
+    setFormMotherEarTag("");
+    setFormSireId(null);
+    void loadSiresBestEffort();
     setScreen("animalForm");
   }
 
@@ -823,6 +902,12 @@ export default function App() {
     setFormBirthDate(animalDetail.birth_date ?? "");
     setFormNotes(animalDetail.notes ?? "");
     setFormPhotoUri(animalDetail.photo_local_uri ?? animalDetail.photo_url);
+    setFormBreed(animalDetail.breed ?? "");
+    setFormMotherEarTag(
+      animals.find((a) => a.id === animalDetail.mother_id)?.ear_tag ?? "",
+    );
+    setFormSireId(animalDetail.sire_id);
+    void loadSiresBestEffort();
     setScreen("animalForm");
   }
 
@@ -861,6 +946,16 @@ export default function App() {
       setStatus("Anotá el número de caravana.");
       return;
     }
+    let motherId: string | null = null;
+    const motherTag = formMotherEarTag.trim();
+    if (motherTag) {
+      const mother = animals.find((a) => a.ear_tag === motherTag);
+      if (!mother) {
+        setStatus(`No encontramos la caravana ${motherTag} para la madre.`);
+        return;
+      }
+      motherId = mother.id;
+    }
     setBusy(true);
     try {
       if (animalFormMode === "create") {
@@ -870,6 +965,9 @@ export default function App() {
           status: formStatus,
           birthDate: formBirthDate.trim() || null,
           notes: formNotes.trim() || null,
+          breed: formBreed.trim() || null,
+          motherId,
+          sireId: formSireId,
           photoLocalUri: formPhotoUri,
         });
         await refreshLocal(session.tamboId);
@@ -883,6 +981,9 @@ export default function App() {
           status: formStatus,
           birthDate: formBirthDate.trim() || null,
           notes: formNotes.trim() || null,
+          breed: formBreed.trim() || null,
+          motherId,
+          sireId: formSireId,
           photoLocalUri: formPhotoUri,
           photoUrl: animalDetail.photo_url,
           version: animalDetail.version,
@@ -893,6 +994,49 @@ export default function App() {
       }
     } catch {
       setStatus("No se pudo guardar la ficha.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCreateSire() {
+    if (!session) return;
+    const name = newSireName.trim();
+    if (!name) return;
+    setBusy(true);
+    try {
+      const res = await createSire(session.token, { name, isExternal: true });
+      setSires((prev) => [...prev, res.item]);
+      setFormSireId(res.item.id);
+      setNewSireName("");
+    } catch {
+      setStatus("No se pudo guardar el padre. Necesitás señal para esto.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleQueueWeight() {
+    if (!session || !selectedAnimalId) return;
+    const kg = Number(weightKgInput.replace(",", "."));
+    if (!Number.isFinite(kg) || kg <= 0) {
+      setStatus("Anotá un peso válido en kg.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await queueWeightEventOffline({
+        tamboId: session.tamboId,
+        animalId: selectedAnimalId,
+        weightKg: kg,
+        method: weightMethod,
+      });
+      setWeightKgInput("");
+      setShowWeightForm(false);
+      setStatus("Peso guardado.");
+      await openAnimalDetail(selectedAnimalId);
+    } catch {
+      setStatus("No se pudo guardar el peso.");
     } finally {
       setBusy(false);
     }
@@ -1597,6 +1741,9 @@ export default function App() {
                       Nacimiento: {animalDetail.birth_date}
                     </Text>
                   ) : null}
+                  {animalDetail.breed ? (
+                    <Text style={styles.itemMeta}>Raza: {animalDetail.breed}</Text>
+                  ) : null}
                   {animalDetail.notes ? (
                     <Text style={styles.help}>{animalDetail.notes}</Text>
                   ) : null}
@@ -1632,6 +1779,61 @@ export default function App() {
                   >
                     <Text style={styles.buttonSecondaryText}>Editar ficha</Text>
                   </Pressable>
+                  <Pressable
+                    style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                    onPress={() => setShowWeightForm(!showWeightForm)}
+                    disabled={busy}
+                  >
+                    <Text style={styles.buttonSecondaryText}>
+                      {showWeightForm ? "Cancelar" : "⚖️ Agregar peso"}
+                    </Text>
+                  </Pressable>
+                  {showWeightForm ? (
+                    <View style={styles.item}>
+                      <Text style={styles.label}>Peso (kg)</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={weightKgInput}
+                        onChangeText={setWeightKgInput}
+                        keyboardType="decimal-pad"
+                        placeholder="Ej: 380"
+                      />
+                      <View style={styles.wrapRow}>
+                        {(
+                          [
+                            ["VISUAL_ESTIMATE", "A ojo"],
+                            ["TAPE", "Cinta"],
+                            ["SCALE", "Balanza"],
+                          ] as const
+                        ).map(([key, label]) => (
+                          <Pressable
+                            key={key}
+                            style={[
+                              styles.choiceSmall,
+                              weightMethod === key && styles.choiceOn,
+                            ]}
+                            onPress={() => setWeightMethod(key)}
+                          >
+                            <Text
+                              style={[
+                                styles.choiceText,
+                                weightMethod === key && styles.choiceTextOn,
+                              ]}
+                            >
+                              {label}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                      <Pressable
+                        style={[styles.button, busy && styles.buttonDisabled]}
+                        onPress={() => void handleQueueWeight()}
+                        disabled={busy}
+                      >
+                        <Text style={styles.buttonText}>Guardar peso</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
                   <Text style={styles.sectionInCard}>Historial</Text>
                   {animalHistory.length === 0 ? (
                     <Text style={styles.empty}>
@@ -1719,6 +1921,78 @@ export default function App() {
                     placeholder="Opcional"
                     placeholderTextColor={colors.textMuted}
                   />
+                  <Text style={styles.label}>Raza</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={formBreed}
+                    onChangeText={setFormBreed}
+                    placeholder="Ej: Holando, Jersey, cruza..."
+                    placeholderTextColor={colors.textMuted}
+                  />
+                  <Text style={styles.label}>Caravana de la madre</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={formMotherEarTag}
+                    onChangeText={setFormMotherEarTag}
+                    keyboardType="number-pad"
+                    placeholder="Opcional"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                  <Text style={styles.label}>Padre / pajuela</Text>
+                  {sires.length === 0 ? (
+                    <Text style={styles.help}>
+                      Sin catálogo de padres todavía (necesita señal).
+                    </Text>
+                  ) : (
+                    <View style={styles.wrapRow}>
+                      <Pressable
+                        style={[styles.choiceSmall, formSireId === null && styles.choiceOn]}
+                        onPress={() => setFormSireId(null)}
+                      >
+                        <Text
+                          style={[
+                            styles.choiceText,
+                            formSireId === null && styles.choiceTextOn,
+                          ]}
+                        >
+                          Ninguno
+                        </Text>
+                      </Pressable>
+                      {sires.map((s) => (
+                        <Pressable
+                          key={s.id}
+                          style={[
+                            styles.choiceSmall,
+                            formSireId === s.id && styles.choiceOn,
+                          ]}
+                          onPress={() => setFormSireId(s.id)}
+                        >
+                          <Text
+                            style={[
+                              styles.choiceText,
+                              formSireId === s.id && styles.choiceTextOn,
+                            ]}
+                          >
+                            {s.name}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+                  <TextInput
+                    style={styles.input}
+                    value={newSireName}
+                    onChangeText={setNewSireName}
+                    placeholder="Nombre de un padre nuevo (necesita señal)"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                  <Pressable
+                    style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                    onPress={() => void handleCreateSire()}
+                    disabled={busy || !newSireName.trim()}
+                  >
+                    <Text style={styles.buttonSecondaryText}>Agregar padre al catálogo</Text>
+                  </Pressable>
                   <Text style={styles.label}>Foto</Text>
                   {formPhotoUri ? (
                     <Image source={{ uri: formPhotoUri }} style={styles.animalPhoto} />
