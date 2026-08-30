@@ -8,6 +8,7 @@ const DEMO_EMAIL = "admin@gtlt.local";
 const DEMO_PASSWORD = "demo1234";
 const DEMO_TECH_EMAIL = "tecnico@gtlt.local";
 const DEMO_TAMBERO_EMAIL = "tambero@gtlt.local";
+const DEMO_DEV_EMAIL = "dev@gtlt.local";
 
 type PartTypeSeed = {
   code: string;
@@ -298,11 +299,41 @@ async function seedDemoTenant() {
     });
   }
 
+  const devUser = await prisma.user.upsert({
+    where: { email: DEMO_DEV_EMAIL },
+    create: {
+      email: DEMO_DEV_EMAIL,
+      name: "Desarrolladora Demo",
+      passwordHash,
+    },
+    update: {
+      name: "Desarrolladora Demo",
+      passwordHash,
+    },
+  });
+
+  await prisma.membership.upsert({
+    where: {
+      tenantId_userId: { tenantId: tenant.id, userId: devUser.id },
+    },
+    create: {
+      tenantId: tenant.id,
+      userId: devUser.id,
+      roles: ["DESARROLLADORA"],
+      status: "ACTIVE",
+    },
+    update: {
+      roles: ["DESARROLLADORA"],
+      status: "ACTIVE",
+    },
+  });
+
   console.log("Demo seed OK:");
   console.log(`  email:    ${DEMO_EMAIL}`);
   console.log(`  password: ${DEMO_PASSWORD}`);
   console.log(`  tambero:  ${DEMO_TAMBERO_EMAIL} / ${DEMO_PASSWORD}`);
   console.log(`  técnico:  ${DEMO_TECH_EMAIL} / ${DEMO_PASSWORD}`);
+  console.log(`  dev:      ${DEMO_DEV_EMAIL} / ${DEMO_PASSWORD}`);
   console.log(`  tenant:   ${tenant.id} (${tenant.name})`);
   console.log(`  tambo:    ${tambo.id} (${tambo.name})`);
   console.log(

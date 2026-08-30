@@ -5,9 +5,11 @@ import type { SupportTicket } from '../types/dashboard'
 
 interface TicketsTabProps {
   auth: AuthToken
+  /** Solo DUENIO/ADMIN pueden actualizar estado y notas (regla del backend). */
+  canManage: boolean
 }
 
-export function TicketsTab({ auth }: TicketsTabProps) {
+export function TicketsTab({ auth, canManage }: TicketsTabProps) {
   const [tickets, setTickets] = useState<SupportTicket[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -170,32 +172,38 @@ export function TicketsTab({ auth }: TicketsTabProps) {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Estado
                 </label>
-                <select
-                  value={selectedTicket.status}
-                  onChange={(e) =>
-                    setSelectedTicket({ ...selectedTicket, status: e.target.value as any })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                >
-                  <option value="OPEN">Abierto</option>
-                  <option value="IN_REVIEW">En revisión</option>
-                  <option value="IN_PROGRESS">En progreso</option>
-                  <option value="CLOSED">Cerrado</option>
-                </select>
+                {canManage ? (
+                  <select
+                    value={selectedTicket.status}
+                    onChange={(e) =>
+                      setSelectedTicket({ ...selectedTicket, status: e.target.value as any })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                  >
+                    <option value="OPEN">Abierto</option>
+                    <option value="IN_REVIEW">En revisión</option>
+                    <option value="IN_PROGRESS">En progreso</option>
+                    <option value="CLOSED">Cerrado</option>
+                  </select>
+                ) : (
+                  <p className="text-gray-700 bg-gray-50 p-3 rounded">{selectedTicket.status}</p>
+                )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nota interna
-                </label>
-                <textarea
-                  value={internalNote}
-                  onChange={(e) => setInternalNote(e.target.value)}
-                  placeholder="Agregar nota interna (visible solo para el equipo)"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                  rows={3}
-                />
-              </div>
+              {canManage && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nota interna
+                  </label>
+                  <textarea
+                    value={internalNote}
+                    onChange={(e) => setInternalNote(e.target.value)}
+                    placeholder="Agregar nota interna (visible solo para el equipo)"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    rows={3}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-2">
@@ -203,15 +211,17 @@ export function TicketsTab({ auth }: TicketsTabProps) {
                 onClick={() => setSelectedTicket(null)}
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                Cancelar
+                {canManage ? 'Cancelar' : 'Cerrar'}
               </button>
-              <button
-                onClick={() => handleUpdateStatus(selectedTicket.id, selectedTicket.status)}
-                disabled={updatingStatus}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-              >
-                {updatingStatus ? 'Guardando...' : 'Guardar'}
-              </button>
+              {canManage && (
+                <button
+                  onClick={() => handleUpdateStatus(selectedTicket.id, selectedTicket.status)}
+                  disabled={updatingStatus}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                >
+                  {updatingStatus ? 'Guardando...' : 'Guardar'}
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -11,6 +11,15 @@ interface DashboardPageProps {
 type Tab = 'tickets' | 'prototype'
 
 export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
+  const isOwner = auth.roles.includes('DUENIO')
+  const isDeveloper = auth.roles.includes('DESARROLLADORA')
+  const tabs: { id: Tab; label: string }[] = isOwner
+    ? [{ id: 'tickets', label: 'Tickets de Soporte' }]
+    : [
+        { id: 'tickets', label: 'Tickets de Soporte' },
+        { id: 'prototype', label: 'Configuración del Prototipo' },
+      ]
+
   const [activeTab, setActiveTab] = useState<Tab>('tickets')
   const [loadingMe, setLoadingMe] = useState(true)
   const [user, setUser] = useState<any>(null)
@@ -43,7 +52,9 @@ export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
           <div>
             <h1 className="text-2xl font-bold text-green-700">GTLT Dashboard</h1>
             <p className="text-sm text-gray-600 mt-1">
-              {!loadingMe && user ? `Hola, ${user.name}` : 'Cargando...'}
+              {!loadingMe && user
+                ? `Hola, ${user.name} · ${isOwner ? 'Dueño/a del tambo' : 'Desarrollador/a'}`
+                : 'Cargando...'}
             </p>
           </div>
           <button
@@ -59,32 +70,25 @@ export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Tabs */}
         <div className="flex space-x-4 mb-6 border-b border-gray-200">
-          <button
-            onClick={() => setActiveTab('tickets')}
-            className={`px-4 py-2 font-medium border-b-2 transition ${
-              activeTab === 'tickets'
-                ? 'text-green-600 border-green-600'
-                : 'text-gray-600 border-transparent hover:text-gray-900'
-            }`}
-          >
-            Tickets de Soporte
-          </button>
-          <button
-            onClick={() => setActiveTab('prototype')}
-            className={`px-4 py-2 font-medium border-b-2 transition ${
-              activeTab === 'prototype'
-                ? 'text-green-600 border-green-600'
-                : 'text-gray-600 border-transparent hover:text-gray-900'
-            }`}
-          >
-            Configuración del Prototipo
-          </button>
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 font-medium border-b-2 transition ${
+                activeTab === tab.id
+                  ? 'text-green-600 border-green-600'
+                  : 'text-gray-600 border-transparent hover:text-gray-900'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {/* Tab content */}
         <div>
-          {activeTab === 'tickets' && <TicketsTab auth={auth} />}
-          {activeTab === 'prototype' && <PrototypeTab auth={auth} />}
+          {activeTab === 'tickets' && <TicketsTab auth={auth} canManage={isOwner} />}
+          {activeTab === 'prototype' && isDeveloper && <PrototypeTab auth={auth} />}
         </div>
       </main>
     </div>

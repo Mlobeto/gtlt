@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api } from '../lib/api'
-import type { AuthToken } from '../types/auth'
+import { WEB_ALLOWED_ROLES, type AuthToken } from '../types/auth'
 
 interface LoginPageProps {
   onSuccess: (token: AuthToken) => void
@@ -19,11 +19,16 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
 
     try {
       const result = await api.login(email, password)
+      const roles: string[] = result.roles ?? []
+      if (!roles.some((role) => WEB_ALLOWED_ROLES.includes(role as any))) {
+        setError('Esta cuenta no tiene acceso al panel web (solo dueño/a o desarrollador/a).')
+        return
+      }
       onSuccess({
-        token: result.token,
+        token: result.accessToken,
         userId: result.user.id,
         tenantId: result.tenant.id,
-        roles: result.membership.roles,
+        roles,
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error de login')
