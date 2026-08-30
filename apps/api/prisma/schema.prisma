@@ -859,10 +859,18 @@ model ColdEquipmentDetail {
 
 /// Catálogo de planes. LIFETIME = sin costo, asignado a mano por la desarrolladora.
 model Plan {
-  id                    String   @id @default(uuid()) @db.Uuid
-  code                  PlanCode @unique
-  name                  String
-  priceArs              Int      @map("price_ars")
+  id      String   @id @default(uuid()) @db.Uuid
+  code    PlanCode @unique
+  name    String
+  /// Precio de referencia en USD (ej. 21.00). Null = plan sin componente en USD (ej. lifetime).
+  priceUsd Decimal? @map("price_usd") @db.Decimal(10, 2)
+  /// Precio en pesos cacheado; se recalcula desde priceUsd + cotización oficial (ver plan-pricing.ts).
+  priceArs Int      @map("price_ars")
+  /// Cotización (venta, dólar oficial) usada en el último recálculo de priceArs.
+  fxRate   Decimal? @map("fx_rate") @db.Decimal(10, 2)
+  /// Fuente de la cotización, ej. "OFICIAL".
+  fxRateSource      String?   @map("fx_rate_source")
+  priceArsUpdatedAt DateTime? @map("price_ars_updated_at")
   /// null = sin recurrencia (lifetime)
   billingIntervalMonths Int?     @map("billing_interval_months")
   active                Boolean  @default(true)

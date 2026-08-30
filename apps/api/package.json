@@ -9,7 +9,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "prisma db seed",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "sync:plan-prices": "tsx src/scripts/sync-plan-prices.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

@@ -11,7 +11,7 @@ Complementa [arquitectura.md §6.1](./arquitectura.md) y [reglas-negocio-app.md]
 
 | Plan | Código | Precio | Recurrencia | Quién lo asigna |
 |---|---|---|---|---|
-| Estándar | `STANDARD` | A definir (ARS) — placeholder en seed | Mensual (Mercado Pago Suscripciones, a futuro) | Autoservicio (futuro) o la desarrolladora manualmente (hoy) |
+| Estándar | `STANDARD` | **USD 21 fijo** — convertido a ARS automáticamente (ver §5) | Mensual (Mercado Pago Suscripciones, a futuro) | Autoservicio (futuro) o la desarrolladora manualmente (hoy) |
 | Lifetime | `LIFETIME` | $0 | Sin recurrencia | Solo la desarrolladora, a mano, para tenants elegidos (cortesía) |
 
 Un tenant tiene **una sola suscripción** activa a la vez (`Subscription.tenantId` único).
@@ -44,16 +44,27 @@ Un tenant tiene **una sola suscripción** activa a la vez (`Subscription.tenantI
 
 Ver `apps/api/prisma/schema.prisma`:
 
-- `Plan` — catálogo de planes (`code`, `name`, `priceArs`, `billingIntervalMonths` nullable = sin recurrencia, `active`).
+- `Plan` — catálogo de planes (`code`, `name`, `priceUsd` nullable, `priceArs`, `fxRate`, `fxRateSource`, `priceArsUpdatedAt`, `billingIntervalMonths` nullable = sin recurrencia, `active`).
 - `Subscription` — 1 por tenant (`tenantId` único), referencia a `Plan`, `status` (`ACTIVE`/`PAST_DUE`/`CANCELED`), `startedAt`, `currentPeriodEnd` (null para lifetime), `mpSubscriptionId` (nullable, para Mercado Pago a futuro).
 - `Payment` — historial de pagos por tenant/suscripción, `provider` (`MERCADOPAGO`/`MANUAL`), `externalId` (id de pago de Mercado Pago), `amountArs`, `status`, `paidAt`, `notes` (para ventas manuales).
 
 El estado de acceso de un tenant se deriva de `Subscription.status` — no hay un flag redundante `Tenant.active`.
 
-## 6. Abierto / pendiente
+## 6. Precio en USD y actualización automática a pesos
 
-- [ ] Precio exacto (ARS) del plan `STANDARD`.
+El plan `STANDARD` se fija en **USD 21** (`Plan.priceUsd`). Mercado Pago cobra en pesos, y el valor del dólar en Argentina cambia seguido, así que `Plan.priceArs` es un **precio cacheado que se recalcula automáticamente** para mantenerse equivalente a USD 21:
+
+- **Fuente de la cotización:** dólar **oficial**, valor "venta", vía la API pública [dolarapi.com](https://dolarapi.com) (sin API key) — `apps/api/src/lib/exchange-rate.ts`.
+- **Cálculo:** `priceArs = round(priceUsd * ventaOficial)` — `apps/api/src/lib/plan-pricing.ts` (`syncPlanPricesFromUsd`). Solo toca planes con `priceUsd` definido (no afecta `LIFETIME`).
+- **Frecuencia:** automático, 1 vez por día mientras el proceso de la API esté corriendo (`apps/api/src/lib/plan-price-scheduler.ts`, arrancado desde `index.ts`). También corre una vez al iniciar el servidor.
+- **Trigger manual:** `npm run sync:plan-prices` (dentro de `apps/api`) para forzar un recalculo puntual (útil si el servidor estuvo mucho tiempo apagado o para verificar el valor antes de una venta).
+- Cada plan guarda `fxRate` (cotización usada) y `priceArsUpdatedAt` (cuándo se actualizó por última vez) para auditoría.
+- **Limitación conocida:** el scheduler es *in-process* (`setInterval`); si la API corre en un entorno serverless (sin proceso persistente) hay que reemplazarlo por un cron externo que llame a `npm run sync:plan-prices` o a un endpoint dedicado — pendiente si se cambia el modelo de deploy de la API.
+
+## 7. Abierto / pendiente
+
 - [ ] ¿Hay período de prueba gratuito antes de cobrar?
 - [ ] Panel de dev: alta/edición de tenants, ver/editar pagos, estadísticas (backlog).
 - [ ] Landing pública + checkout Mercado Pago Suscripciones + webhook (backlog).
 - [ ] Gating real de acceso cuando `Subscription.status != ACTIVE` (backlog).
+- [ ] Si la API se despliega en un entorno sin proceso persistente (serverless), reemplazar el scheduler in-process por un cron externo.

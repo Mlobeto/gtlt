@@ -150,11 +150,13 @@ async function seedDemoTenant() {
     create: {
       code: "STANDARD",
       name: "Estándar",
-      // Precio placeholder, a definir por el negocio (ver docs/pricing-model.md)
+      // Precio fijo de referencia: USD 21/mes. priceArs se recalcula a diario
+      // desde el dólar oficial (ver src/lib/plan-price-scheduler.ts).
+      priceUsd: 21,
       priceArs: 0,
       billingIntervalMonths: 1,
     },
-    update: {},
+    update: { priceUsd: 21 },
   });
 
   await prisma.plan.upsert({
