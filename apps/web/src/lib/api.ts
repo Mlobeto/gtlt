@@ -80,4 +80,62 @@ export const api = {
     if (!res.ok) throw new Error('Failed to update config')
     return res.json()
   },
+
+  async getAdminTenants(token: string) {
+    const res = await fetch(`${API_URL}/admin/tenants`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error('Failed to fetch accounts')
+    return res.json()
+  },
+
+  async createAdminTenant(token: string, data: any) {
+    const res = await fetch(`${API_URL}/admin/tenants`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => null)
+      throw new Error(body?.error || 'Failed to create account')
+    }
+    return res.json()
+  },
+
+  async updateAdminTenantSubscription(token: string, tenantId: string, data: any) {
+    const res = await fetch(`${API_URL}/admin/tenants/${tenantId}/subscription`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw new Error('Failed to update subscription')
+    return res.json()
+  },
+
+  async getAdminPlans(token: string) {
+    const res = await fetch(`${API_URL}/admin/plans`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error('Failed to fetch plans')
+    return res.json()
+  },
+
+  async updateAdminPlan(token: string, planId: string, data: any) {
+    const res = await fetch(`${API_URL}/admin/plans/${planId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw new Error('Failed to update plan')
+    return res.json()
+  },
 }

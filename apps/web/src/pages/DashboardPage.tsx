@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { TicketsTab } from '../components/TicketsTab'
 import { PrototypeTab } from '../components/PrototypeTab'
+import { AccountsTab } from '../components/AccountsTab'
+import { PlansTab } from '../components/PlansTab'
 import type { AuthToken } from '../types/auth'
 
 interface DashboardPageProps {
@@ -8,7 +10,7 @@ interface DashboardPageProps {
   onLogout: () => void
 }
 
-type Tab = 'tickets' | 'prototype'
+type Tab = 'tickets' | 'prototype' | 'accounts' | 'plans'
 
 export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
   const isOwner = auth.roles.includes('DUENIO')
@@ -18,6 +20,8 @@ export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
     : [
         { id: 'tickets', label: 'Tickets de Soporte' },
         { id: 'prototype', label: 'Configuración del Prototipo' },
+        { id: 'accounts', label: 'Cuentas' },
+        { id: 'plans', label: 'Planes' },
       ]
 
   const [activeTab, setActiveTab] = useState<Tab>('tickets')
@@ -89,6 +93,8 @@ export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
         <div>
           {activeTab === 'tickets' && <TicketsTab auth={auth} canManage={isOwner} />}
           {activeTab === 'prototype' && isDeveloper && <PrototypeTab auth={auth} />}
+          {activeTab === 'accounts' && isDeveloper && <AccountsTab auth={auth} />}
+          {activeTab === 'plans' && isDeveloper && <PlansTab auth={auth} />}
         </div>
       </main>
     </div>

@@ -17,6 +17,7 @@ import { supportTicketsRouter } from "./routes/support-tickets.js";
 import { appPrototypeConfigRouter } from "./routes/app-prototype-config.js";
 import { flowSessionsRouter } from "./routes/flow-sessions.js";
 import { flowSessionsDeviceRouter } from "./routes/flow-sessions-device.js";
+import { adminRouter } from "./routes/admin-tenants.js";
 import { softAuthenticate } from "./middleware/soft-authenticate.js";
 import { technicianResourceGuard } from "./middleware/technician-guard.js";
 
@@ -51,6 +52,7 @@ export function createApp() {
   app.use("/control-lecheros", controlLecherosRouter);
   app.use("/device", flowSessionsDeviceRouter);
   app.use("/flow-sessions", flowSessionsRouter);
+  app.use("/admin", adminRouter);
 
   app.use(
     (

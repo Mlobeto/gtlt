@@ -27,3 +27,29 @@ export interface AppPrototypeConfig {
   createdAt: string
   updatedAt: string
 }
+
+export interface AdminPlan {
+  id: string
+  code: 'STANDARD' | 'LIFETIME'
+  name: string
+  priceUsd: string | null
+  priceArs: number
+  fxRate: string | null
+  fxRateSource: string | null
+  priceArsUpdatedAt: string | null
+  billingIntervalMonths: number | null
+  active: boolean
+}
+
+export interface AdminTenant {
+  id: string
+  name: string
+  createdAt: string
+  owner: { id: string; name: string; email: string | null } | null
+  subscription: {
+    id: string
+    status: 'ACTIVE' | 'PAST_DUE' | 'CANCELED'
+    currentPeriodEnd: string | null
+    plan: { code: 'STANDARD' | 'LIFETIME'; name: string; priceUsd: string | null; priceArs: number }
+  } | null
+}
