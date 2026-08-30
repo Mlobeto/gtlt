@@ -150,6 +150,29 @@ enum FlowSessionStatus {
   DISCARDED
 }
 
+enum PlanCode {
+  STANDARD
+  LIFETIME
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  MERCADOPAGO
+  MANUAL
+}
+
 // -----------------------------------------------------------------------------
 // Identidad / multitenancy
 // -----------------------------------------------------------------------------
@@ -180,6 +203,7 @@ model Tenant {
   appPrototypeConfigs  AppPrototypeConfig[]
   devices              Device[]
   flowSessions         FlowSession[]
+  subscription         Subscription?
 
   @@map("tenants")
 }
@@ -827,4 +851,68 @@ model ColdEquipmentDetail {
   partInstance PartInstance @relation(fields: [partInstanceId], references: [id], onDelete: Cascade)
 
   @@map("cold_equipment_details")
+}
+
+// -----------------------------------------------------------------------------
+// Suscripción / facturación
+// -----------------------------------------------------------------------------
+
+/// Catálogo de planes. LIFETIME = sin costo, asignado a mano por la desarrolladora.
+model Plan {
+  id                    String   @id @default(uuid()) @db.Uuid
+  code                  PlanCode @unique
+  name                  String
+  priceArs              Int      @map("price_ars")
+  /// null = sin recurrencia (lifetime)
+  billingIntervalMonths Int?     @map("billing_interval_months")
+  active                Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+/// Una suscripción activa por tenant. El acceso del tenant se deriva de `status`.
+model Subscription {
+  id               String             @id @default(uuid()) @db.Uuid
+  tenantId         String             @unique @map("tenant_id") @db.Uuid
+  planId           String             @map("plan_id") @db.Uuid
+  status           SubscriptionStatus @default(ACTIVE)
+  startedAt        DateTime           @default(now()) @map("started_at")
+  /// null para planes sin recurrencia (lifetime)
+  currentPeriodEnd DateTime?          @map("current_period_end")
+  /// id de preapproval de Mercado Pago, cuando exista integración real
+  mpSubscriptionId String?            @map("mp_subscription_id")
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  plan     Plan      @relation(fields: [planId], references: [id])
+  payments Payment[]
+
+  @@map("subscriptions")
+}
+
+/// Historial de pagos, manuales (venta personal) o de Mercado Pago (a futuro).
+model Payment {
+  id             String          @id @default(uuid()) @db.Uuid
+  tenantId       String          @map("tenant_id") @db.Uuid
+  subscriptionId String?         @map("subscription_id") @db.Uuid
+  provider       PaymentProvider
+  /// id de pago de Mercado Pago, cuando aplique
+  externalId     String?         @map("external_id")
+  amountArs      Int             @map("amount_ars")
+  status         PaymentStatus   @default(PENDING)
+  paidAt         DateTime?       @map("paid_at")
+  /// notas internas, ej. detalle de venta manual
+  notes          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@index([tenantId, status])
+  @@map("payments")
 }

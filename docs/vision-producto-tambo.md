@@ -1,5 +1,7 @@
 # Visión del producto: App de gestión para tambos chicos
-### Documento de trabajo — etapa de investigación
+### Visión original de investigación — Fase 1 ya en implementación
+
+> Este documento se escribió en la etapa de investigación inicial. El ICP y los diferenciadores siguen vigentes, pero el estado de implementación real (qué está hecho, qué falta) vive en [arquitectura.md §9](./arquitectura.md#9-estado-de-implementaci%C3%B3n-hecho--no-hecho). Las hipótesis marcadas acá como "en curso" pueden estar ya validadas o superadas — ver ese documento antes de tomarlas como pendientes.
 
 ---
 
@@ -35,7 +37,7 @@ Los competidores relevados (VISUAL Tambo, Uniform-Agri, Infotambo, Gestambo, DIR
 | **Tambero** | Cargar datos rápido, manos libres, sin conexión | En el momento del ordeñe, con las manos ocupadas — puede haber 2-3 personas cargando a la vez desde distintos dispositivos |
 | **Dueño** | Visibilidad remota, alertas, no operar el día a día | Muchas veces lejos del tambo, con conexión normal — puede tener más de un tambo |
 | **Admin** | Configuración general | Rol independiente en el modelo; en la práctica muchas veces la misma persona que el dueño, resuelto en el frontend, no colapsado en el backend |
-| **Veterinario** | Ver historial sanitario/reproductivo, cargar en visitas puntuales | Acceso periódico, no diario |
+| **Veterinario** | Ver historial sanitario/reproductivo, cargar en visitas puntuales | Acceso periódico, no diario. **Decisión (2026-08-30):** acceso dual — (a) lectura del historial que carga el tambero (vía `MembershipTambo`, como hoy) + (b) asignación opcional de tareas/visitas por el dueño. Diseño detallado aún pendiente, ver [reglas-negocio-app.md](./reglas-negocio-app.md) |
 | **Técnico** | Ver equipo del tambo + atender solicitudes de service | Actor **externo** (no es gente del tambo); invitado a tambos puntuales. Puede ser de Lobeto u **otros fabricantes** — no modelamos “pertenece a una sola empresa” |
 
 Los roles son independientes en el modelo de datos (un mismo Membership puede tener varios roles asignados). El técnico se invita por email/teléfono a un tambo; no ve animales ni producción. Cómo se combinan en la práctica se resuelve en el frontend/configuración, no colapsando roles en el backend.

@@ -1,5 +1,7 @@
 # Reglas de negocio — capa aplicación / API
 
+**Última actualización:** 2026-08-30
+
 Validaciones que **no** se expresan como constraint de PostgreSQL (dependen de otra tabla o de lógica de dominio). Implementar en servicios antes de dar por cerrado el CRUD/sync.
 
 ## PartInstance
@@ -35,6 +37,21 @@ Aplica a `MilkingSession`, `ControlLechero` (header) y `MilkDelivery`:
 - `TECNICO` **nunca** acceso automático a todos los tambos; es actor externo (puede ser de distintos fabricantes; `companyName` texto libre en Membership).
 - `Membership.status`: `PENDING` (invitación) | `ACTIVE`. Login solo con `ACTIVE`.
 - API: sesión solo-`TECNICO` tiene **lista blanca** de recursos (`part-types`, `part-instances`, `service-requests`, `tambos`, `auth`). Animales/producción/sanidad/repro denegados a nivel guard global.
+- **Pendiente:** invitar/activar `TAMBERO` desde el dueño (análogo a `invite-technician` en `memberships.ts`, hoy solo existe para `TECNICO`). El dueño debe poder dar de alta más de un tambero.
+
+## Veterinario — acceso dual (pendiente de diseño)
+
+Decisión de producto (2026-08-30): el veterinario accede de **dos formas combinadas**, a definir en detalle:
+
+1. **Lectura de historial** — ve `HealthEvent`/`ReproEvent` cargados por el tambero en los tambos donde tiene `MembershipTambo` (igual que hoy).
+2. **Asignación de tareas** — el dueño puede asignarle visitas/tareas puntuales; el veterinario ve (al menos) lo asignado.
+
+Falta definir: modelo de datos de "tarea asignada", si limita o no la lectura general del historial, y endpoints. No implementado todavía.
+
+## Suscripción / Plan (pendiente de gating)
+
+- Modelo de datos (`Plan`, `Subscription`, `Payment`) documentado en [pricing-model.md](./pricing-model.md).
+- **Pendiente:** bloquear/degradar acceso de un tenant cuando su `Subscription.status` no sea `ACTIVE` (por ejemplo `PAST_DUE` o `CANCELED`). No hay ningún guard de este tipo implementado aún; hoy todos los tenants tienen acceso pleno independientemente del estado de pago.
 
 ## ServiceRequest
 

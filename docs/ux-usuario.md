@@ -32,7 +32,7 @@ Principalmente **tambero** y **dueño** en zona rural argentina. Asumimos:
 
 - **Tambero:** ultra simple, carga rápida, casi sin configuración.
 - **Dueño:** claro y breve; resúmenes, no tableros densos al inicio.
-- **Veterinario:** un poco más de detalle sanitario, pero igual en español llano.
+- **Veterinario:** un poco más de detalle sanitario, pero igual en español llano. Acceso dual (lectura del historial + tareas que le asigne el dueño) — ver [reglas-negocio-app.md](./reglas-negocio-app.md#veterinario--acceso-dual-pendiente-de-diseño).
 
 ## Equipo de ordeñe y frío (partes)
 

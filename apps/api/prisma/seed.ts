@@ -145,6 +145,29 @@ async function seedPartTypes() {
 async function seedDemoTenant() {
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
 
+  await prisma.plan.upsert({
+    where: { code: "STANDARD" },
+    create: {
+      code: "STANDARD",
+      name: "Estándar",
+      // Precio placeholder, a definir por el negocio (ver docs/pricing-model.md)
+      priceArs: 0,
+      billingIntervalMonths: 1,
+    },
+    update: {},
+  });
+
+  await prisma.plan.upsert({
+    where: { code: "LIFETIME" },
+    create: {
+      code: "LIFETIME",
+      name: "Lifetime",
+      priceArs: 0,
+      billingIntervalMonths: null,
+    },
+    update: {},
+  });
+
   const user = await prisma.user.upsert({
     where: { email: DEMO_EMAIL },
     create: {
@@ -181,6 +204,17 @@ async function seedDemoTenant() {
       },
     });
   }
+
+  const lifetimePlan = await prisma.plan.findUniqueOrThrow({ where: { code: "LIFETIME" } });
+  await prisma.subscription.upsert({
+    where: { tenantId: tenant.id },
+    create: {
+      tenantId: tenant.id,
+      planId: lifetimePlan.id,
+      status: "ACTIVE",
+    },
+    update: {},
+  });
 
   const roles: Role[] = ["DUENIO", "ADMIN"];
 
@@ -341,6 +375,7 @@ async function seedDemoTenant() {
   );
   console.log(`  membership roles: ${membership.roles.join(", ")}`);
   console.log(`  animal:   caravana 101`);
+  console.log(`  plan:     LIFETIME / ACTIVE`);
 }
 
 async function main() {

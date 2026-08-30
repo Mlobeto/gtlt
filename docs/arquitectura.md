@@ -1,14 +1,15 @@
 # GTLT — Arquitectura y documentación técnica
 
 **Producto:** GTLT (Gestión Tambera Lobeto Tambos)  
-**Estado:** Fase 1 — modelo de datos migrado en local; API/apps aún no implementadas  
-**Última actualización:** 2026-08-08  
+**Estado:** Fase 1 — API + mobile + web dashboard interno en uso; venta/suscripción aún manual (ver §6.1)  
+**Última actualización:** 2026-08-30  
 
 Este es el **documento canónico** de arquitectura. Cuando una decisión cambie, se actualiza acá y, si aplica, en los docs satélite enlazados abajo.
 
 | Documento | Contenido |
 |---|---|
 | [vision-producto-tambo.md](./vision-producto-tambo.md) | ICP, fases de producto, diferenciadores |
+| [pricing-model.md](./pricing-model.md) | Planes, suscripción, flujo comercial |
 | [diseno.md](./diseno.md) | Colores, tipografía, formularios (blanco / verde / amarillo) |
 | [erd.md](./erd.md) | ERD detallado (campos, relaciones, índices) |
 | [reglas-negocio-app.md](./reglas-negocio-app.md) | Validaciones que viven en la API, no en la DB |
@@ -25,6 +26,8 @@ SaaS multitenant para **tambos chicos** (hasta ~20 bajadas, no robotizados) en A
 **Dolor central del MVP:** cargar datos en el momento del ordeñe, con las manos ocupadas y **sin conexión**, identificando animales por **caravana visual** (sin RFID).
 
 Roles: **tambero**, **dueño**, **admin**, **veterinario**, **técnico** (externo; whitelist de equipo/service).
+
+**Rol interno (no es gente del tambo):** **desarrolladora** — acceso solo al panel web de soporte/prototipo/suscripciones (§6.3), nunca a datos operativos del tambo.
 
 ### UX e idioma (regla de producto — no negociable)
 
@@ -199,6 +202,19 @@ Fórmula `usageCounter` y reglas de `bajadaNumber`: comentarios en schema + [reg
 
 **Bomba de vacío (diseño):** la app no detecta el motor; se usa contacto auxiliar del **contactor** (ON/OFF) + gateway → API. El relé térmico (97-98) es señal de **falla**, no de marcha. Detalle y checklist de campo: [sensores-bomba-vacio.md](./sensores-bomba-vacio.md).
 
+### 6.1 Modelo de suscripción (resumen)
+
+Detalle completo: [pricing-model.md](./pricing-model.md).
+
+- Dos planes: **`STANDARD`** (pago recurrente, precio a definir) y **`LIFETIME`** (sin costo, asignado a mano por la desarrolladora a tenants elegidos).
+- Hoy la venta es **manual/personal**: la desarrolladora crea el tenant y el usuario dueño (`DUENIO`) a mano. No hay checkout público todavía.
+- Planeado (no implementado): landing pública + Mercado Pago Suscripciones → webhook crea tenant/dueño automáticamente tras el pago.
+- Modelo de datos (`Plan`, `Subscription`, `Payment`) ya está en `schema.prisma`; el gating de acceso por suscripción vencida **no** está implementado todavía.
+
+### 6.2 Distribución Android
+
+- Decisión: publicar la app mobile en Google Play como **app "unlisted"** (no aparece en búsqueda; se instala solo con el link directo). No es pública total, no requiere lista blanca de emails (closed testing).
+
 ### Dashboard de desarrolladora y soporte — ✅ IMPLEMENTADO
 
 Adicionalmente al producto del tambo, el sistema tiene una capa web interna para la persona que desarrolla y mantiene el prototipo.
@@ -208,6 +224,8 @@ Adicionalmente al producto del tambo, el sistema tiene una capa web interna para
 - Mantener una vista de tickets de soporte por cliente
 - Revisar el estado del prototipo y la versión activa
 - Guardar enlaces y notas internas del proyecto (código, prototipo, pruebas, credenciales demo)
+
+**Pendiente (backlog, no implementado):** alta/edición de tenants y usuarios dueño desde este panel, ver/editar pagos y estadísticas de tenants — ver [pricing-model.md](./pricing-model.md).
 
 **Stack:**
 - **Frontend:** React 19 + TypeScript + Tailwind CSS v4 + Vite (http://localhost:5173)
@@ -328,6 +346,12 @@ gtlt/
 - [x] Service: urgencia, aprobación dueño por tambo, bandeja in-app (`Notification`)  
 - [ ] Adjuntos service (foto/audio) + storage cloud  
 - [ ] RLS Postgres (post-MVP datos reales)  
+- [x] Modelo de datos `Plan` / `Subscription` / `Payment` (ver [pricing-model.md](./pricing-model.md))
+- [ ] Panel de dev: alta/edici\u00f3n de tenants y due\u00f1os, pagos y estad\u00edsticas (usa el modelo anterior)
+- [ ] Invitar/activar usuarios `TAMBERO` desde el due\u00f1o (hoy solo existe `invite-technician`)
+- [ ] Dise\u00f1o detallado de acceso dual del veterinario (historial + asignaci\u00f3n de tareas/visitas por el due\u00f1o)
+- [ ] Landing p\u00fablica + checkout Mercado Pago Suscripciones + webhook de aprovisionamiento
+- [ ] Publicaci\u00f3n Android como app unlisted en Play Console
 
 ---
 

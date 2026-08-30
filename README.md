@@ -65,7 +65,9 @@ npm run dev
 ```
 
 Acceso: http://localhost:5173  
-Credenciales demo: admin@gtlt.local / demo1234
+Credenciales demo: admin@gtlt.local / demo1234 (dueño), dev@gtlt.local / demo1234 (desarrolladora)
+
+Guía completa del dashboard (roles, tabs, permisos): [apps/web/README.md](./apps/web/README.md).
 
 ### 5. (Opcional) Mobile Spike
 
@@ -156,17 +158,23 @@ Entidades principales:
 | Fase | Descripción | Estado |
 |---|---|---|
 | 1 | Modelo de datos + API mínima + mobile MVP | ✅ Parcial |
-| 1.5 | Dashboard interno (tickets + prototype config) | ✅ **HECHO** |
+| 1.5 | Dashboard interno (tickets + prototype config) | ✅ Hecho |
 | 2 | Integración caudalímetro (flow meter) | ✅ Parcial |
 | 2 | Web dueño (resumen, alertas) | ⏳ Planeado |
+| 2 | Modelo de suscripción/plan (`Plan`/`Subscription`/`Payment`) | ✅ Hecho (sin gating ni checkout) |
+| 2 | Panel de dev: alta/edición de tenants, pagos, estadísticas | ⏳ Planeado |
+| 2 | Invitar/activar `TAMBERO` desde el dueño | ⏳ Planeado |
+| 2 | Landing pública + checkout Mercado Pago Suscripciones | ⏳ Planeado |
+| 2 | Publicación Android como app unlisted | ⏳ Planeado |
 | 3 | Módulo de costos (precios/insumos) | ⏳ Planeado |
-| 4 | Veterinario + servicios reproductivos | ⏳ Planeado |
+| 4 | Veterinario: acceso dual (historial + tareas asignadas) | ⏳ Planeado |
 
 ## 🗂️ Documentación
 
 - **[arquitectura.md](./docs/arquitectura.md)** — Documento canónico: stack, modelos, decisiones
 - **[reglas-negocio-app.md](./docs/reglas-negocio-app.md)** — Validaciones de negocio por entidad
 - **[vision-producto-tambo.md](./docs/vision-producto-tambo.md)** — ICP, fases de producto
+- **[pricing-model.md](./docs/pricing-model.md)** — Planes, suscripción, flujo comercial
 - **[diseno.md](./docs/diseno.md)** — UX, colores (blanco/verde/amarillo), tipografía
 - **[erd.md](./docs/erd.md)** — Diagrama entidad-relación
 - **[apps/web/README.md](./apps/web/README.md)** — Guía del dashboard React
