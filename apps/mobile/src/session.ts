@@ -9,6 +9,8 @@ export type Session = {
   tamboId: string;
   tamboName: string;
   userName: string;
+  roles: string[];
+  tenantId: string;
 };
 
 async function setToken(token: string): Promise<void> {
@@ -39,6 +41,8 @@ export async function saveSession(session: Session): Promise<void> {
   await metaSet("tamboId", session.tamboId);
   await metaSet("tamboName", session.tamboName);
   await metaSet("userName", session.userName);
+  await metaSet("roles", JSON.stringify(session.roles));
+  await metaSet("tenantId", session.tenantId);
 }
 
 export async function loadSession(): Promise<Session | null> {
@@ -46,8 +50,23 @@ export async function loadSession(): Promise<Session | null> {
   const tamboId = await metaGet("tamboId");
   const tamboName = await metaGet("tamboName");
   const userName = await metaGet("userName");
+  const rolesRaw = await metaGet("roles");
+  const tenantId = await metaGet("tenantId");
   if (!token || !tamboId || !tamboName || !userName) return null;
-  return { token, tamboId, tamboName, userName };
+  let roles: string[] = [];
+  try {
+    roles = rolesRaw ? (JSON.parse(rolesRaw) as string[]) : [];
+  } catch {
+    roles = [];
+  }
+  return {
+    token,
+    tamboId,
+    tamboName,
+    userName,
+    roles,
+    tenantId: tenantId ?? "",
+  };
 }
 
 export async function clearSession(): Promise<void> {

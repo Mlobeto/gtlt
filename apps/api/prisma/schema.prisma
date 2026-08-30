@@ -44,11 +44,25 @@ enum ServiceRequestCategory {
 }
 
 enum ServiceRequestStatus {
+  /// Tambero pidió; el tambo exige OK del dueño antes de llegar al técnico.
+  PENDING_APPROVAL
   OPEN
   ACKNOWLEDGED
   IN_PROGRESS
   RESOLVED
   CANCELLED
+}
+
+enum ServiceRequestUrgency {
+  NORMAL
+  URGENT
+}
+
+enum NotificationType {
+  SERVICE_REQUESTED
+  SERVICE_PENDING_APPROVAL
+  SERVICE_APPROVED
+  SERVICE_REJECTED
 }
 
 enum AnimalStatus {
@@ -120,6 +134,7 @@ model Tenant {
   reproEvents          ReproEvent[]
   partInstances        PartInstance[]
   serviceRequests      ServiceRequest[]
+  notifications        Notification[]
 
   @@map("tenants")
 }
@@ -130,6 +145,8 @@ model Tambo {
   name        String
   /// Cantidad de bajadas del establecimiento. Usado en fórmula de usage_counter.
   bajadaCount Int      @map("bajada_count")
+  /// Si true, el tambero no manda directo al técnico: queda PENDING_APPROVAL.
+  serviceRequiresOwnerApproval Boolean @default(false) @map("service_requires_owner_approval")
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -145,6 +162,7 @@ model Tambo {
   reproEvents         ReproEvent[]
   partInstances       PartInstance[]
   serviceRequests     ServiceRequest[]
+  notifications       Notification[]
 
   transfersFrom AnimalTransferEvent[] @relation("TransferFromTambo")
   transfersTo   AnimalTransferEvent[] @relation("TransferToTambo")
@@ -175,6 +193,8 @@ model User {
   partsCreated        PartInstance[]        @relation("PartCreatedBy")
   serviceRequestsCreated  ServiceRequest[]  @relation("ServiceRequestCreatedBy")
   serviceRequestsAssigned ServiceRequest[]  @relation("ServiceRequestAssignedTo")
+  serviceRequestsApproved ServiceRequest[]  @relation("ServiceRequestApprovedBy")
+  notifications           Notification[]
 
   @@map("users")
 }
@@ -593,9 +613,13 @@ model ServiceRequest {
   category                ServiceRequestCategory
   relatedPartInstanceId   String?                @map("related_part_instance_id") @db.Uuid
   description             String
+  urgency                 ServiceRequestUrgency  @default(NORMAL)
   status                  ServiceRequestStatus   @default(OPEN)
   assignedTechnicianUserId String?               @map("assigned_technician_user_id") @db.Uuid
   createdById             String                 @map("created_by_id") @db.Uuid
+  /// Dueño/admin que aprobó (si pasó por PENDING_APPROVAL).
+  approvedById            String?                @map("approved_by_id") @db.Uuid
+  approvedAt              DateTime?              @map("approved_at")
   resolvedAt              DateTime?              @map("resolved_at")
   createdAt               DateTime               @default(now())
   updatedAt               DateTime               @updatedAt
@@ -605,11 +629,34 @@ model ServiceRequest {
   relatedPartInstance PartInstance?  @relation(fields: [relatedPartInstanceId], references: [id])
   assignedTechnician  User?          @relation("ServiceRequestAssignedTo", fields: [assignedTechnicianUserId], references: [id])
   createdBy           User           @relation("ServiceRequestCreatedBy", fields: [createdById], references: [id])
+  approvedBy          User?          @relation("ServiceRequestApprovedBy", fields: [approvedById], references: [id])
 
   @@index([tenantId, tamboId, status])
   @@index([tenantId, assignedTechnicianUserId, status])
   @@index([relatedPartInstanceId])
   @@map("service_requests")
+}
+
+/// Bandeja in-app (push Expo/WhatsApp después). Destinatario = User.
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  tenantId  String           @map("tenant_id") @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  tamboId   String?          @map("tambo_id") @db.Uuid
+  type      NotificationType
+  title     String
+  body      String
+  /// JSON: { serviceRequestId, urgency, ... }
+  payload   Json             @default("{}")
+  readAt    DateTime?        @map("read_at")
+  createdAt DateTime         @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tambo  Tambo? @relation(fields: [tamboId], references: [id])
+
+  @@index([tenantId, userId, readAt, createdAt])
+  @@map("notifications")
 }
 
 /// Campos propios del equipo de frío (PartType.pattern = BRANDED), 1:1 con PartInstance.

@@ -20,6 +20,7 @@ export const TECNICO_ALLOWED_PATH_PREFIXES = [
   "/part-instances",
   "/service-requests",
   "/memberships/accept-invite",
+  "/notifications",
 ] as const;
 
 export function isTechnicianOnly(roles: Role[]): boolean {

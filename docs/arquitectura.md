@@ -212,7 +212,7 @@ Fórmula `usageCounter` y reglas de `bajadaNumber`: comentarios en schema + [reg
 | Scope | Queries de negocio usan siempre `tenantId` del token; tambos filtrados si `tamboIds` no es null |
 | Roles helper | `requireRoles(...)` para endpoints futuros |
 
-**Demo local** (seed): `admin@gtlt.local` / `demo1234` (roles `DUENIO`+`ADMIN`, 1 tambo).
+**Demo local** (seed): `admin@gtlt.local` / `demo1234` (roles `DUENIO`+`ADMIN`); también `tambero@gtlt.local` y `tecnico@gtlt.local` (misma clave).
 
 Pendiente: refresh tokens, invite vet, matriz fina por endpoint, revalidación de rol en sync push.
 
@@ -274,6 +274,8 @@ gtlt/
 - [ ] Definir proveedor de storage para `photoUrl` (hoy la ficha mobile guarda foto **local**; sync de imagen a nube pendiente)  
 - [x] Ficha animal mobile: listado, alta/edición, historial sanidad/repro, foto local (`GET/PATCH /animals/:id`)  
 - [x] Rol `TECNICO` + invitación + `ServiceRequest` + guard whitelist + `PartInstance` API  
+- [x] Service: urgencia, aprobación dueño por tambo, bandeja in-app (`Notification`)  
+- [ ] Adjuntos service (foto/audio) + storage cloud  
 - [ ] RLS Postgres (post-MVP datos reales)  
 
 ---

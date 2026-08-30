@@ -38,5 +38,13 @@ Aplica a `MilkingSession`, `ControlLechero` (header) y `MilkDelivery`:
 
 ## ServiceRequest
 
-- Ticket de service: estados `OPEN` → … → `RESOLVED` / `CANCELLED`.
+- Ticket de service: estados `PENDING_APPROVAL` → `OPEN` → … → `RESOLVED` / `CANCELLED`.
 - **No** usa patrón `VOIDED`/`corrects*Id`. Mal cargado → `CANCELLED` + solicitud nueva.
+- Urgencia: `NORMAL` | `URGENT`.
+- Flag por tambo `serviceRequiresOwnerApproval` (default `false`):
+  - Si está apagado: el pedido nace en `OPEN` (técnico lo ve).
+  - Si está prendido y pide un **tambero**: nace en `PENDING_APPROVAL` (técnico **no** lo ve).
+  - Si pide **dueño/admin**: siempre `OPEN` (no se auto-bloquea).
+- Dueño/admin aprueba (`POST .../approve` → `OPEN`) o rechaza (`POST .../reject` → `CANCELLED`).
+- Notificación in-app al dueño **siempre** que haya pedido (`SERVICE_REQUESTED` o `SERVICE_PENDING_APPROVAL`). Push Expo/WhatsApp después.
+- Al aprobar/rechazar se notifica al tambero que creó el pedido.

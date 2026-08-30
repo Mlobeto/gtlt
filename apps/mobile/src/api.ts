@@ -1,5 +1,15 @@
 import { API_URL } from "./config";
 
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
 type LoginResponse = {
   accessToken: string;
   user: { id: string; email: string | null; name: string };
@@ -24,7 +34,11 @@ async function request<T>(
 
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(body.error ?? `HTTP ${res.status}`);
+    throw new ApiError(
+      body.error ?? `HTTP ${res.status}`,
+      res.status,
+      body.code,
+    );
   }
   return body as T;
 }
@@ -37,10 +51,14 @@ export function login(email: string, password: string) {
 }
 
 export function fetchTambos(token: string) {
-  return request<{ items: { id: string; name: string; bajadaCount: number }[] }>(
-    "/tambos",
-    { token },
-  );
+  return request<{
+    items: {
+      id: string;
+      name: string;
+      bajadaCount: number;
+      serviceRequiresOwnerApproval?: boolean;
+    }[];
+  }>("/tambos", { token });
 }
 
 export function fetchAnimals(token: string, tamboId: string) {
@@ -336,4 +354,224 @@ export function fetchControlLecheros(token: string, tamboId: string) {
     `/control-lecheros?tamboId=${encodeURIComponent(tamboId)}&status=ACTIVE`,
     { token },
   );
+}
+
+export type ServiceRequestItem = {
+  id: string;
+  tamboId: string;
+  category: string;
+  description: string;
+  urgency: "NORMAL" | "URGENT";
+  status: string;
+  relatedPartInstanceId: string | null;
+  assignedTechnicianUserId: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  approvedAt?: string | null;
+  relatedPartInstance?: {
+    id: string;
+    bajadaNumber: number | null;
+    brandModel: string | null;
+    partType?: { name: string; code: string };
+    coldDetail?: { brand: string; model: string } | null;
+  } | null;
+  createdBy?: { id: string; name: string };
+  assignedTechnician?: { id: string; name: string; email: string | null } | null;
+};
+
+export type PartInstanceItem = {
+  id: string;
+  tamboId: string;
+  bajadaNumber: number | null;
+  brandModel: string | null;
+  installedAt: string;
+  notes: string | null;
+  partType: { id: string; code: string; name: string; pattern: string };
+  coldDetail: {
+    brand: string;
+    model: string;
+    capacityLiters: string | number;
+    coolingCapacity: string;
+    controllerModel: string | null;
+  } | null;
+};
+
+export type AppNotification = {
+  id: string;
+  tamboId: string | null;
+  type: string;
+  title: string;
+  body: string;
+  payload: { serviceRequestId?: string; urgency?: string; status?: string };
+  readAt: string | null;
+  createdAt: string;
+};
+
+export function acceptTechnicianInviteRegister(payload: {
+  tenantId: string;
+  email?: string;
+  phone?: string;
+  password: string;
+  name?: string;
+}) {
+  return request<{
+    item: {
+      id: string;
+      tenant: { id: string; name: string };
+      tambos: { tamboId: string }[];
+      user: { id: string; email: string | null; name: string };
+    };
+  }>("/memberships/accept-invite/register", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function inviteTechnician(
+  token: string,
+  payload: {
+    tamboId: string;
+    email?: string;
+    phone?: string;
+    name?: string;
+    companyName?: string;
+  },
+) {
+  return request<{ item: { id: string } }>("/memberships/invite-technician", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchTechnicianWorkspace(token: string, tamboId: string) {
+  return request<{
+    tamboId: string;
+    tambo?: {
+      id: string;
+      name: string;
+      serviceRequiresOwnerApproval: boolean;
+    } | null;
+    partInstances: PartInstanceItem[];
+    serviceRequests: ServiceRequestItem[];
+  }>(
+    `/service-requests/workspace?tamboId=${encodeURIComponent(tamboId)}`,
+    { token },
+  );
+}
+
+export function createServiceRequest(
+  token: string,
+  payload: {
+    tamboId: string;
+    category: "VACUUM_PUMP" | "COLD_EQUIPMENT" | "MILKING_GROUP" | "OTHER";
+    description: string;
+    urgency?: "NORMAL" | "URGENT";
+    relatedPartInstanceId?: string | null;
+  },
+) {
+  return request<{ item: ServiceRequestItem }>("/service-requests", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateServiceRequest(
+  token: string,
+  id: string,
+  payload: {
+    status?: "OPEN" | "ACKNOWLEDGED" | "IN_PROGRESS" | "RESOLVED" | "CANCELLED";
+    assignedTechnicianUserId?: string | null;
+  },
+) {
+  return request<{ item: ServiceRequestItem }>(`/service-requests/${id}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export function approveServiceRequest(token: string, id: string) {
+  return request<{ item: ServiceRequestItem }>(
+    `/service-requests/${id}/approve`,
+    { method: "POST", token, body: "{}" },
+  );
+}
+
+export function rejectServiceRequest(token: string, id: string) {
+  return request<{ item: ServiceRequestItem }>(
+    `/service-requests/${id}/reject`,
+    { method: "POST", token, body: "{}" },
+  );
+}
+
+export function fetchServiceRequests(
+  token: string,
+  tamboId: string,
+  status?: string,
+) {
+  const q = new URLSearchParams({ tamboId });
+  if (status) q.set("status", status);
+  return request<{ items: ServiceRequestItem[] }>(
+    `/service-requests?${q.toString()}`,
+    { token },
+  );
+}
+
+export function fetchPartInstances(token: string, tamboId: string) {
+  return request<{ items: PartInstanceItem[] }>(
+    `/part-instances?tamboId=${encodeURIComponent(tamboId)}`,
+    { token },
+  );
+}
+
+export function fetchNotifications(token: string) {
+  return request<{ items: AppNotification[]; unreadCount: number }>(
+    "/notifications",
+    { token },
+  );
+}
+
+export function markNotificationRead(token: string, id: string) {
+  return request<{ item: AppNotification }>(`/notifications/${id}/read`, {
+    method: "POST",
+    token,
+    body: "{}",
+  });
+}
+
+export function markAllNotificationsRead(token: string) {
+  return request<{ updated: number }>("/notifications/read-all", {
+    method: "POST",
+    token,
+    body: "{}",
+  });
+}
+
+export function updateTamboSettings(
+  token: string,
+  tamboId: string,
+  payload: { serviceRequiresOwnerApproval?: boolean; name?: string },
+) {
+  return request<{
+    item: {
+      id: string;
+      name: string;
+      serviceRequiresOwnerApproval: boolean;
+    };
+  }>(`/tambos/${tamboId}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export function isTechnicianOnly(roles: string[]): boolean {
+  const farm = ["TAMBERO", "DUENIO", "ADMIN", "VETERINARIO"];
+  return roles.includes("TECNICO") && !roles.some((r) => farm.includes(r));
+}
+
+export function isOwnerOrAdmin(roles: string[]): boolean {
+  return roles.includes("DUENIO") || roles.includes("ADMIN");
 }

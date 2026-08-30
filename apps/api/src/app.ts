@@ -12,6 +12,7 @@ import { controlLecherosRouter } from "./routes/control-lecheros.js";
 import { membershipsRouter } from "./routes/memberships.js";
 import { partInstancesRouter } from "./routes/part-instances.js";
 import { serviceRequestsRouter } from "./routes/service-requests.js";
+import { notificationsRouter } from "./routes/notifications.js";
 import { softAuthenticate } from "./middleware/soft-authenticate.js";
 import { technicianResourceGuard } from "./middleware/technician-guard.js";
 
@@ -35,6 +36,7 @@ export function createApp() {
   app.use("/memberships", membershipsRouter);
   app.use("/part-instances", partInstancesRouter);
   app.use("/service-requests", serviceRequestsRouter);
+  app.use("/notifications", notificationsRouter);
   app.use("/milking-sessions", milkingSessionsRouter);
   app.use("/animals", animalsRouter);
   app.use("/health-events", healthEventsRouter);

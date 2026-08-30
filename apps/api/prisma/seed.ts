@@ -6,6 +6,8 @@ const prisma = new PrismaClient();
 /** Credenciales solo para desarrollo local — ver docs/arquitectura.md */
 const DEMO_EMAIL = "admin@gtlt.local";
 const DEMO_PASSWORD = "demo1234";
+const DEMO_TECH_EMAIL = "tecnico@gtlt.local";
+const DEMO_TAMBERO_EMAIL = "tambero@gtlt.local";
 
 type PartTypeSeed = {
   code: string;
@@ -214,11 +216,98 @@ async function seedDemoTenant() {
     });
   }
 
+  const techUser = await prisma.user.upsert({
+    where: { email: DEMO_TECH_EMAIL },
+    create: {
+      email: DEMO_TECH_EMAIL,
+      name: "Técnico Demo",
+      passwordHash,
+    },
+    update: {
+      name: "Técnico Demo",
+      passwordHash,
+    },
+  });
+
+  const techMembership = await prisma.membership.upsert({
+    where: {
+      tenantId_userId: { tenantId: tenant.id, userId: techUser.id },
+    },
+    create: {
+      tenantId: tenant.id,
+      userId: techUser.id,
+      roles: ["TECNICO"],
+      status: "ACTIVE",
+      companyName: "Service Demo",
+    },
+    update: {
+      roles: ["TECNICO"],
+      status: "ACTIVE",
+      companyName: "Service Demo",
+    },
+    include: { tambos: true },
+  });
+
+  if (!techMembership.tambos.some((t) => t.tamboId === tambo.id)) {
+    await prisma.membershipTambo.create({
+      data: {
+        tenantId: tenant.id,
+        membershipId: techMembership.id,
+        tamboId: tambo.id,
+      },
+    });
+  }
+
+  const tamberoUser = await prisma.user.upsert({
+    where: { email: DEMO_TAMBERO_EMAIL },
+    create: {
+      email: DEMO_TAMBERO_EMAIL,
+      name: "Tambero Demo",
+      passwordHash,
+    },
+    update: {
+      name: "Tambero Demo",
+      passwordHash,
+    },
+  });
+
+  const tamberoMembership = await prisma.membership.upsert({
+    where: {
+      tenantId_userId: { tenantId: tenant.id, userId: tamberoUser.id },
+    },
+    create: {
+      tenantId: tenant.id,
+      userId: tamberoUser.id,
+      roles: ["TAMBERO"],
+      status: "ACTIVE",
+    },
+    update: {
+      roles: ["TAMBERO"],
+      status: "ACTIVE",
+    },
+    include: { tambos: true },
+  });
+
+  if (!tamberoMembership.tambos.some((t) => t.tamboId === tambo.id)) {
+    await prisma.membershipTambo.create({
+      data: {
+        tenantId: tenant.id,
+        membershipId: tamberoMembership.id,
+        tamboId: tambo.id,
+      },
+    });
+  }
+
   console.log("Demo seed OK:");
   console.log(`  email:    ${DEMO_EMAIL}`);
   console.log(`  password: ${DEMO_PASSWORD}`);
+  console.log(`  tambero:  ${DEMO_TAMBERO_EMAIL} / ${DEMO_PASSWORD}`);
+  console.log(`  técnico:  ${DEMO_TECH_EMAIL} / ${DEMO_PASSWORD}`);
   console.log(`  tenant:   ${tenant.id} (${tenant.name})`);
   console.log(`  tambo:    ${tambo.id} (${tambo.name})`);
+  console.log(
+    `  serviceRequiresOwnerApproval: ${tambo.serviceRequiresOwnerApproval}`,
+  );
   console.log(`  membership roles: ${membership.roles.join(", ")}`);
   console.log(`  animal:   caravana 101`);
 }

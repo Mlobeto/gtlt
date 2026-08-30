@@ -2,9 +2,11 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { HttpError } from "../lib/http-error.js";
+import { notifyOwners, createNotification } from "../lib/notifications.js";
 import { requireTamboInTenant } from "../lib/tambo-scope.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
+import { hasAllTamboAccess } from "../lib/access.js";
 
 export const serviceRequestsRouter = Router();
 
@@ -16,6 +18,7 @@ const categorySchema = z.enum([
 ]);
 
 const statusSchema = z.enum([
+  "PENDING_APPROVAL",
   "OPEN",
   "ACKNOWLEDGED",
   "IN_PROGRESS",
@@ -23,10 +26,13 @@ const statusSchema = z.enum([
   "CANCELLED",
 ]);
 
+const urgencySchema = z.enum(["NORMAL", "URGENT"]);
+
 const createSchema = z.object({
   tamboId: z.string().uuid(),
   category: categorySchema,
   description: z.string().trim().min(1).max(4000),
+  urgency: urgencySchema.optional().default("NORMAL"),
   relatedPartInstanceId: z.string().uuid().optional().nullable(),
   assignedTechnicianUserId: z.string().uuid().optional().nullable(),
 });
@@ -37,10 +43,23 @@ const listSchema = z.object({
 });
 
 const patchSchema = z.object({
-  status: statusSchema.optional(),
+  status: z
+    .enum(["OPEN", "ACKNOWLEDGED", "IN_PROGRESS", "RESOLVED", "CANCELLED"])
+    .optional(),
   assignedTechnicianUserId: z.string().uuid().optional().nullable(),
   description: z.string().trim().min(1).max(4000).optional(),
 });
+
+const CATEGORY_ES: Record<string, string> = {
+  VACUUM_PUMP: "Bomba de vacío",
+  COLD_EQUIPMENT: "Equipo de frío",
+  MILKING_GROUP: "Grupo de ordeñe",
+  OTHER: "Otro",
+};
+
+function urgencyLabel(u: string) {
+  return u === "URGENT" ? "URGENTE" : "Normal";
+}
 
 /** Crear solicitud — tambero/dueño. Ticket: mal → CANCELLED + nueva. */
 serviceRequestsRouter.post(
@@ -58,6 +77,11 @@ serviceRequestsRouter.post(
     const data = parsed.data;
     await requireTamboInTenant(auth, data.tamboId);
 
+    const tambo = await prisma.tambo.findFirst({
+      where: { id: data.tamboId, tenantId: auth.tenantId },
+    });
+    if (!tambo) throw new HttpError(404, "Tambo not found");
+
     if (data.relatedPartInstanceId) {
       const part = await prisma.partInstance.findFirst({
         where: {
@@ -69,18 +93,52 @@ serviceRequestsRouter.post(
       if (!part) throw new HttpError(404, "Part instance not found in this tambo");
     }
 
+    const ownerCreates = hasAllTamboAccess(auth.roles);
+    const needsApproval =
+      tambo.serviceRequiresOwnerApproval && !ownerCreates;
+    const status = needsApproval ? "PENDING_APPROVAL" : "OPEN";
+
     const item = await prisma.serviceRequest.create({
       data: {
         tenantId: auth.tenantId,
         tamboId: data.tamboId,
         category: data.category,
         description: data.description,
+        urgency: data.urgency,
         relatedPartInstanceId: data.relatedPartInstanceId ?? null,
         assignedTechnicianUserId: data.assignedTechnicianUserId ?? null,
         createdById: auth.userId,
-        status: "OPEN",
+        status,
       },
     });
+
+    const cat = CATEGORY_ES[item.category] ?? item.category;
+    const urg = urgencyLabel(item.urgency);
+    const payload = {
+      serviceRequestId: item.id,
+      urgency: item.urgency,
+      status: item.status,
+    };
+
+    if (needsApproval) {
+      await notifyOwners(auth.tenantId, {
+        tamboId: item.tamboId,
+        type: "SERVICE_PENDING_APPROVAL",
+        title: `Service pendiente de aprobación · ${tambo.name}`,
+        body: `${urg}: ${cat}. ${item.description.slice(0, 120)}`,
+        payload,
+        excludeUserId: auth.userId,
+      });
+    } else {
+      await notifyOwners(auth.tenantId, {
+        tamboId: item.tamboId,
+        type: "SERVICE_REQUESTED",
+        title: `Service pedido · ${tambo.name}`,
+        body: `${urg}: ${cat}. ${item.description.slice(0, 120)}`,
+        payload,
+        excludeUserId: auth.userId,
+      });
+    }
 
     res.status(201).json({ item });
   },
@@ -101,11 +159,20 @@ serviceRequestsRouter.get(
     const { tamboId, status } = parsed.data;
     await requireTamboInTenant(auth, tamboId);
 
+    const farmRoles = new Set(["TAMBERO", "DUENIO", "ADMIN"]);
+    const isTecnicoOnly =
+      auth.roles.includes("TECNICO") &&
+      !auth.roles.some((r) => farmRoles.has(r));
+
     const items = await prisma.serviceRequest.findMany({
       where: {
         tenantId: auth.tenantId,
         tamboId,
-        ...(status ? { status } : {}),
+        ...(status
+          ? { status }
+          : isTecnicoOnly
+            ? { status: { notIn: ["CANCELLED", "PENDING_APPROVAL"] } }
+            : {}),
       },
       include: {
         relatedPartInstance: {
@@ -116,7 +183,7 @@ serviceRequestsRouter.get(
         },
         createdBy: { select: { id: true, name: true } },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ urgency: "desc" }, { createdAt: "desc" }],
       take: 100,
     });
 
@@ -125,7 +192,7 @@ serviceRequestsRouter.get(
 );
 
 /**
- * Vista técnico: equipo vigente + solicitudes del tambo en un solo response.
+ * Vista técnico: equipo vigente + solicitudes visibles (sin PENDING_APPROVAL).
  */
 serviceRequestsRouter.get(
   "/workspace",
@@ -142,7 +209,12 @@ serviceRequestsRouter.get(
     const { tamboId } = parsed.data;
     await requireTamboInTenant(auth, tamboId);
 
-    const [parts, requests] = await Promise.all([
+    const farmRoles = new Set(["TAMBERO", "DUENIO", "ADMIN"]);
+    const isTecnicoOnly =
+      auth.roles.includes("TECNICO") &&
+      !auth.roles.some((r) => farmRoles.has(r));
+
+    const [parts, requests, tambo] = await Promise.all([
       prisma.partInstance.findMany({
         where: { tenantId: auth.tenantId, tamboId, replacedAt: null },
         include: { partType: true, coldDetail: true },
@@ -152,7 +224,9 @@ serviceRequestsRouter.get(
         where: {
           tenantId: auth.tenantId,
           tamboId,
-          status: { not: "CANCELLED" },
+          status: isTecnicoOnly
+            ? { notIn: ["CANCELLED", "PENDING_APPROVAL"] }
+            : { not: "CANCELLED" },
         },
         include: {
           relatedPartInstance: {
@@ -163,15 +237,113 @@ serviceRequestsRouter.get(
           },
           createdBy: { select: { id: true, name: true } },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ urgency: "desc" }, { createdAt: "desc" }],
+      }),
+      prisma.tambo.findFirst({
+        where: { id: tamboId, tenantId: auth.tenantId },
+        select: {
+          id: true,
+          name: true,
+          serviceRequiresOwnerApproval: true,
+        },
       }),
     ]);
 
     res.json({
       tamboId,
+      tambo,
       partInstances: parts,
       serviceRequests: requests,
     });
+  },
+);
+
+serviceRequestsRouter.post(
+  "/:id/approve",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN"),
+  async (req, res) => {
+    const auth = req.auth!;
+    const existing = await prisma.serviceRequest.findFirst({
+      where: { id: String(req.params.id), tenantId: auth.tenantId },
+      include: { tambo: { select: { name: true } } },
+    });
+    if (!existing) throw new HttpError(404, "Service request not found");
+    await requireTamboInTenant(auth, existing.tamboId);
+
+    if (existing.status !== "PENDING_APPROVAL") {
+      throw new HttpError(409, "Service request is not pending approval");
+    }
+
+    const item = await prisma.serviceRequest.update({
+      where: { id: existing.id },
+      data: {
+        status: "OPEN",
+        approvedById: auth.userId,
+        approvedAt: new Date(),
+      },
+      include: {
+        relatedPartInstance: { include: { partType: true, coldDetail: true } },
+        createdBy: { select: { id: true, name: true } },
+      },
+    });
+
+    const cat = CATEGORY_ES[item.category] ?? item.category;
+    await createNotification({
+      tenantId: auth.tenantId,
+      userId: item.createdById,
+      tamboId: item.tamboId,
+      type: "SERVICE_APPROVED",
+      title: `Service aprobado · ${existing.tambo.name}`,
+      body: `${urgencyLabel(item.urgency)}: ${cat}. Ya puede verlo el técnico.`,
+      payload: { serviceRequestId: item.id, status: item.status },
+    });
+
+    res.json({ item });
+  },
+);
+
+serviceRequestsRouter.post(
+  "/:id/reject",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN"),
+  async (req, res) => {
+    const auth = req.auth!;
+    const existing = await prisma.serviceRequest.findFirst({
+      where: { id: String(req.params.id), tenantId: auth.tenantId },
+      include: { tambo: { select: { name: true } } },
+    });
+    if (!existing) throw new HttpError(404, "Service request not found");
+    await requireTamboInTenant(auth, existing.tamboId);
+
+    if (existing.status !== "PENDING_APPROVAL") {
+      throw new HttpError(409, "Service request is not pending approval");
+    }
+
+    const item = await prisma.serviceRequest.update({
+      where: { id: existing.id },
+      data: {
+        status: "CANCELLED",
+        approvedById: auth.userId,
+        approvedAt: new Date(),
+      },
+      include: {
+        createdBy: { select: { id: true, name: true } },
+      },
+    });
+
+    const cat = CATEGORY_ES[item.category] ?? item.category;
+    await createNotification({
+      tenantId: auth.tenantId,
+      userId: item.createdById,
+      tamboId: item.tamboId,
+      type: "SERVICE_REJECTED",
+      title: `Service rechazado · ${existing.tambo.name}`,
+      body: `${urgencyLabel(item.urgency)}: ${cat}. El dueño no autorizó el pedido.`,
+      payload: { serviceRequestId: item.id, status: item.status },
+    });
+
+    res.json({ item });
   },
 );
 
@@ -192,6 +364,13 @@ serviceRequestsRouter.patch(
     });
     if (!existing) throw new HttpError(404, "Service request not found");
     await requireTamboInTenant(auth, existing.tamboId);
+
+    if (existing.status === "PENDING_APPROVAL") {
+      throw new HttpError(
+        409,
+        "Pending approval: use approve/reject endpoints",
+      );
+    }
 
     const data = parsed.data;
     const farmRoles = new Set(["TAMBERO", "DUENIO", "ADMIN"]);

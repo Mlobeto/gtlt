@@ -16,7 +16,26 @@ import {
 import { StatusBar } from "expo-status-bar";
 import * as ImagePicker from "expo-image-picker";
 import NetInfo from "@react-native-community/netinfo";
-import { fetchTambos, login as apiLogin } from "./src/api";
+import {
+  ApiError,
+  acceptTechnicianInviteRegister,
+  approveServiceRequest,
+  createServiceRequest,
+  fetchNotifications,
+  fetchServiceRequests,
+  fetchTambos,
+  inviteTechnician,
+  isOwnerOrAdmin,
+  isTechnicianOnly,
+  login as apiLogin,
+  markAllNotificationsRead,
+  markNotificationRead,
+  rejectServiceRequest,
+  updateTamboSettings,
+  type AppNotification,
+  type ServiceRequestItem,
+} from "./src/api";
+import { TechnicianHome } from "./src/TechnicianHome";
 import {
   countPendingOutbox,
   getDb,
@@ -75,7 +94,15 @@ type Screen =
   | "control"
   | "animals"
   | "animalDetail"
-  | "animalForm";
+  | "animalForm"
+  | "service"
+  | "notifications";
+
+type ServiceCategory =
+  | "VACUUM_PUMP"
+  | "COLD_EQUIPMENT"
+  | "MILKING_GROUP"
+  | "OTHER";
 
 type HealthFormType = "MASTITIS" | "TREATMENT";
 type ReproFormType = "HEAT" | "SERVICE" | "EXPECTED_CALVING" | "CALVING";
@@ -100,6 +127,25 @@ const MENU = [
     label: "Retiros",
     hint: "Leche que no se puede mezclar",
   },
+  {
+    key: "service" as const,
+    emoji: "🔧",
+    label: "Service",
+    hint: "Pedir técnico o invitar",
+  },
+  {
+    key: "notifications" as const,
+    emoji: "🔔",
+    label: "Avisos",
+    hint: "Pedidos y aprobaciones",
+  },
+];
+
+const SERVICE_CATEGORIES: { key: ServiceCategory; label: string }[] = [
+  { key: "VACUUM_PUMP", label: "Bomba de vacío" },
+  { key: "COLD_EQUIPMENT", label: "Equipo de frío" },
+  { key: "MILKING_GROUP", label: "Grupo de ordeñe" },
+  { key: "OTHER", label: "Otro" },
 ];
 
 function tipoLegible(type: string): string {
@@ -190,6 +236,22 @@ export default function App() {
   const [formNotes, setFormNotes] = useState("");
   const [formPhotoUri, setFormPhotoUri] = useState<string | null>(null);
   const [pregnancy, setPregnancy] = useState<PregnancySummary | null>(null);
+  const [loginMode, setLoginMode] = useState<"login" | "acceptInvite">("login");
+  const [inviteTenantId, setInviteTenantId] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [serviceCategory, setServiceCategory] =
+    useState<ServiceCategory>("VACUUM_PUMP");
+  const [serviceDescription, setServiceDescription] = useState("");
+  const [inviteTechEmail, setInviteTechEmail] = useState("");
+  const [inviteTechName, setInviteTechName] = useState("");
+  const [inviteCompany, setInviteCompany] = useState("");
+  const [serviceUrgent, setServiceUrgent] = useState(false);
+  const [requiresOwnerApproval, setRequiresOwnerApproval] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [pendingApprovals, setPendingApprovals] = useState<ServiceRequestItem[]>(
+    [],
+  );
 
   const sessionRef = useRef<Session | null>(null);
   const onlineRef = useRef(true);
@@ -217,6 +279,7 @@ export default function App() {
     async (reason: "online" | "foreground") => {
       const s = sessionRef.current;
       if (!s || !onlineRef.current || syncingRef.current) return;
+      if (isTechnicianOnly(s.roles ?? [])) return;
       const left = await countPendingOutbox();
       if (left === 0 && reason === "foreground") {
         // pull suave al volver
@@ -248,7 +311,21 @@ export default function App() {
       const existing = await loadSession();
       if (existing && mounted) {
         setSession(existing);
-        await refreshLocal(existing.tamboId);
+        if (!isTechnicianOnly(existing.roles ?? [])) {
+          await refreshLocal(existing.tamboId);
+          try {
+            const tambos = await fetchTambos(existing.token);
+            const t = tambos.items.find((x) => x.id === existing.tamboId);
+            if (t) {
+              setRequiresOwnerApproval(Boolean(t.serviceRequiresOwnerApproval));
+            }
+          } catch {
+            // ignore
+          }
+          if (isOwnerOrAdmin(existing.roles ?? [])) {
+            void loadNotifications(existing);
+          }
+        }
       }
       if (mounted) setReady(true);
     })().catch(() => setStatus("No se pudo abrir la app. Cerrala y volvé a entrar."));
@@ -289,20 +366,210 @@ export default function App() {
         throw new Error("No encontramos un tambo para esta cuenta.");
       }
       const tambo = tambos.items[0];
+      const techOnly = isTechnicianOnly(res.roles);
       const next: Session = {
         token: res.accessToken,
         tamboId: tambo.id,
         tamboName: tambo.name,
         userName: res.user.name,
+        roles: res.roles,
+        tenantId: res.tenant.id,
       };
       await saveSession(next);
-      await pullServerState(next.token, next.tamboId);
+      setRequiresOwnerApproval(Boolean(tambo.serviceRequiresOwnerApproval));
+      if (!techOnly) {
+        await pullServerState(next.token, next.tamboId);
+        await refreshLocal(next.tamboId);
+      }
       setSession(next);
       setScreen("home");
-      await refreshLocal(next.tamboId);
-      setStatus(`Listo. Estás en ${tambo.name}.`);
+      if (isOwnerOrAdmin(res.roles)) {
+        void loadNotifications(next);
+      }
+      setStatus(
+        techOnly
+          ? `Listo. Service en ${tambo.name}.`
+          : `Listo. Estás en ${tambo.name}.`,
+      );
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "MEMBERSHIP_PENDING") {
+        setLoginMode("acceptInvite");
+        setStatus(
+          "Tenés una invitación pendiente. Completá el código del tambo (tenant) y una clave.",
+        );
+      } else {
+        setStatus("No se pudo entrar. Revisá usuario, contraseña o la señal.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleAcceptInvite() {
+    if (!inviteTenantId.trim()) {
+      setStatus("Falta el código del tenant que te pasaron.");
+      return;
+    }
+    if (password.trim().length < 6) {
+      setStatus("La clave tiene que tener al menos 6 caracteres.");
+      return;
+    }
+    setBusy(true);
+    setStatus("Activando cuenta...");
+    try {
+      await acceptTechnicianInviteRegister({
+        tenantId: inviteTenantId.trim(),
+        email: email.trim(),
+        password: password.trim(),
+        name: inviteName.trim() || undefined,
+      });
+      setLoginMode("login");
+      setStatus("Cuenta lista. Tocá Entrar.");
     } catch {
-      setStatus("No se pudo entrar. Revisá usuario, contraseña o la señal.");
+      setStatus(
+        "No se pudo activar. Revisá correo, código del tenant y que te hayan invitado.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCreateServiceRequest() {
+    if (!session) return;
+    if (!online) {
+      setStatus("Para pedir service hace falta señal.");
+      return;
+    }
+    if (!serviceDescription.trim()) {
+      setStatus("Escribí qué pasa (una frase alcanza).");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { item } = await createServiceRequest(session.token, {
+        tamboId: session.tamboId,
+        category: serviceCategory,
+        description: serviceDescription.trim(),
+        urgency: serviceUrgent ? "URGENT" : "NORMAL",
+      });
+      setServiceDescription("");
+      setServiceUrgent(false);
+      if (item.status === "PENDING_APPROVAL") {
+        setStatus(
+          "Pedido enviado. Espera la autorización del dueño antes de que lo vea el técnico.",
+        );
+      } else {
+        setStatus(
+          serviceUrgent
+            ? "Pedido URGENTE enviado. El dueño ya fue avisado."
+            : "Pedido de service enviado. El dueño ya fue avisado.",
+        );
+      }
+      if (isOwnerOrAdmin(session.roles)) {
+        void loadNotifications(session);
+      }
+    } catch {
+      setStatus("No se pudo enviar el pedido. Revisá la señal.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadNotifications(s: Session = session!) {
+    if (!s) return;
+    try {
+      const [notes, pending] = await Promise.all([
+        fetchNotifications(s.token),
+        isOwnerOrAdmin(s.roles)
+          ? fetchServiceRequests(s.token, s.tamboId, "PENDING_APPROVAL")
+          : Promise.resolve({ items: [] as ServiceRequestItem[] }),
+      ]);
+      setNotifications(notes.items);
+      setUnreadNotifications(notes.unreadCount);
+      setPendingApprovals(pending.items);
+    } catch {
+      // silencioso en background
+    }
+  }
+
+  async function handleToggleOwnerApproval(next: boolean) {
+    if (!session) return;
+    if (!online) {
+      setStatus("Para cambiar esto hace falta señal.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await updateTamboSettings(session.token, session.tamboId, {
+        serviceRequiresOwnerApproval: next,
+      });
+      setRequiresOwnerApproval(res.item.serviceRequiresOwnerApproval);
+      setStatus(
+        next
+          ? "Ahora el tambero necesita tu OK antes de llamar al técnico."
+          : "El tambero puede pedir service directo al técnico.",
+      );
+    } catch {
+      setStatus("No se pudo guardar la configuración.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleApproveRequest(id: string) {
+    if (!session) return;
+    setBusy(true);
+    try {
+      await approveServiceRequest(session.token, id);
+      setStatus("Pedido aprobado. Ya lo puede ver el técnico.");
+      await loadNotifications(session);
+    } catch {
+      setStatus("No se pudo aprobar.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRejectRequest(id: string) {
+    if (!session) return;
+    setBusy(true);
+    try {
+      await rejectServiceRequest(session.token, id);
+      setStatus("Pedido rechazado. Se avisó al tambero.");
+      await loadNotifications(session);
+    } catch {
+      setStatus("No se pudo rechazar.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleInviteTechnician() {
+    if (!session) return;
+    if (!online) {
+      setStatus("Para invitar hace falta señal.");
+      return;
+    }
+    if (!inviteTechEmail.trim()) {
+      setStatus("Poné el correo del técnico.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await inviteTechnician(session.token, {
+        tamboId: session.tamboId,
+        email: inviteTechEmail.trim(),
+        name: inviteTechName.trim() || undefined,
+        companyName: inviteCompany.trim() || undefined,
+      });
+      setInviteTechEmail("");
+      setInviteTechName("");
+      setInviteCompany("");
+      setStatus(
+        `Invitación enviada. Pasale el código de tenant: ${session.tenantId}`,
+      );
+    } catch {
+      setStatus("No se pudo invitar. Revisá el correo y la señal.");
     } finally {
       setBusy(false);
     }
@@ -806,14 +1073,21 @@ export default function App() {
             {session ? (
               <Text style={styles.meta}>
                 {session.userName} · {session.tamboName}
+                {isTechnicianOnly(session.roles ?? []) ? " · técnico" : ""}
               </Text>
             ) : null}
           </View>
 
           {!session ? (
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>Entrar</Text>
-              <Text style={styles.help}>Usá el usuario y la clave que te dieron.</Text>
+              <Text style={styles.cardTitle}>
+                {loginMode === "login" ? "Entrar" : "Activar invitación"}
+              </Text>
+              <Text style={styles.help}>
+                {loginMode === "login"
+                  ? "Usá el usuario y la clave que te dieron."
+                  : "Si te invitaron como técnico, poné el código del tenant y elegí una clave."}
+              </Text>
               <Text style={styles.label}>Usuario o correo</Text>
               <TextInput
                 style={styles.input}
@@ -821,6 +1095,24 @@ export default function App() {
                 value={email}
                 onChangeText={setEmail}
               />
+              {loginMode === "acceptInvite" ? (
+                <>
+                  <Text style={styles.label}>Código del tenant</Text>
+                  <TextInput
+                    style={styles.input}
+                    autoCapitalize="none"
+                    value={inviteTenantId}
+                    onChangeText={setInviteTenantId}
+                    placeholder="UUID que te pasó el tambo"
+                  />
+                  <Text style={styles.label}>Tu nombre (opcional)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={inviteName}
+                    onChangeText={setInviteName}
+                  />
+                </>
+              ) : null}
               <Text style={styles.label}>Clave</Text>
               <TextInput
                 style={styles.input}
@@ -835,12 +1127,44 @@ export default function App() {
               ) : null}
               <Pressable
                 style={[styles.button, busy && styles.buttonDisabled]}
-                onPress={handleLogin}
+                onPress={
+                  loginMode === "login" ? handleLogin : handleAcceptInvite
+                }
                 disabled={busy}
               >
-                <Text style={styles.buttonText}>Entrar</Text>
+                <Text style={styles.buttonText}>
+                  {loginMode === "login" ? "Entrar" : "Activar y continuar"}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setStatus("");
+                  setLoginMode((m) =>
+                    m === "login" ? "acceptInvite" : "login",
+                  );
+                }}
+              >
+                <Text style={styles.link}>
+                  {loginMode === "login"
+                    ? "Soy técnico nuevo (aceptar invitación)"
+                    : "Ya tengo cuenta — Entrar"}
+                </Text>
               </Pressable>
             </View>
+          ) : isTechnicianOnly(session.roles ?? []) ? (
+            <>
+              {status ? (
+                <View style={styles.feedback}>
+                  <Text style={styles.feedbackText}>{status}</Text>
+                </View>
+              ) : null}
+              <TechnicianHome
+                session={session}
+                online={online}
+                onLogout={() => void handleLogout()}
+                onStatus={setStatus}
+              />
+            </>
           ) : (
             <>
               {screen !== "home" ? (
@@ -880,11 +1204,20 @@ export default function App() {
                       onPress={() => {
                         setStatus("");
                         setScreen(item.key);
+                        if (item.key === "notifications" && session) {
+                          void loadNotifications(session);
+                        }
                       }}
                     >
                       <Text style={styles.menuEmoji}>{item.emoji}</Text>
                       <View style={styles.menuTextWrap}>
-                        <Text style={styles.menuLabel}>{item.label}</Text>
+                        <Text style={styles.menuLabel}>
+                          {item.label}
+                          {item.key === "notifications" &&
+                          unreadNotifications > 0
+                            ? ` (${unreadNotifications})`
+                            : ""}
+                        </Text>
                         <Text style={styles.menuHint}>{item.hint}</Text>
                       </View>
                     </Pressable>
@@ -914,6 +1247,274 @@ export default function App() {
                   <Pressable onPress={handleLogout}>
                     <Text style={styles.link}>Salir</Text>
                   </Pressable>
+                </View>
+              ) : null}
+
+              {screen === "service" ? (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>🔧 Service</Text>
+                  <Text style={styles.help}>
+                    Pedí un técnico o invitalo al tambo. Hace falta señal.
+                    {requiresOwnerApproval &&
+                    !isOwnerOrAdmin(session.roles ?? [])
+                      ? " En este tambo el dueño tiene que autorizar el pedido."
+                      : ""}
+                  </Text>
+
+                  {isOwnerOrAdmin(session.roles ?? []) ? (
+                    <>
+                      <Text style={styles.sectionInCard}>Autorización</Text>
+                      <Text style={styles.help}>
+                        ¿El tambero necesita tu OK antes de llamar al técnico?
+                      </Text>
+                      <View style={styles.row}>
+                        <Pressable
+                          style={[
+                            styles.choice,
+                            !requiresOwnerApproval && styles.choiceOn,
+                          ]}
+                          onPress={() => void handleToggleOwnerApproval(false)}
+                        >
+                          <Text
+                            style={[
+                              styles.choiceText,
+                              !requiresOwnerApproval && styles.choiceTextOn,
+                            ]}
+                          >
+                            Directo
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          style={[
+                            styles.choice,
+                            requiresOwnerApproval && styles.choiceOn,
+                          ]}
+                          onPress={() => void handleToggleOwnerApproval(true)}
+                        >
+                          <Text
+                            style={[
+                              styles.choiceText,
+                              requiresOwnerApproval && styles.choiceTextOn,
+                            ]}
+                          >
+                            Con mi OK
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </>
+                  ) : null}
+
+                  <Text style={styles.sectionInCard}>Qué pasó</Text>
+                  <View style={styles.wrapRow}>
+                    {SERVICE_CATEGORIES.map((c) => (
+                      <Pressable
+                        key={c.key}
+                        style={[
+                          styles.choiceSmall,
+                          serviceCategory === c.key && styles.choiceOn,
+                        ]}
+                        onPress={() => setServiceCategory(c.key)}
+                      >
+                        <Text
+                          style={[
+                            styles.choiceText,
+                            serviceCategory === c.key && styles.choiceTextOn,
+                          ]}
+                        >
+                          {c.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <Text style={styles.sectionInCard}>Urgencia</Text>
+                  <View style={styles.row}>
+                    <Pressable
+                      style={[styles.choice, !serviceUrgent && styles.choiceOn]}
+                      onPress={() => setServiceUrgent(false)}
+                    >
+                      <Text
+                        style={[
+                          styles.choiceText,
+                          !serviceUrgent && styles.choiceTextOn,
+                        ]}
+                      >
+                        Normal
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.choice, serviceUrgent && styles.choiceOn]}
+                      onPress={() => setServiceUrgent(true)}
+                    >
+                      <Text
+                        style={[
+                          styles.choiceText,
+                          serviceUrgent && styles.choiceTextOn,
+                        ]}
+                      >
+                        Urgente
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <Text style={styles.label}>Detalle</Text>
+                  <TextInput
+                    style={[styles.input, { minHeight: 88, textAlignVertical: "top" }]}
+                    multiline
+                    value={serviceDescription}
+                    onChangeText={setServiceDescription}
+                    placeholder="Ej: no arranca la bomba / ruido raro"
+                  />
+                  <Pressable
+                    style={[styles.button, busy && styles.buttonDisabled]}
+                    onPress={() => void handleCreateServiceRequest()}
+                    disabled={busy}
+                  >
+                    <Text style={styles.buttonText}>
+                      {serviceUrgent ? "Pedir service URGENTE" : "Pedir service"}
+                    </Text>
+                  </Pressable>
+
+                  <Text style={styles.sectionInCard}>Invitar técnico</Text>
+                  <Text style={styles.help}>
+                    Después pasale el código de tenant:{" "}
+                    {session.tenantId || "(entrar de nuevo)"}
+                  </Text>
+                  <Text style={styles.label}>Correo del técnico</Text>
+                  <TextInput
+                    style={styles.input}
+                    autoCapitalize="none"
+                    value={inviteTechEmail}
+                    onChangeText={setInviteTechEmail}
+                  />
+                  <Text style={styles.label}>Nombre (opcional)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={inviteTechName}
+                    onChangeText={setInviteTechName}
+                  />
+                  <Text style={styles.label}>Empresa (opcional)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={inviteCompany}
+                    onChangeText={setInviteCompany}
+                  />
+                  <Pressable
+                    style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                    onPress={() => void handleInviteTechnician()}
+                    disabled={busy}
+                  >
+                    <Text style={styles.buttonSecondaryText}>Invitar</Text>
+                  </Pressable>
+                  {status ? (
+                    <View style={styles.feedback}>
+                      <Text style={styles.feedbackText}>{status}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {screen === "notifications" ? (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>🔔 Avisos</Text>
+                  <Text style={styles.help}>
+                    Pedidos de service y aprobaciones. Push real viene después.
+                  </Text>
+                  <Pressable
+                    style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                    onPress={() => void loadNotifications()}
+                    disabled={busy}
+                  >
+                    <Text style={styles.buttonSecondaryText}>Actualizar</Text>
+                  </Pressable>
+
+                  {isOwnerOrAdmin(session.roles ?? []) &&
+                  pendingApprovals.length > 0 ? (
+                    <>
+                      <Text style={styles.sectionInCard}>
+                        Esperan tu autorización
+                      </Text>
+                      {pendingApprovals.map((r) => (
+                        <View key={r.id} style={styles.item}>
+                          <Text style={styles.itemTitle}>
+                            {r.urgency === "URGENT" ? "URGENTE · " : ""}
+                            {r.category}
+                          </Text>
+                          <Text style={styles.itemMeta}>{r.description}</Text>
+                          <Text style={styles.itemMeta}>
+                            {r.createdBy?.name
+                              ? `Pidió: ${r.createdBy.name} · `
+                              : ""}
+                            {new Date(r.createdAt).toLocaleString("es-AR")}
+                          </Text>
+                          <View style={styles.row}>
+                            <Pressable
+                              style={[styles.button, { flex: 1 }, busy && styles.buttonDisabled]}
+                              onPress={() => void handleApproveRequest(r.id)}
+                              disabled={busy}
+                            >
+                              <Text style={styles.buttonText}>Aprobar</Text>
+                            </Pressable>
+                            <Pressable
+                              style={[
+                                styles.buttonSecondary,
+                                { flex: 1 },
+                                busy && styles.buttonDisabled,
+                              ]}
+                              onPress={() => void handleRejectRequest(r.id)}
+                              disabled={busy}
+                            >
+                              <Text style={styles.buttonSecondaryText}>
+                                Rechazar
+                              </Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      ))}
+                    </>
+                  ) : null}
+
+                  <Text style={styles.sectionInCard}>Bandeja</Text>
+                  {notifications.length === 0 ? (
+                    <Text style={styles.empty}>No hay avisos todavía.</Text>
+                  ) : (
+                    notifications.map((n) => (
+                      <Pressable
+                        key={n.id}
+                        style={styles.item}
+                        onPress={() => {
+                          if (!session || n.readAt) return;
+                          void markNotificationRead(session.token, n.id).then(
+                            () => loadNotifications(session),
+                          );
+                        }}
+                      >
+                        <Text style={styles.itemTitle}>
+                          {n.readAt ? "" : "• "}
+                          {n.title}
+                        </Text>
+                        <Text style={styles.itemMeta}>{n.body}</Text>
+                        <Text style={styles.itemMeta}>
+                          {new Date(n.createdAt).toLocaleString("es-AR")}
+                        </Text>
+                      </Pressable>
+                    ))
+                  )}
+                  {notifications.some((n) => !n.readAt) ? (
+                    <Pressable
+                      onPress={() => {
+                        if (!session) return;
+                        void markAllNotificationsRead(session.token).then(() =>
+                          loadNotifications(session),
+                        );
+                      }}
+                    >
+                      <Text style={styles.link}>Marcar todo leído</Text>
+                    </Pressable>
+                  ) : null}
+                  {status ? (
+                    <View style={styles.feedback}>
+                      <Text style={styles.feedbackText}>{status}</Text>
+                    </View>
+                  ) : null}
                 </View>
               ) : null}
 
