@@ -18,6 +18,9 @@ import { appPrototypeConfigRouter } from "./routes/app-prototype-config.js";
 import { flowSessionsRouter } from "./routes/flow-sessions.js";
 import { flowSessionsDeviceRouter } from "./routes/flow-sessions-device.js";
 import { adminRouter } from "./routes/admin-tenants.js";
+import { weightEventsRouter } from "./routes/weight-events.js";
+import { animalPhotosRouter } from "./routes/animal-photos.js";
+import { siresRouter } from "./routes/sires.js";
 import { softAuthenticate } from "./middleware/soft-authenticate.js";
 import { technicianResourceGuard } from "./middleware/technician-guard.js";
 
@@ -46,10 +49,13 @@ export function createApp() {
   app.use("/app-prototype-config", appPrototypeConfigRouter);
   app.use("/milking-sessions", milkingSessionsRouter);
   app.use("/animals", animalsRouter);
+  app.use("/animals/:animalId/photos", animalPhotosRouter);
   app.use("/health-events", healthEventsRouter);
   app.use("/repro-events", reproEventsRouter);
   app.use("/milk-deliveries", milkDeliveriesRouter);
   app.use("/control-lecheros", controlLecherosRouter);
+  app.use("/weight-events", weightEventsRouter);
+  app.use("/sires", siresRouter);
   app.use("/device", flowSessionsDeviceRouter);
   app.use("/flow-sessions", flowSessionsRouter);
   app.use("/admin", adminRouter);

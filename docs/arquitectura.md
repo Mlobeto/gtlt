@@ -149,10 +149,11 @@ Fuente de verdad: `apps/api/prisma/schema.prisma`. Detalle de campos: [erd.md](.
 
 ### Animales
 
-- `Animal` — ficha; `earTag` visual; `photoUrl` (URL storage TBD); `tamboId` **mutable**  
+- `Animal` — ficha; `earTag` visual; `photoUrl` (URL storage TBD, foto de tapa/resumen); `tamboId` **mutable**; `breed` texto libre; `motherId`/`sireId` genealogía
 - Unicidad: `(tambo_id, ear_tag)` entre `ACTIVE`/`DRY` (índice parcial)  
 - `AnimalTransferEvent` — historial append-only de cambio de tambo dentro del tenant  
 - Eventos históricos **conservan** el `tambo_id` del momento de carga
+- `Sire` — catálogo de padres/toros por tenant: pajuela de IA (`isExternal=true`) o toro propio (`isExternal=false`, `linkedAnimalId` apunta al `Animal` del toro)
 
 ### Producción (tres entidades separadas)
 
@@ -168,7 +169,10 @@ Fuente de verdad: `apps/api/prisma/schema.prisma`. Detalle de campos: [erd.md](.
 ### Eventos por animal
 
 - **`HealthEvent`** — mastitis, tratamientos, `milkWithdrawalUntil` (crítico offline)  
-- **`ReproEvent`** — celo, servicio, parto estimado, etc.
+- **`ReproEvent`** — celo, servicio (`sireId` = toro/pajuela usado), parto estimado, etc.
+- **`WeightEvent`** — peso (kg), método (`SCALE`/`TAPE`/`VISUAL_ESTIMATE`); append-only simple, sin `VOIDED` (no dispara consecuencias aguas abajo)
+- **`AnimalPhoto`** — historial de fotos, tipo `PROFILE` o `CONSULT`; `CONSULT` notifica a dueño/admin + veterinarios con acceso al tambo (`ANIMAL_PHOTO_CONSULT`); `Animal.photoUrl` sigue siendo la foto de tapa en listados
+- **`GET /animals/:id/timeline`** — compone `HealthEvent` + `ReproEvent` + `AnimalTransferEvent` + `ControlLecheroLine` + `WeightEvent` + `AnimalPhoto` en un solo array ordenado por fecha (campo `kind` por origen); no es una tabla unificada, es una query que junta
 
 ### Mantenimiento de equipo
 
@@ -344,6 +348,7 @@ gtlt/
 - [x] Ficha animal mobile: listado, alta/edición, historial sanidad/repro, foto local (`GET/PATCH /animals/:id`)  
 - [x] Rol `TECNICO` + invitación + `ServiceRequest` + guard whitelist + `PartInstance` API  
 - [x] Service: urgencia, aprobación dueño por tambo, bandeja in-app (`Notification`)  
+- [x] Ficha animal: genealogía (`Sire`, `motherId`/`sireId`/`breed`), `AnimalPhoto` (perfil/consulta + notificación a vet), `WeightEvent`, `GET /animals/:id/timeline` (API únicamente; mobile pendiente)
 - [ ] Adjuntos service (foto/audio) + storage cloud  
 - [ ] RLS Postgres (post-MVP datos reales)  
 - [x] Modelo de datos `Plan` / `Subscription` / `Payment` (ver [pricing-model.md](./pricing-model.md))

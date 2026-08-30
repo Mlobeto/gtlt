@@ -65,6 +65,8 @@ enum NotificationType {
   SERVICE_PENDING_APPROVAL
   SERVICE_APPROVED
   SERVICE_REJECTED
+  /// AnimalPhoto.type = CONSULT recién cargada — a dueño/admin + veterinarios con acceso al tambo.
+  ANIMAL_PHOTO_CONSULT
 }
 
 enum SupportTicketCategory {
@@ -204,6 +206,9 @@ model Tenant {
   devices              Device[]
   flowSessions         FlowSession[]
   subscription         Subscription?
+  sires                Sire[]
+  animalPhotos         AnimalPhoto[]
+  weightEvents         WeightEvent[]
 
   @@map("tenants")
 }
@@ -238,6 +243,8 @@ model Tambo {
 
   transfersFrom AnimalTransferEvent[] @relation("TransferFromTambo")
   transfersTo   AnimalTransferEvent[] @relation("TransferToTambo")
+  animalPhotos  AnimalPhoto[]
+  weightEvents  WeightEvent[]
 
   @@index([tenantId])
   @@index([tenantId, name])
@@ -268,6 +275,9 @@ model User {
   serviceRequestsApproved ServiceRequest[]  @relation("ServiceRequestApprovedBy")
   notifications           Notification[]
   supportTickets          SupportTicket[]
+  photosCreated           AnimalPhoto[]     @relation("PhotoCreatedBy")
+  photosReviewed          AnimalPhoto[]     @relation("PhotoReviewedBy")
+  weightEventsCreated     WeightEvent[]     @relation("WeightCreatedBy")
 
   @@map("users")
 }
@@ -330,6 +340,10 @@ model Animal {
   status    AnimalStatus @default(ACTIVE)
   birthDate DateTime?    @map("birth_date") @db.Date
   enteredAt DateTime?    @map("entered_at") @db.Date
+  /// Texto libre a propósito (no enum) — no bloquea cruzas con porcentaje. Ver reglas-negocio-app.md.
+  breed     String?
+  motherId  String?      @map("mother_id") @db.Uuid
+  sireId    String?      @map("sire_id") @db.Uuid
   /// URL a storage externo (servicio TBD). No blob en DB.
   photoUrl  String?      @map("photo_url")
   /// Futuro RFID / chip — no usado en Fase 1.
@@ -345,12 +359,20 @@ model Animal {
   tenant    Tenant @relation(fields: [tenantId], references: [id])
   tambo     Tambo  @relation(fields: [tamboId], references: [id])
   createdBy User?  @relation("AnimalCreatedBy", fields: [createdById], references: [id])
+  /// Genealogía: madre (self-relation, mismo tenant, puede ser de otro tambo si se transfirió).
+  mother    Animal? @relation("AnimalMother", fields: [motherId], references: [id])
+  children  Animal[] @relation("AnimalMother")
+  sire      Sire?   @relation("AnimalSire", fields: [sireId], references: [id])
+  /// Inverso de Sire.linkedAnimalId (toro propio = Sire apuntando a este Animal).
+  sireRecords Sire[] @relation("SireLinkedAnimal")
 
   transfers           AnimalTransferEvent[]
   healthEvents        HealthEvent[]
   reproEvents         ReproEvent[]
   controlLecheroLines ControlLecheroLine[]
   flowSessions        FlowSession[]
+  photos              AnimalPhoto[]
+  weightEvents        WeightEvent[]
 
   @@index([tenantId, tamboId, status])
   @@index([tenantId, tamboId, earTag])
@@ -384,6 +406,26 @@ model AnimalTransferEvent {
   @@index([tenantId, toTamboId, transferredAt])
   @@index([tenantId, clientMutationId])
   @@map("animal_transfer_events")
+}
+
+/// Catálogo de padres/toros: pajuela de IA (isExternal=true) o toro propio (isExternal=false,
+/// linkedAnimalId apunta al Animal real del toro).
+model Sire {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  name             String
+  registrationCode String?  @map("registration_code")
+  isExternal       Boolean  @default(true) @map("is_external")
+  linkedAnimalId   String?  @map("linked_animal_id") @db.Uuid
+  createdAt        DateTime @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  linkedAnimal Animal?      @relation("SireLinkedAnimal", fields: [linkedAnimalId], references: [id])
+  offspring    Animal[]     @relation("AnimalSire")
+  reproEvents  ReproEvent[]
+
+  @@index([tenantId])
+  @@map("sires")
 }
 
 model Device {
@@ -610,6 +652,8 @@ model HealthEvent {
   animal    Animal @relation(fields: [animalId], references: [id])
   createdBy User   @relation("HealthCreatedBy", fields: [createdById], references: [id])
 
+  photos    AnimalPhoto[]
+
   @@index([tenantId, tamboId, milkWithdrawalUntil])
   @@index([tenantId, tamboId, eventAt])
   @@index([tenantId, animalId, eventAt])
@@ -627,6 +671,8 @@ model ReproEvent {
   type              ReproEventType
   eventAt           DateTime      @map("event_at")
   expectedCalvingAt DateTime?     @map("expected_calving_at") @db.Date
+  /// Toro/pajuela usado en type=SERVICE; se copia después a Animal.sireId de la cría al nacer.
+  sireId            String?       @map("sire_id") @db.Uuid
   notes             String?
   createdById       String        @map("created_by_id") @db.Uuid
   clientMutationId  String?       @map("client_mutation_id")
@@ -638,12 +684,80 @@ model ReproEvent {
   tambo     Tambo  @relation(fields: [tamboId], references: [id])
   animal    Animal @relation(fields: [animalId], references: [id])
   createdBy User   @relation("ReproCreatedBy", fields: [createdById], references: [id])
+  sire      Sire?  @relation(fields: [sireId], references: [id])
 
   @@index([tenantId, tamboId, eventAt])
   @@index([tenantId, animalId, eventAt])
   @@index([tenantId, tamboId, updatedAt])
   @@index([tenantId, clientMutationId])
   @@map("repro_events")
+}
+
+enum AnimalPhotoType {
+  PROFILE
+  CONSULT
+}
+
+/// Historial completo de fotos (Animal.photoUrl sigue siendo la foto de tapa/resumen en listados).
+model AnimalPhoto {
+  id               String          @id @default(uuid()) @db.Uuid
+  tenantId         String          @map("tenant_id") @db.Uuid
+  tamboId          String          @map("tambo_id") @db.Uuid
+  animalId         String          @map("animal_id") @db.Uuid
+  photoUrl         String          @map("photo_url")
+  type             AnimalPhotoType
+  note             String?
+  healthEventId    String?         @map("health_event_id") @db.Uuid
+  reviewedAt       DateTime?       @map("reviewed_at")
+  reviewedById     String?         @map("reviewed_by_id") @db.Uuid
+  takenAt          DateTime        @map("taken_at")
+  createdById      String          @map("created_by_id") @db.Uuid
+  clientMutationId String?         @map("client_mutation_id")
+  createdAt        DateTime        @default(now())
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  tambo       Tambo        @relation(fields: [tamboId], references: [id])
+  animal      Animal       @relation(fields: [animalId], references: [id])
+  healthEvent HealthEvent? @relation(fields: [healthEventId], references: [id])
+  createdBy   User         @relation("PhotoCreatedBy", fields: [createdById], references: [id])
+  reviewedBy  User?        @relation("PhotoReviewedBy", fields: [reviewedById], references: [id])
+
+  @@index([tenantId, tamboId, animalId, type])
+  @@index([tenantId, tamboId, type, reviewedAt])
+  @@index([tenantId, clientMutationId])
+  @@map("animal_photos")
+}
+
+enum WeightMethod {
+  SCALE
+  TAPE
+  VISUAL_ESTIMATE
+}
+
+/// Registro de peso, append-only simple (sin VOIDED: un peso mal cargado se explica en notes
+/// de uno nuevo, no dispara consecuencias aguas abajo como HealthEvent/MilkingSession).
+model WeightEvent {
+  id               String       @id @default(uuid()) @db.Uuid
+  tenantId         String       @map("tenant_id") @db.Uuid
+  tamboId          String       @map("tambo_id") @db.Uuid
+  animalId         String       @map("animal_id") @db.Uuid
+  weightKg         Decimal      @map("weight_kg") @db.Decimal(6, 2)
+  method           WeightMethod @default(VISUAL_ESTIMATE)
+  measuredAt       DateTime     @map("measured_at")
+  notes            String?
+  createdById      String       @map("created_by_id") @db.Uuid
+  clientMutationId String?      @map("client_mutation_id")
+  createdAt        DateTime     @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  tambo     Tambo  @relation(fields: [tamboId], references: [id])
+  animal    Animal @relation(fields: [animalId], references: [id])
+  createdBy User   @relation("WeightCreatedBy", fields: [createdById], references: [id])
+
+  @@index([tenantId, animalId, measuredAt])
+  @@index([tenantId, tamboId, measuredAt])
+  @@index([tenantId, clientMutationId])
+  @@map("weight_events")
 }
 
 // -----------------------------------------------------------------------------

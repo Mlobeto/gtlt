@@ -4,6 +4,16 @@
 
 Validaciones que **no** se expresan como constraint de PostgreSQL (dependen de otra tabla o de lógica de dominio). Implementar en servicios antes de dar por cerrado el CRUD/sync.
 
+## Genealogía, fotos y peso
+
+- `breed` es texto libre a propósito (no enum), para no bloquear cruzas con porcentaje.
+- `AnimalPhoto.type = CONSULT` dispara notificación (`ANIMAL_PHOTO_CONSULT`) a dueño/admin + veterinarios con acceso al tambo (`MembershipTambo`); `PROFILE` no notifica a nadie.
+- No existe todavía un flag configurable de "compartir automáticamente alertas con el veterinario" (mencionado en la visión de producto original) — por ahora la notificación de fotos `CONSULT` va a **todo** veterinario con acceso al tambo, sin granularidad fina. Limitación conocida de esta fase.
+- `sireId` en `Animal` normalmente se completa copiando el valor del `ReproEvent.type = SERVICE` que resultó en el nacimiento — no es obligatorio cargarlo a mano si ya está en el evento de servicio.
+- `motherId` debe apuntar a un animal del mismo tenant (puede ser de otro tambo si se transfirió); `sireId` debe apuntar a un `Sire` del mismo tenant.
+- `WeightEvent` no usa patrón `VOIDED`/`corrects*Id`: no dispara consecuencias aguas abajo como sí lo hacen `HealthEvent`/`MilkingSession`. Un peso mal cargado se explica en `notes` de un registro nuevo.
+- `AnimalPhoto.reviewedAt`/`reviewedById` solo aplica a fotos `CONSULT`; intentar revisar una `PROFILE` es error 400.
+
 ## PartInstance
 
 1. **`bajadaNumber` vs `PartType.appliesPerBajada`**

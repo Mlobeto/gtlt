@@ -26,6 +26,9 @@ const createSchema = z.object({
     .optional(),
   photoUrl: z.string().max(2000).url().optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
+  breed: z.string().trim().max(120).optional().nullable(),
+  motherId: z.string().uuid().optional().nullable(),
+  sireId: z.string().uuid().optional().nullable(),
   clientMutationId: z.string().min(1).max(100).optional(),
 });
 
@@ -44,6 +47,9 @@ const patchSchema = z.object({
     .nullable(),
   photoUrl: z.string().max(2000).url().optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
+  breed: z.string().trim().max(120).optional().nullable(),
+  motherId: z.string().uuid().optional().nullable(),
+  sireId: z.string().uuid().optional().nullable(),
   clientMutationId: z.string().min(1).max(100).optional(),
   version: z.number().int().positive().optional(),
 });
@@ -67,6 +73,20 @@ function mapPrismaError(err: unknown): never {
 function dateOnly(d: Date | null | undefined): string | null {
   if (!d) return null;
   return d.toISOString().slice(0, 10);
+}
+
+/** motherId → debe existir en el mismo tenant (puede estar en otro tambo si se transfirió). */
+async function requireMotherInTenant(tenantId: string, motherId: string) {
+  const mother = await prisma.animal.findFirst({
+    where: { id: motherId, tenantId, deletedAt: null },
+  });
+  if (!mother) throw new HttpError(404, "Mother animal not found in this tenant");
+}
+
+/** sireId → debe existir en el catálogo Sire del mismo tenant. */
+async function requireSireInTenant(tenantId: string, sireId: string) {
+  const sire = await prisma.sire.findFirst({ where: { id: sireId, tenantId } });
+  if (!sire) throw new HttpError(404, "Sire not found in this tenant");
 }
 
 animalsRouter.get("/", authenticate, async (req, res) => {
@@ -192,6 +212,9 @@ animalsRouter.patch(
       throw new HttpError(409, "Conflict: animal was updated elsewhere (version mismatch)");
     }
 
+    if (data.motherId) await requireMotherInTenant(auth.tenantId, data.motherId);
+    if (data.sireId) await requireSireInTenant(auth.tenantId, data.sireId);
+
     try {
       const item = await prisma.animal.update({
         where: { id },
@@ -214,6 +237,9 @@ animalsRouter.patch(
             : {}),
           ...(data.photoUrl !== undefined ? { photoUrl: data.photoUrl } : {}),
           ...(data.notes !== undefined ? { notes: data.notes } : {}),
+          ...(data.breed !== undefined ? { breed: data.breed } : {}),
+          ...(data.motherId !== undefined ? { motherId: data.motherId } : {}),
+          ...(data.sireId !== undefined ? { sireId: data.sireId } : {}),
           ...(data.clientMutationId != null
             ? { clientMutationId: data.clientMutationId }
             : {}),
@@ -248,6 +274,9 @@ animalsRouter.post(
     const data = parsed.data;
     await requireTamboInTenant(auth, data.tamboId);
 
+    if (data.motherId) await requireMotherInTenant(auth.tenantId, data.motherId);
+    if (data.sireId) await requireSireInTenant(auth.tenantId, data.sireId);
+
     try {
       const animal = await prisma.animal.create({
         data: {
@@ -264,6 +293,9 @@ animalsRouter.post(
             : undefined,
           photoUrl: data.photoUrl,
           notes: data.notes,
+          breed: data.breed,
+          motherId: data.motherId ?? undefined,
+          sireId: data.sireId ?? undefined,
           clientMutationId: data.clientMutationId,
           createdById: auth.userId,
         },
@@ -274,3 +306,121 @@ animalsRouter.post(
     }
   },
 );
+
+/**
+ * Timeline unificado para la pantalla de ficha: junta HealthEvent, ReproEvent,
+ * AnimalTransferEvent, ControlLecheroLine, WeightEvent y AnimalPhoto en un solo
+ * array ordenado por fecha. `kind` identifica de qué tabla vino cada item.
+ * No es una tabla de eventos unificada, es una query que compone.
+ */
+animalsRouter.get("/:id/timeline", authenticate, async (req, res) => {
+  const auth = req.auth!;
+  const id = String(req.params.id);
+
+  const animal = await prisma.animal.findFirst({
+    where: { id, tenantId: auth.tenantId, deletedAt: null },
+  });
+  if (!animal) throw new HttpError(404, "Animal not found");
+  await requireTamboInTenant(auth, animal.tamboId);
+
+  const [healthEvents, reproEvents, transfers, controlLines, weightEvents, photos] =
+    await Promise.all([
+      prisma.healthEvent.findMany({
+        where: { tenantId: auth.tenantId, animalId: id, deletedAt: null },
+        orderBy: { eventAt: "desc" },
+        take: 100,
+      }),
+      prisma.reproEvent.findMany({
+        where: { tenantId: auth.tenantId, animalId: id, deletedAt: null },
+        orderBy: { eventAt: "desc" },
+        take: 100,
+      }),
+      prisma.animalTransferEvent.findMany({
+        where: { tenantId: auth.tenantId, animalId: id },
+        include: {
+          fromTambo: { select: { id: true, name: true } },
+          toTambo: { select: { id: true, name: true } },
+        },
+        orderBy: { transferredAt: "desc" },
+        take: 50,
+      }),
+      prisma.controlLecheroLine.findMany({
+        where: { tenantId: auth.tenantId, animalId: id },
+        include: {
+          controlLechero: { select: { id: true, performedAt: true, status: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      }),
+      prisma.weightEvent.findMany({
+        where: { tenantId: auth.tenantId, animalId: id },
+        orderBy: { measuredAt: "desc" },
+        take: 50,
+      }),
+      prisma.animalPhoto.findMany({
+        where: { tenantId: auth.tenantId, animalId: id },
+        orderBy: { takenAt: "desc" },
+        take: 50,
+      }),
+    ]);
+
+  const items = [
+    ...healthEvents.map((e) => ({
+      kind: "health" as const,
+      id: e.id,
+      at: e.eventAt.toISOString(),
+      type: e.type,
+      summary: e.productName ?? e.type,
+      notes: e.notes,
+      milkWithdrawalUntil: e.milkWithdrawalUntil?.toISOString() ?? null,
+    })),
+    ...reproEvents.map((e) => ({
+      kind: "repro" as const,
+      id: e.id,
+      at: e.eventAt.toISOString(),
+      type: e.type,
+      summary: e.type,
+      notes: e.notes,
+      expectedCalvingAt: dateOnly(e.expectedCalvingAt),
+      sireId: e.sireId,
+    })),
+    ...transfers.map((t) => ({
+      kind: "transfer" as const,
+      id: t.id,
+      at: t.transferredAt.toISOString(),
+      type: "TRANSFER",
+      summary: `${t.fromTambo.name} → ${t.toTambo.name}`,
+      notes: t.notes,
+    })),
+    ...controlLines
+      .filter((l) => l.controlLechero.status === "ACTIVE")
+      .map((l) => ({
+        kind: "control" as const,
+        id: l.id,
+        at: l.controlLechero.performedAt.toISOString(),
+        type: "CONTROL_LECHERO",
+        summary: `Bajada ${l.bajadaNumber} · ${l.liters} L`,
+        notes: null as string | null,
+      })),
+    ...weightEvents.map((w) => ({
+      kind: "weight" as const,
+      id: w.id,
+      at: w.measuredAt.toISOString(),
+      type: w.method,
+      summary: `${w.weightKg} kg`,
+      notes: w.notes,
+    })),
+    ...photos.map((p) => ({
+      kind: "photo" as const,
+      id: p.id,
+      at: p.takenAt.toISOString(),
+      type: p.type,
+      summary: p.type === "CONSULT" ? "Foto de consulta" : "Foto de perfil",
+      notes: p.note,
+      photoUrl: p.photoUrl,
+      reviewedAt: p.reviewedAt?.toISOString() ?? null,
+    })),
+  ].sort((a, b) => (a.at < b.at ? 1 : -1));
+
+  res.json({ items });
+});

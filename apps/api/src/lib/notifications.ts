@@ -60,3 +60,54 @@ export async function notifyOwners(
     ),
   );
 }
+
+/** Veterinarios ACTIVE con MembershipTambo para este tambo puntual (VETERINARIO nunca tiene acceso a todos). */
+export async function listVeterinarioUserIdsForTambo(
+  tenantId: string,
+  tamboId: string,
+): Promise<string[]> {
+  const memberships = await prisma.membership.findMany({
+    where: {
+      tenantId,
+      status: "ACTIVE",
+      roles: { has: "VETERINARIO" },
+      tambos: { some: { tamboId } },
+    },
+    select: { userId: true },
+  });
+  return [...new Set(memberships.map((m) => m.userId))];
+}
+
+/**
+ * Dueños/admins del tenant + veterinarios con acceso a este tambo puntual.
+ * Sin granularidad fina todavía: todo veterinario con acceso al tambo recibe la notificación
+ * (ver limitación conocida en reglas-negocio-app.md).
+ */
+export async function notifyOwnersAndTamboVets(
+  tenantId: string,
+  tamboId: string,
+  input: Omit<NotifyInput, "userId" | "tenantId" | "tamboId"> & { excludeUserId?: string },
+) {
+  const [ownerAdminIds, vetIds] = await Promise.all([
+    listOwnerAdminUserIds(tenantId),
+    listVeterinarioUserIdsForTambo(tenantId, tamboId),
+  ]);
+  const targets = [...new Set([...ownerAdminIds, ...vetIds])].filter(
+    (id) => id !== input.excludeUserId,
+  );
+  if (targets.length === 0) return [];
+
+  return Promise.all(
+    targets.map((userId) =>
+      createNotification({
+        tenantId,
+        userId,
+        tamboId,
+        type: input.type,
+        title: input.title,
+        body: input.body,
+        payload: input.payload,
+      }),
+    ),
+  );
+}
