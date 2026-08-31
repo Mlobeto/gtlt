@@ -294,6 +294,9 @@ model Membership {
   status      MembershipStatus @default(ACTIVE)
   /// Ej. "Lobeto Tambos" — no es entidad Fabricante todavía.
   companyName String?          @map("company_name")
+  /// Token de invitación random, de un solo uso (se limpia al aceptar). Ver reglas-negocio-app.md.
+  inviteToken          String?   @unique @map("invite_token")
+  inviteTokenExpiresAt DateTime? @map("invite_token_expires_at")
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 

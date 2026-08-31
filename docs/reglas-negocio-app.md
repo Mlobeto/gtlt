@@ -48,6 +48,7 @@ Aplica a `MilkingSession`, `ControlLechero` (header) y `MilkDelivery`:
 - `Membership.status`: `PENDING` (invitación) | `ACTIVE`. Login solo con `ACTIVE`.
 - API: sesión solo-`TECNICO` tiene **lista blanca** de recursos (`part-types`, `part-instances`, `service-requests`, `tambos`, `auth`). Animales/producción/sanidad/repro denegados a nivel guard global.
 - **Pendiente:** invitar/activar `TAMBERO` desde el dueño (análogo a `invite-technician` en `memberships.ts`, hoy solo existe para `TECNICO`). El dueño debe poder dar de alta más de un tambero.
+- **Aceptación de invitación (`POST /memberships/accept-invite/register`) requiere `inviteToken`** — no `tenantId` + email/teléfono. El token se genera en `POST /invite-technician` (32 bytes random, hex), expira a los **7 días** y es de **un solo uso** (se limpia al aceptar). Hoy se entrega manualmente (viaja en la respuesta HTTP del endpoint de invitación, campo `inviteToken`); cuando exista envío automático por email/WhatsApp, ese campo debe dejar de viajar en la respuesta.
 
 ## Veterinario — acceso dual (pendiente de diseño)
 

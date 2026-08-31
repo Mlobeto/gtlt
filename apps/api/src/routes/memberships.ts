@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
+import crypto from "node:crypto";
 import { prisma } from "../lib/prisma.js";
 import { HttpError } from "../lib/http-error.js";
 import { requireTamboInTenant } from "../lib/tambo-scope.js";
@@ -68,6 +69,9 @@ membershipsRouter.post(
       });
     }
 
+    const inviteToken = crypto.randomBytes(32).toString("hex");
+    const inviteTokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 días
+
     const membership = await prisma.membership.upsert({
       where: {
         tenantId_userId: { tenantId: auth.tenantId, userId: user.id },
@@ -78,11 +82,15 @@ membershipsRouter.post(
         roles: ["TECNICO"],
         status: "PENDING",
         companyName: data.companyName,
+        inviteToken,
+        inviteTokenExpiresAt,
       },
       update: {
         roles: ["TECNICO"],
         status: "PENDING",
         companyName: data.companyName ?? undefined,
+        inviteToken,
+        inviteTokenExpiresAt,
       },
       include: { tambos: true },
     });
@@ -106,7 +114,13 @@ membershipsRouter.post(
       },
     });
 
-    res.status(201).json({ item: full });
+    res.status(201).json({
+      item: full,
+      // TODO: hoy se entrega a mano/por WhatsApp; cuando haya envío de email automático
+      // (docs/reglas-negocio-app.md), sacar este campo de la respuesta HTTP y mandarlo
+      // solo por el canal privado.
+      inviteToken,
+    });
   },
 );
 
@@ -173,20 +187,16 @@ membershipsRouter.post(
 
 /**
  * Registro+aceptación para invitado stub (sin password aún).
- * Body: email|phone + password + tenantId.
+ * Body: inviteToken (generado en /invite-technician) + password.
+ * No confiar en tenantId/email/phone del body como prueba de identidad — el
+ * token de invitación de un solo uso es lo único que identifica la membership.
  */
 membershipsRouter.post("/accept-invite/register", async (req, res) => {
-  const schema = z
-    .object({
-      tenantId: z.string().uuid(),
-      email: z.string().email().optional(),
-      phone: z.string().trim().min(6).max(40).optional(),
-      password: z.string().min(6).max(100),
-      name: z.string().trim().min(1).max(120).optional(),
-    })
-    .refine((d) => Boolean(d.email || d.phone), {
-      message: "email or phone required",
-    });
+  const schema = z.object({
+    inviteToken: z.string().min(32),
+    password: z.string().min(6).max(100),
+    name: z.string().trim().min(1).max(120).optional(),
+  });
 
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
@@ -195,34 +205,21 @@ membershipsRouter.post("/accept-invite/register", async (req, res) => {
   }
 
   const data = parsed.data;
-  const user =
-    (data.email
-      ? await prisma.user.findUnique({ where: { email: data.email } })
-      : null) ??
-    (data.phone
-      ? await prisma.user.findFirst({ where: { phone: data.phone } })
-      : null);
-
-  if (!user) {
-    throw new HttpError(404, "No invitation found for this contact");
-  }
-
   const membership = await prisma.membership.findUnique({
-    where: {
-      tenantId_userId: { tenantId: data.tenantId, userId: user.id },
-    },
+    where: { inviteToken: data.inviteToken },
+    include: { user: true },
   });
 
-  if (!membership || !membership.roles.includes("TECNICO")) {
-    throw new HttpError(404, "No technician invitation for this tenant");
+  if (!membership || membership.status === "ACTIVE") {
+    throw new HttpError(404, "Invalid or already-used invitation");
   }
-  if (membership.status === "ACTIVE" && user.passwordHash) {
-    throw new HttpError(409, "Invitation already accepted; use login");
+  if (!membership.inviteTokenExpiresAt || membership.inviteTokenExpiresAt < new Date()) {
+    throw new HttpError(410, "Invitation expired");
   }
 
   const passwordHash = await bcrypt.hash(data.password, 10);
   await prisma.user.update({
-    where: { id: user.id },
+    where: { id: membership.user.id },
     data: {
       passwordHash,
       ...(data.name ? { name: data.name } : {}),
@@ -231,7 +228,7 @@ membershipsRouter.post("/accept-invite/register", async (req, res) => {
 
   const updated = await prisma.membership.update({
     where: { id: membership.id },
-    data: { status: "ACTIVE" },
+    data: { status: "ACTIVE", inviteToken: null, inviteTokenExpiresAt: null },
     include: {
       user: { select: { id: true, email: true, phone: true, name: true } },
       tambos: { select: { tamboId: true } },
