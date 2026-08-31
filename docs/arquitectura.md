@@ -149,7 +149,7 @@ Fuente de verdad: `apps/api/prisma/schema.prisma`. Detalle de campos: [erd.md](.
 
 ### Animales
 
-- `Animal` — ficha; `earTag` visual; `photoUrl` (URL storage TBD, foto de tapa/resumen); `tamboId` **mutable**; `breed` texto libre; `motherId`/`sireId` genealogía
+- `Animal` — ficha; `earTag` visual; `photoUrl` (Azure Blob Storage, `gtlt-photos`; sube desde mobile vía `POST /uploads/photo`); `tamboId` **mutable**; `breed` texto libre; `motherId`/`sireId` genealogía
 - Unicidad: `(tambo_id, ear_tag)` entre `ACTIVE`/`DRY` (índice parcial)  
 - `AnimalTransferEvent` — historial append-only de cambio de tambo dentro del tenant  
 - Eventos históricos **conservan** el `tambo_id` del momento de carga
@@ -344,11 +344,11 @@ gtlt/
 - [ ] Endurecer mobile (WatermelonDB o sync protocol v1)  
 - [x] API + mobile tambero: ReproEvent, MilkDelivery, ControlLechero; ordeñe con retiros en turno, sanidad mastitis/tratamiento, corrección litros, sync auto al recuperar señal  
 - [ ] Spike voz nativa: wake word **GTLT** (Porcupine) + STT — ver `docs/ux-usuario.md`. Requiere **development build** (no Expo Go).  
-- [ ] Definir proveedor de storage para `photoUrl` (hoy la ficha mobile guarda foto **local**; sync de imagen a nube pendiente)  
+- [x] Storage de fotos (Azure Blob Storage, cuenta `innomediaprod` / contenedor `gtlt-photos`): `POST /uploads/photo` (multer + `@azure/storage-blob`, auth vía `DefaultAzureCredential`/managed identity) + mobile sube la foto local al hacer sync y guarda la URL en `Animal.photoUrl`. `AnimalPhoto` (fotos de consulta) ya tiene botón en la ficha mobile (📷 Agregar foto de consulta), offline-first igual que sanidad/repro/peso.  
 - [x] Ficha animal mobile: listado, alta/edición, historial sanidad/repro, foto local (`GET/PATCH /animals/:id`)  
 - [x] Rol `TECNICO` + invitación + `ServiceRequest` + guard whitelist + `PartInstance` API  
 - [x] Service: urgencia, aprobación dueño por tambo, bandeja in-app (`Notification`)  
-- [x] Ficha animal: genealogía (`Sire`, `motherId`/`sireId`/`breed`), `AnimalPhoto` (perfil/consulta + notificación a vet), `WeightEvent`, `GET /animals/:id/timeline` (API únicamente; mobile pendiente)
+- [x] Ficha animal: genealogía (`Sire`, `motherId`/`sireId`/`breed`), `AnimalPhoto` (perfil/consulta + notificación a vet, con UI mobile), `WeightEvent`, `GET /animals/:id/timeline` (API + mobile)
 - [ ] Adjuntos service (foto/audio) + storage cloud  
 - [ ] RLS Postgres (post-MVP datos reales)  
 - [x] Modelo de datos `Plan` / `Subscription` / `Payment` (ver [pricing-model.md](./pricing-model.md))

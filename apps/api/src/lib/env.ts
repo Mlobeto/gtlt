@@ -14,4 +14,7 @@ export const env = {
   jwtSecret: required("JWT_SECRET"),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
   nodeEnv: process.env.NODE_ENV ?? "development",
+  /// Storage de fotos (Azure Blob Storage). Opcional: si falta, /uploads/photo responde 503.
+  azureStorageAccountName: process.env.AZURE_STORAGE_ACCOUNT_NAME ?? null,
+  azureStorageContainer: process.env.AZURE_STORAGE_CONTAINER_NAME ?? "gtlt-photos",
 };

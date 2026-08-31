@@ -209,6 +209,48 @@ export function createWeightEvent(
   });
 }
 
+/** Sube una foto local (uri del celular) a Azure Blob Storage y devuelve su URL pública. */
+export async function uploadPhoto(token: string, localUri: string): Promise<{ url: string }> {
+  const filename = localUri.split("/").pop() || "photo.jpg";
+  const ext = filename.split(".").pop()?.toLowerCase();
+  const type = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+
+  const form = new FormData();
+  // React Native FormData: objeto con uri/name/type en vez de un Blob real.
+  form.append("file", { uri: localUri, name: filename, type } as unknown as Blob);
+
+  const res = await fetch(`${API_URL}/uploads/photo`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new ApiError(body.error ?? `HTTP ${res.status}`, res.status, body.code);
+  }
+  return body;
+}
+
+/** Registra una foto (perfil o consulta) ya subida (photoUrl resuelta) para un animal. */
+export function createAnimalPhoto(
+  token: string,
+  animalId: string,
+  payload: {
+    photoUrl: string;
+    type: "PROFILE" | "CONSULT";
+    note?: string;
+    takenAt: string;
+    clientMutationId?: string;
+  },
+) {
+  return request<{ item: { id: string } }>(`/animals/${animalId}/photos`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
 export function fetchActiveWithdrawals(token: string, tamboId: string) {
   return request<{
     items: {

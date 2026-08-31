@@ -44,6 +44,7 @@ import {
   getDb,
   getLocalAnimal,
   listActiveWithdrawalsLocal,
+  listAnimalPhotosForAnimal,
   listAnimals,
   listHealthEventsForAnimal,
   listLocalControlLecheros,
@@ -69,6 +70,7 @@ import {
   fullSync,
   pullServerState,
   queueAnimalCreateOffline,
+  queueAnimalPhotoOffline,
   queueAnimalUpdateOffline,
   queueControlLecheroOffline,
   queueHealthEventOffline,
@@ -810,6 +812,7 @@ export default function App() {
       listReproEventsForAnimal(id),
       listWeightEventsForAnimal(id),
     ]);
+    const photos = await listAnimalPhotosForAnimal(id);
     setPregnancy(derivePregnancy(repro));
 
     const localHistory: AnimalHistoryItem[] = [
@@ -834,6 +837,13 @@ export default function App() {
         label: `Peso: ${w.weight_kg} kg`,
         detail: w.pending ? "Falta enviar" : undefined,
       })),
+      ...photos.map((p) => ({
+        kind: "photo",
+        id: p.id,
+        at: p.taken_at,
+        label: p.type === "CONSULT" ? "Foto de consulta" : "Foto de perfil",
+        detail: p.pending ? "Falta enviar" : undefined,
+      })),
     ];
 
     if (session && onlineRef.current) {
@@ -855,8 +865,17 @@ export default function App() {
             label: `Peso: ${w.weight_kg} kg`,
             detail: "Falta enviar",
           }));
-        const merged = [...serverItems, ...pendingLocalWeights].sort((a, b) =>
-          a.at < b.at ? 1 : -1,
+        const pendingLocalPhotos = photos
+          .filter((p) => p.pending === 1)
+          .map((p) => ({
+            kind: "photo",
+            id: p.id,
+            at: p.taken_at,
+            label: p.type === "CONSULT" ? "Foto de consulta" : "Foto de perfil",
+            detail: "Falta enviar",
+          }));
+        const merged = [...serverItems, ...pendingLocalWeights, ...pendingLocalPhotos].sort(
+          (a, b) => (a.at < b.at ? 1 : -1),
         );
         setAnimalHistory(merged);
         setScreen("animalDetail");
@@ -971,7 +990,7 @@ export default function App() {
           photoLocalUri: formPhotoUri,
         });
         await refreshLocal(session.tamboId);
-        setStatus("Vaca guardada. La foto queda en el teléfono hasta tener storage.");
+        setStatus("Vaca guardada. La foto se sube sola cuando haya señal.");
         await openAnimalDetail(id);
       } else if (selectedAnimalId && animalDetail) {
         await queueAnimalUpdateOffline({
@@ -1037,6 +1056,44 @@ export default function App() {
       await openAnimalDetail(selectedAnimalId);
     } catch {
       setStatus("No se pudo guardar el peso.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Foto de consulta: cámara primero, galería si no hay permiso o se cancela. */
+  async function handleAddConsultPhoto() {
+    if (!session || !selectedAnimalId) return;
+
+    const cam = await ImagePicker.requestCameraPermissionsAsync();
+    let uri: string | null = null;
+    if (cam.granted) {
+      const shot = await ImagePicker.launchCameraAsync({ quality: 0.6, allowsEditing: false });
+      if (!shot.canceled && shot.assets[0]?.uri) uri = shot.assets[0].uri;
+    }
+    if (!uri) {
+      const gallery = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!gallery.granted) {
+        setStatus("Necesitamos permiso de cámara o galería para la foto.");
+        return;
+      }
+      const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.6, allowsEditing: false });
+      if (!picked.canceled && picked.assets[0]?.uri) uri = picked.assets[0].uri;
+    }
+    if (!uri) return;
+
+    setBusy(true);
+    try {
+      await queueAnimalPhotoOffline({
+        tamboId: session.tamboId,
+        animalId: selectedAnimalId,
+        photoLocalUri: uri,
+        type: "CONSULT",
+      });
+      setStatus("Foto guardada. Se sube sola cuando haya señal.");
+      await openAnimalDetail(selectedAnimalId);
+    } catch {
+      setStatus("No se pudo guardar la foto.");
     } finally {
       setBusy(false);
     }
@@ -1834,6 +1891,13 @@ export default function App() {
                       </Pressable>
                     </View>
                   ) : null}
+                  <Pressable
+                    style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                    onPress={() => void handleAddConsultPhoto()}
+                    disabled={busy}
+                  >
+                    <Text style={styles.buttonSecondaryText}>📷 Agregar foto de consulta</Text>
+                  </Pressable>
                   <Text style={styles.sectionInCard}>Historial</Text>
                   {animalHistory.length === 0 ? (
                     <Text style={styles.empty}>
@@ -1998,7 +2062,7 @@ export default function App() {
                     <Image source={{ uri: formPhotoUri }} style={styles.animalPhoto} />
                   ) : (
                     <Text style={styles.help}>
-                      La foto queda en el teléfono. Más adelante se sube al servidor.
+                      La foto se guarda en el teléfono y se sube sola cuando haya señal.
                     </Text>
                   )}
                   <Pressable

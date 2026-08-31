@@ -15,11 +15,14 @@ import {
   fetchReproEvents,
   updateAnimal,
   createWeightEvent,
+  uploadPhoto,
+  createAnimalPhoto,
 } from "./api";
 import {
   countPendingOutbox,
   enqueueOutbox,
   findActiveMilkingSession,
+  getLocalAnimal,
   listPendingOutbox,
   markOutboxError,
   markOutboxSynced,
@@ -30,6 +33,7 @@ import {
   replaceSyncedReproEvents,
   replaceSyncedWithdrawals,
   markAnimalSynced,
+  markAnimalPhotoUrl,
   upsertLocalAnimal,
   upsertLocalControlLechero,
   upsertLocalHealthEvent,
@@ -38,6 +42,8 @@ import {
   upsertLocalReproEvent,
   upsertLocalWeightEvent,
   markWeightEventSynced,
+  upsertLocalAnimalPhoto,
+  markAnimalPhotoSynced,
 } from "./db";
 
 function dateOnly(v: string | Date | null | undefined): string | null {
@@ -52,6 +58,29 @@ function toNum(v: string | number): number {
 
 function sessionDateOnly(isoOrDate: string): string {
   return isoOrDate.slice(0, 10);
+}
+
+/**
+ * Si el animal tiene una foto local todavía no subida, la sube a Blob Storage
+ * y devuelve la URL resultante. Sin señal o error: sigue sin foto por ahora,
+ * se reintenta en el próximo sync (no bloquea el resto de la sincronización).
+ */
+async function resolvePhotoUrl(
+  token: string,
+  animalId: string,
+  fallbackUrl: string | null,
+): Promise<string | null> {
+  const local = await getLocalAnimal(animalId);
+  if (!local?.photo_local_uri || local.photo_url) {
+    return fallbackUrl;
+  }
+  try {
+    const { url } = await uploadPhoto(token, local.photo_local_uri);
+    await markAnimalPhotoUrl(animalId, url);
+    return url;
+  } catch {
+    return fallbackUrl;
+  }
 }
 
 export async function pullServerState(
@@ -371,6 +400,41 @@ export async function queueWeightEventOffline(input: {
   return id;
 }
 
+export async function queueAnimalPhotoOffline(input: {
+  tamboId: string;
+  animalId: string;
+  photoLocalUri: string;
+  type: "PROFILE" | "CONSULT";
+  note?: string;
+}): Promise<string> {
+  const id = Crypto.randomUUID();
+  const takenAt = new Date().toISOString();
+  const payload = {
+    id,
+    tamboId: input.tamboId,
+    animalId: input.animalId,
+    photoLocalUri: input.photoLocalUri,
+    type: input.type,
+    note: input.note,
+    takenAt,
+    clientMutationId: id,
+  };
+
+  await upsertLocalAnimalPhoto({
+    id,
+    tambo_id: input.tamboId,
+    animal_id: input.animalId,
+    photo_local_uri: input.photoLocalUri,
+    photo_url: null,
+    type: input.type,
+    note: input.note ?? null,
+    taken_at: takenAt,
+    pending: 1,
+  });
+  await enqueueOutbox(id, "AnimalPhoto", payload);
+  return id;
+}
+
 export async function queueMilkingSessionOffline(input: {
   tamboId: string;
   sessionDate: string;
@@ -581,7 +645,8 @@ export async function pushOutbox(token: string): Promise<{
         const payload = JSON.parse(row.payload) as Parameters<
           typeof createAnimal
         >[1];
-        await createAnimal(token, payload);
+        const photoUrl = await resolvePhotoUrl(token, payload.id, null);
+        await createAnimal(token, { ...payload, photoUrl });
       } else if (row.entity === "AnimalUpdate") {
         const payload = JSON.parse(row.payload) as {
           id: string;
@@ -604,7 +669,7 @@ export async function pushOutbox(token: string): Promise<{
           breed: payload.breed,
           motherId: payload.motherId,
           sireId: payload.sireId,
-          photoUrl: payload.photoUrl,
+          photoUrl: await resolvePhotoUrl(token, payload.id, payload.photoUrl ?? null),
           version: payload.version,
           clientMutationId: payload.clientMutationId,
         });
@@ -619,6 +684,28 @@ export async function pushOutbox(token: string): Promise<{
         await createWeightEvent(token, payload);
         await markOutboxSynced(row.mutation_id);
         await markWeightEventSynced(payload.id ?? row.mutation_id);
+        synced += 1;
+        continue;
+      } else if (row.entity === "AnimalPhoto") {
+        const payload = JSON.parse(row.payload) as {
+          id: string;
+          animalId: string;
+          photoLocalUri: string;
+          type: "PROFILE" | "CONSULT";
+          note?: string;
+          takenAt: string;
+          clientMutationId: string;
+        };
+        const { url } = await uploadPhoto(token, payload.photoLocalUri);
+        await createAnimalPhoto(token, payload.animalId, {
+          photoUrl: url,
+          type: payload.type,
+          note: payload.note,
+          takenAt: payload.takenAt,
+          clientMutationId: payload.clientMutationId,
+        });
+        await markOutboxSynced(row.mutation_id);
+        await markAnimalPhotoSynced(payload.id, url);
         synced += 1;
         continue;
       } else {

@@ -21,6 +21,7 @@ import { adminRouter } from "./routes/admin-tenants.js";
 import { weightEventsRouter } from "./routes/weight-events.js";
 import { animalPhotosRouter } from "./routes/animal-photos.js";
 import { siresRouter } from "./routes/sires.js";
+import { uploadsRouter } from "./routes/uploads.js";
 import { softAuthenticate } from "./middleware/soft-authenticate.js";
 import { technicianResourceGuard } from "./middleware/technician-guard.js";
 
@@ -59,6 +60,7 @@ export function createApp() {
   app.use("/device", flowSessionsDeviceRouter);
   app.use("/flow-sessions", flowSessionsRouter);
   app.use("/admin", adminRouter);
+  app.use("/uploads", uploadsRouter);
 
   app.use(
     (
@@ -67,7 +69,7 @@ export function createApp() {
       res: express.Response,
       _next: express.NextFunction,
     ) => {
-      const status = err.status ?? 500;
+      const status = err.status ?? (err.name === "MulterError" ? 400 : 500);
       if (status >= 500) {
         console.error(err);
       }

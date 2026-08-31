@@ -110,6 +110,18 @@ export function getDb() {
           pending INTEGER NOT NULL DEFAULT 0
         );
 
+        CREATE TABLE IF NOT EXISTS animal_photos_local (
+          id TEXT PRIMARY KEY NOT NULL,
+          tambo_id TEXT NOT NULL,
+          animal_id TEXT NOT NULL,
+          photo_local_uri TEXT NOT NULL,
+          photo_url TEXT,
+          type TEXT NOT NULL DEFAULT 'CONSULT',
+          note TEXT,
+          taken_at TEXT NOT NULL,
+          pending INTEGER NOT NULL DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS outbox (
           mutation_id TEXT PRIMARY KEY NOT NULL,
           entity TEXT NOT NULL,
@@ -216,6 +228,18 @@ export type LocalWeightEvent = {
   notes: string | null;
   pending: number;
   ear_tag?: string;
+};
+
+export type LocalAnimalPhoto = {
+  id: string;
+  tambo_id: string;
+  animal_id: string;
+  photo_local_uri: string;
+  photo_url: string | null;
+  type: string;
+  note: string | null;
+  taken_at: string;
+  pending: number;
 };
 
 export type OutboxRow = {
@@ -434,6 +458,47 @@ export async function markWeightEventSynced(id: string): Promise<void> {
   await db.runAsync("UPDATE weight_events_local SET pending = 0 WHERE id = ?", [
     id,
   ]);
+}
+
+export async function listAnimalPhotosForAnimal(
+  animalId: string,
+): Promise<LocalAnimalPhoto[]> {
+  const db = await getDb();
+  return db.getAllAsync<LocalAnimalPhoto>(
+    "SELECT * FROM animal_photos_local WHERE animal_id = ? ORDER BY taken_at DESC",
+    [animalId],
+  );
+}
+
+export async function upsertLocalAnimalPhoto(photo: LocalAnimalPhoto): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT INTO animal_photos_local
+      (id, tambo_id, animal_id, photo_local_uri, photo_url, type, note, taken_at, pending)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+      photo_url = excluded.photo_url,
+      pending = excluded.pending`,
+    [
+      photo.id,
+      photo.tambo_id,
+      photo.animal_id,
+      photo.photo_local_uri,
+      photo.photo_url,
+      photo.type,
+      photo.note,
+      photo.taken_at,
+      photo.pending,
+    ],
+  );
+}
+
+export async function markAnimalPhotoSynced(id: string, photoUrl: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    "UPDATE animal_photos_local SET pending = 0, photo_url = ? WHERE id = ?",
+    [photoUrl, id],
+  );
 }
 
 export async function replaceSyncedWithdrawals(
@@ -889,6 +954,12 @@ export async function markOutboxSynced(mutationId: string): Promise<void> {
 export async function markAnimalSynced(animalId: string): Promise<void> {
   const db = await getDb();
   await db.runAsync("UPDATE animals SET pending = 0 WHERE id = ?", [animalId]);
+}
+
+/** Marca la foto local como ya subida — evita resubirla en cada sync. */
+export async function markAnimalPhotoUrl(animalId: string, photoUrl: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE animals SET photo_url = ? WHERE id = ?", [photoUrl, animalId]);
 }
 
 export async function markOutboxError(
