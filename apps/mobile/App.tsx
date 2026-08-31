@@ -20,10 +20,13 @@ import {
   ApiError,
   acceptTechnicianInviteRegister,
   approveServiceRequest,
+  createPartInstance,
   createServiceRequest,
   createSire,
   fetchAnimalTimeline,
   fetchNotifications,
+  fetchPartInstances,
+  fetchPartTypes,
   fetchServiceRequests,
   fetchSires,
   fetchTambos,
@@ -34,8 +37,12 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
   rejectServiceRequest,
+  replacePartInstance,
   updateTamboSettings,
+  uploadPhoto,
   type AppNotification,
+  type PartInstanceItem,
+  type PartTypeItem,
   type ServiceRequestItem,
 } from "./src/api";
 import { TechnicianHome } from "./src/TechnicianHome";
@@ -102,6 +109,8 @@ type Screen =
   | "animals"
   | "animalDetail"
   | "animalForm"
+  | "parts"
+  | "partForm"
   | "service"
   | "notifications";
 
@@ -133,6 +142,12 @@ const MENU = [
     emoji: "❌",
     label: "Retiros",
     hint: "Leche que no se puede mezclar",
+  },
+  {
+    key: "parts" as const,
+    emoji: "⚙️",
+    label: "Equipo",
+    hint: "Piezas de ordeñe y frío",
   },
   {
     key: "service" as const,
@@ -279,6 +294,15 @@ export default function App() {
   const [pendingApprovals, setPendingApprovals] = useState<ServiceRequestItem[]>(
     [],
   );
+  const [partTypes, setPartTypes] = useState<PartTypeItem[]>([]);
+  const [parts, setParts] = useState<PartInstanceItem[]>([]);
+  const [partFormMode, setPartFormMode] = useState<"create" | "replace">("create");
+  const [replacingPartId, setReplacingPartId] = useState<string | null>(null);
+  const [partTypeId, setPartTypeId] = useState<string | null>(null);
+  const [partBajada, setPartBajada] = useState("1");
+  const [partBrandModel, setPartBrandModel] = useState("");
+  const [partNotes, setPartNotes] = useState("");
+  const [partPhotoUri, setPartPhotoUri] = useState<string | null>(null);
 
   const sessionRef = useRef<Session | null>(null);
   const onlineRef = useRef(true);
@@ -1099,6 +1123,121 @@ export default function App() {
     }
   }
 
+  async function loadParts() {
+    if (!session) return;
+    try {
+      const [partsRes, typesRes] = await Promise.all([
+        fetchPartInstances(session.token, session.tamboId),
+        partTypes.length > 0 ? Promise.resolve({ items: partTypes }) : fetchPartTypes(session.token),
+      ]);
+      setParts(partsRes.items);
+      setPartTypes(typesRes.items);
+    } catch {
+      setStatus("No se pudo cargar el equipo. Revisá la señal.");
+    }
+  }
+
+  function openPartsScreen() {
+    setScreen("parts");
+    void loadParts();
+  }
+
+  function selectedPartType(): PartTypeItem | null {
+    return partTypes.find((t) => t.id === partTypeId) ?? null;
+  }
+
+  function openPartCreateForm() {
+    setPartFormMode("create");
+    setReplacingPartId(null);
+    setPartTypeId(partTypes[0]?.id ?? null);
+    setPartBajada("1");
+    setPartBrandModel("");
+    setPartNotes("");
+    setPartPhotoUri(null);
+    setScreen("partForm");
+  }
+
+  function openPartReplaceForm(part: PartInstanceItem) {
+    setPartFormMode("replace");
+    setReplacingPartId(part.id);
+    setPartTypeId(part.partType.id);
+    setPartBajada(part.bajadaNumber != null ? String(part.bajadaNumber) : "1");
+    setPartBrandModel(part.brandModel ?? "");
+    setPartNotes("");
+    setPartPhotoUri(null);
+    setScreen("partForm");
+  }
+
+  async function pickPartPhoto() {
+    const cam = await ImagePicker.requestCameraPermissionsAsync();
+    if (cam.granted) {
+      const shot = await ImagePicker.launchCameraAsync({ quality: 0.6, allowsEditing: false });
+      if (!shot.canceled && shot.assets[0]?.uri) {
+        setPartPhotoUri(shot.assets[0].uri);
+        return;
+      }
+    }
+    const gallery = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!gallery.granted) {
+      setStatus("Necesitamos permiso de cámara o galería para la foto.");
+      return;
+    }
+    const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.6, allowsEditing: false });
+    if (!picked.canceled && picked.assets[0]?.uri) {
+      setPartPhotoUri(picked.assets[0].uri);
+    }
+  }
+
+  async function handleSavePart() {
+    if (!session) return;
+    if (!online) {
+      setStatus("Para cargar equipo hace falta señal.");
+      return;
+    }
+    const partType = selectedPartType();
+    if (!partType) {
+      setStatus("Elegí qué pieza es.");
+      return;
+    }
+    const bajadaNumber = partType.appliesPerBajada ? Number(partBajada) : null;
+    if (partType.appliesPerBajada && (!Number.isFinite(bajadaNumber) || (bajadaNumber as number) < 1)) {
+      setStatus("Anotá el número de bajada.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      let photoUrl: string | null = null;
+      if (partPhotoUri) {
+        const uploaded = await uploadPhoto(session.token, partPhotoUri);
+        photoUrl = uploaded.url;
+      }
+
+      const payload = {
+        partTypeId: partType.id,
+        bajadaNumber,
+        installedAt: new Date().toISOString(),
+        brandModel: partBrandModel.trim() || null,
+        photoUrl,
+        notes: partNotes.trim() || null,
+      };
+
+      if (partFormMode === "create") {
+        await createPartInstance(session.token, { ...payload, tamboId: session.tamboId });
+        setStatus("Pieza cargada.");
+      } else if (replacingPartId) {
+        await replacePartInstance(session.token, replacingPartId, payload);
+        setStatus("Pieza reemplazada.");
+      }
+      await loadParts();
+      setScreen("parts");
+    } catch {
+      setStatus("No se pudo guardar la pieza. Revisá la señal.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleQueueControl() {
     if (!session) return;
     const animal = animals.find((a) => a.ear_tag === controlEarTag.trim());
@@ -1381,13 +1520,17 @@ export default function App() {
                           ? "animalDetail"
                           : "animals",
                       );
+                    } else if (screen === "partForm") {
+                      setScreen("parts");
                     } else {
                       goHome();
                     }
                   }}
                 >
                   <Text style={styles.backText}>
-                    {screen === "animalDetail" || screen === "animalForm"
+                    {screen === "animalDetail" ||
+                    screen === "animalForm" ||
+                    screen === "partForm"
                       ? "← Volver"
                       : "← Volver al inicio"}
                   </Text>
@@ -1407,6 +1550,9 @@ export default function App() {
                         setScreen(item.key);
                         if (item.key === "notifications" && session) {
                           void loadNotifications(session);
+                        }
+                        if (item.key === "parts" && session) {
+                          void loadParts();
                         }
                       }}
                     >
@@ -2080,6 +2226,132 @@ export default function App() {
                   <Pressable
                     style={[styles.button, busy && styles.buttonDisabled]}
                     onPress={() => void handleSaveAnimal()}
+                    disabled={busy}
+                  >
+                    <Text style={styles.buttonText}>Guardar</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+
+              {screen === "parts" ? (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>⚙️ Equipo de ordeñe y frío</Text>
+                  <Text style={styles.help}>Piezas vigentes de este tambo.</Text>
+                  {status ? (
+                    <View style={styles.feedback}>
+                      <Text style={styles.feedbackText}>{status}</Text>
+                    </View>
+                  ) : null}
+                  <Pressable
+                    style={[styles.button, busy && styles.buttonDisabled]}
+                    onPress={openPartCreateForm}
+                    disabled={busy}
+                  >
+                    <Text style={styles.buttonText}>+ Nueva pieza</Text>
+                  </Pressable>
+                  {parts.length === 0 ? (
+                    <Text style={styles.empty}>Todavía no hay piezas cargadas.</Text>
+                  ) : (
+                    parts.map((p) => (
+                      <View key={p.id} style={styles.item}>
+                        <Text style={styles.itemTitle}>
+                          {p.partType.name}
+                          {p.bajadaNumber != null ? ` · bajada ${p.bajadaNumber}` : ""}
+                        </Text>
+                        {p.brandModel ? (
+                          <Text style={styles.itemMeta}>{p.brandModel}</Text>
+                        ) : null}
+                        <Text style={styles.itemMeta}>
+                          Instalada: {new Date(p.installedAt).toLocaleDateString("es-AR")}
+                        </Text>
+                        {p.photoUrl ? (
+                          <Image source={{ uri: p.photoUrl }} style={styles.animalPhoto} />
+                        ) : null}
+                        <Pressable
+                          style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                          onPress={() => openPartReplaceForm(p)}
+                          disabled={busy}
+                        >
+                          <Text style={styles.buttonSecondaryText}>Reemplazar</Text>
+                        </Pressable>
+                      </View>
+                    ))
+                  )}
+                </View>
+              ) : null}
+
+              {screen === "partForm" ? (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>
+                    {partFormMode === "create" ? "Nueva pieza" : "Reemplazar pieza"}
+                  </Text>
+                  <Text style={styles.label}>Qué pieza es</Text>
+                  <View style={styles.wrapRow}>
+                    {partTypes.map((t) => (
+                      <Pressable
+                        key={t.id}
+                        style={[styles.choiceSmall, partTypeId === t.id && styles.choiceOn]}
+                        onPress={() => setPartTypeId(t.id)}
+                      >
+                        <Text
+                          style={[
+                            styles.choiceText,
+                            partTypeId === t.id && styles.choiceTextOn,
+                          ]}
+                        >
+                          {t.name}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  {selectedPartType()?.appliesPerBajada ? (
+                    <>
+                      <Text style={styles.label}>Bajada</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={partBajada}
+                        onChangeText={setPartBajada}
+                        keyboardType="number-pad"
+                      />
+                    </>
+                  ) : null}
+                  <Text style={styles.label}>Marca / modelo</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={partBrandModel}
+                    onChangeText={setPartBrandModel}
+                    placeholder="Opcional"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                  <Text style={styles.label}>Notas</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={partNotes}
+                    onChangeText={setPartNotes}
+                    placeholder="Opcional"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                  <Text style={styles.label}>Foto</Text>
+                  {partPhotoUri ? (
+                    <Image source={{ uri: partPhotoUri }} style={styles.animalPhoto} />
+                  ) : (
+                    <Text style={styles.help}>Opcional — foto de la pieza instalada.</Text>
+                  )}
+                  <Pressable
+                    style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                    onPress={() => void pickPartPhoto()}
+                    disabled={busy}
+                  >
+                    <Text style={styles.buttonSecondaryText}>Sacar foto</Text>
+                  </Pressable>
+                  {status ? (
+                    <View style={styles.feedback}>
+                      <Text style={styles.feedbackText}>{status}</Text>
+                    </View>
+                  ) : null}
+                  <Pressable
+                    style={[styles.button, busy && styles.buttonDisabled]}
+                    onPress={() => void handleSavePart()}
                     disabled={busy}
                   >
                     <Text style={styles.buttonText}>Guardar</Text>

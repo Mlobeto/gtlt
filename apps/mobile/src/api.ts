@@ -490,6 +490,7 @@ export type PartInstanceItem = {
   bajadaNumber: number | null;
   brandModel: string | null;
   installedAt: string;
+  photoUrl: string | null;
   notes: string | null;
   partType: { id: string; code: string; name: string; pattern: string };
   coldDetail: {
@@ -499,6 +500,14 @@ export type PartInstanceItem = {
     coolingCapacity: string;
     controllerModel: string | null;
   } | null;
+};
+
+export type PartTypeItem = {
+  id: string;
+  code: string;
+  name: string;
+  pattern: "USAGE_BASED" | "REACTIVE" | "BRANDED";
+  appliesPerBajada: boolean;
 };
 
 export type AppNotification = {
@@ -628,6 +637,45 @@ export function fetchPartInstances(token: string, tamboId: string) {
   return request<{ items: PartInstanceItem[] }>(
     `/part-instances?tamboId=${encodeURIComponent(tamboId)}`,
     { token },
+  );
+}
+
+export function fetchPartTypes(token: string) {
+  return request<{ items: PartTypeItem[] }>("/part-types", { token });
+}
+
+type PartInstancePayload = {
+  id?: string;
+  tamboId: string;
+  partTypeId: string;
+  bajadaNumber?: number | null;
+  installedAt: string;
+  brandModel?: string | null;
+  photoUrl?: string | null;
+  notes?: string | null;
+  clientMutationId?: string;
+};
+
+export function createPartInstance(token: string, payload: PartInstancePayload) {
+  return request<{ item: PartInstanceItem }>("/part-instances", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export function replacePartInstance(
+  token: string,
+  partInstanceId: string,
+  payload: Omit<PartInstancePayload, "tamboId">,
+) {
+  return request<{ item: PartInstanceItem }>(
+    `/part-instances/${partInstanceId}/replace`,
+    {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    },
   );
 }
 

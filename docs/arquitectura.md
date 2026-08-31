@@ -183,7 +183,7 @@ Reemplaza el stub vacío `MilkingEquipment`:
 - **`PartInstance`** — pieza instalada; `bajadaNumber` nullable; `photoUrl`; `usageCounter` calculado  
 - **`ColdEquipmentDetail`** — 1:1 con instancia BRANDED (marca, modelo, capacidad, controlador EKC)
 
-**UI (decisión):** alta/reemplazo en **mobile** por **`TAMBERO` o `DUENIO`**; alertas/pedidos en web dueño (Fase 2). Ver [reglas-negocio-app.md](./reglas-negocio-app.md) y [ux-usuario.md](./ux-usuario.md).
+**UI (decisión):** alta/reemplazo en **mobile** por **`TAMBERO` o `DUENIO`** — ✅ implementado (pantalla "⚙️ Equipo", online-first como service/invite, con foto vía `POST /uploads/photo`); alertas/pedidos en web dueño (Fase 2). Ver [reglas-negocio-app.md](./reglas-negocio-app.md) y [ux-usuario.md](./ux-usuario.md).
 
 **Grupo de ordeñe (lógico):** por bajada, hasta 4 instancias vigentes (centralizador, copas, pezoneras, tubos cortos).
 
