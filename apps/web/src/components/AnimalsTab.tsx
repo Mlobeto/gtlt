@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { api } from '../lib/api'
 import type { AuthToken } from '../types/auth'
-import type { Tambo, Animal, TimelineItem } from '../types/dashboard'
+import type { Animal, TimelineItem } from '../types/dashboard'
+import { TamboPicker, useTamboId } from './TamboPicker'
 
 interface AnimalsTabProps {
   auth: AuthToken
@@ -20,47 +21,46 @@ function kindLabel(item: TimelineItem): string {
 }
 
 export function AnimalsTab({ auth }: AnimalsTabProps) {
-  const [tambos, setTambos] = useState<Tambo[]>([])
-  const [tamboId, setTamboId] = useState('')
+  const { tamboId, setTamboId, ready, error, setError } = useTamboId(auth.token)
   const [animals, setAnimals] = useState<Animal[]>([])
   const [selected, setSelected] = useState<Animal | null>(null)
   const [timeline, setTimeline] = useState<TimelineItem[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [loadingTimeline, setLoadingTimeline] = useState(false)
-  const [error, setError] = useState('')
 
   useEffect(() => {
-    const fetchTambos = async () => {
-      try {
-        const result = await api.getTambos(auth.token)
-        setTambos(result.items || [])
-        if (result.items?.[0]) setTamboId(result.items[0].id)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error al cargar tambos')
-      } finally {
-        setLoading(false)
-      }
+    if (!ready) return
+    if (!tamboId) {
+      setAnimals([])
+      setSelected(null)
+      setTimeline([])
+      setLoading(false)
+      return
     }
-    fetchTambos()
-  }, [auth])
 
-  useEffect(() => {
-    if (!tamboId) return
+    let cancelled = false
     const fetchAnimals = async () => {
       try {
         setLoading(true)
+        setError('')
         const result = await api.getAnimals(auth.token, tamboId)
+        if (cancelled) return
         setAnimals(result.items || [])
         setSelected(null)
         setTimeline([])
       } catch (err) {
+        if (cancelled) return
         setError(err instanceof Error ? err.message : 'Error al cargar animales')
+        setAnimals([])
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
-    fetchAnimals()
-  }, [auth, tamboId])
+    void fetchAnimals()
+    return () => {
+      cancelled = true
+    }
+  }, [auth.token, tamboId, ready, setError])
 
   const openAnimal = async (animal: Animal) => {
     setSelected(animal)
@@ -79,19 +79,7 @@ export function AnimalsTab({ auth }: AnimalsTabProps) {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold text-gray-900">Animales</h3>
-        {tambos.length > 1 && (
-          <select
-            value={tamboId}
-            onChange={(e) => setTamboId(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-          >
-            {tambos.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        )}
+        <TamboPicker token={auth.token} tamboId={tamboId} onChange={setTamboId} />
       </div>
 
       {error && (
@@ -102,10 +90,12 @@ export function AnimalsTab({ auth }: AnimalsTabProps) {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-1 space-y-2">
-          {loading ? (
+          {!ready || loading ? (
             <div className="text-center py-8">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
             </div>
+          ) : !tamboId ? (
+            <div className="text-center py-8 text-gray-500">No hay tambos para mostrar</div>
           ) : animals.length === 0 ? (
             <div className="text-center py-8 text-gray-500">No hay animales en este tambo</div>
           ) : (

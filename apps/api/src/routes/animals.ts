@@ -114,6 +114,39 @@ animalsRouter.get("/", authenticate, async (req, res) => {
   res.json({ items });
 });
 
+animalsRouter.get("/consult-photos", authenticate, async (req, res) => {
+  const parsed = z
+    .object({
+      tamboId: z.string().uuid(),
+      unreviewedOnly: z.enum(["true", "false"]).optional(),
+    })
+    .safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid query", details: parsed.error.flatten() });
+    return;
+  }
+
+  const auth = req.auth!;
+  await requireTamboInTenant(auth, parsed.data.tamboId);
+  const unreviewedOnly = parsed.data.unreviewedOnly !== "false";
+
+  const items = await prisma.animalPhoto.findMany({
+    where: {
+      tenantId: auth.tenantId,
+      tamboId: parsed.data.tamboId,
+      type: "CONSULT",
+      ...(unreviewedOnly ? { reviewedAt: null } : {}),
+    },
+    include: {
+      animal: { select: { id: true, earTag: true } },
+    },
+    orderBy: { takenAt: "desc" },
+    take: 100,
+  });
+
+  res.json({ items });
+});
+
 /** Ficha + historial sanitario/reproductivo reciente (para UI dueño/tambero/vet). */
 animalsRouter.get("/:id", authenticate, async (req, res) => {
   const auth = req.auth!;

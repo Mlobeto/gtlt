@@ -336,7 +336,7 @@ gtlt/
 - [x] Seed demo user/tenant (`admin@gtlt.local` / `demo1234`)  
 - [x] Endpoint negocio `MilkingSession`: `GET/POST /milking-sessions`, `POST /milking-sessions/:id/correct`  
 - [x] Endpoints `Animal` + `HealthEvent` (incl. `GET /health-events/active-withdrawals` para cache offline)  
-- [x] Spike offline mobile (`apps/mobile`): Expo **SDK 54** + `expo-sqlite` + outbox + push `HealthEvent` (alineado a Expo Go de tienda)  
+- [x] Spike offline mobile (`apps/mobile`): Expo **SDK 57** + `expo-sqlite` + outbox + push `HealthEvent` (alineado a Expo Go de tienda)  
 
 ### Pendiente (próximos pasos naturales)
 

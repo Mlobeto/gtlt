@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { authRouter } from "./routes/auth.js";
+import { myRouter } from "./routes/my.js";
 import { partTypesRouter } from "./routes/part-types.js";
 import { tambosRouter } from "./routes/tambos.js";
 import { milkingSessionsRouter } from "./routes/milking-sessions.js";
@@ -17,7 +18,10 @@ import { supportTicketsRouter } from "./routes/support-tickets.js";
 import { appPrototypeConfigRouter } from "./routes/app-prototype-config.js";
 import { flowSessionsRouter } from "./routes/flow-sessions.js";
 import { flowSessionsDeviceRouter } from "./routes/flow-sessions-device.js";
+import { pumpStatusDeviceRouter } from "./routes/pump-status-device.js";
 import { adminRouter } from "./routes/admin-tenants.js";
+import { adminSupportTicketsRouter } from "./routes/admin-support-tickets.js";
+import { adminServiceProvidersRouter } from "./routes/admin-service-providers.js";
 import { weightEventsRouter } from "./routes/weight-events.js";
 import { animalPhotosRouter } from "./routes/animal-photos.js";
 import { siresRouter } from "./routes/sires.js";
@@ -40,6 +44,7 @@ export function createApp() {
   app.use(technicianResourceGuard);
 
   app.use("/auth", authRouter);
+  app.use("/my", myRouter);
   app.use("/part-types", partTypesRouter);
   app.use("/tambos", tambosRouter);
   app.use("/memberships", membershipsRouter);
@@ -58,8 +63,11 @@ export function createApp() {
   app.use("/weight-events", weightEventsRouter);
   app.use("/sires", siresRouter);
   app.use("/device", flowSessionsDeviceRouter);
+  app.use("/device", pumpStatusDeviceRouter);
   app.use("/flow-sessions", flowSessionsRouter);
   app.use("/admin", adminRouter);
+  app.use("/admin", adminSupportTicketsRouter);
+  app.use("/admin", adminServiceProvidersRouter);
   app.use("/uploads", uploadsRouter);
 
   app.use(

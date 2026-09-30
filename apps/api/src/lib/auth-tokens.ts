@@ -8,6 +8,8 @@ export type JwtPayload = {
   tenantId: string;
   roles: Role[];
   tamboIds: string[] | null;
+  /** Ausente en tokens emitidos antes de este cambio → se trata como null. */
+  serviceProviderId?: string | null;
 };
 
 export function signAccessToken(ctx: AuthContext): string {
@@ -16,6 +18,7 @@ export function signAccessToken(ctx: AuthContext): string {
     tenantId: ctx.tenantId,
     roles: ctx.roles,
     tamboIds: ctx.tamboIds,
+    serviceProviderId: ctx.serviceProviderId,
   };
 
   return jwt.sign(payload, env.jwtSecret, {
@@ -34,5 +37,6 @@ export function verifyAccessToken(token: string): AuthContext {
     tenantId: decoded.tenantId,
     roles: decoded.roles,
     tamboIds: decoded.tamboIds ?? null,
+    serviceProviderId: decoded.serviceProviderId ?? null,
   };
 }

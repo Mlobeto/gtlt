@@ -29,7 +29,7 @@ const listQuerySchema = z.object({
 supportTicketsRouter.get(
   "/",
   authenticate,
-  requireRoles("TAMBERO", "DUENIO", "ADMIN", "VETERINARIO", "DESARROLLADORA"),
+  requireRoles("TAMBERO", "DUENIO", "ADMIN", "VETERINARIO"),
   async (req, res) => {
     const parsed = listQuerySchema.safeParse(req.query);
     if (!parsed.success) {
@@ -62,7 +62,7 @@ supportTicketsRouter.get(
 supportTicketsRouter.post(
   "/",
   authenticate,
-  requireRoles("TAMBERO", "DUENIO", "ADMIN", "VETERINARIO", "DESARROLLADORA"),
+  requireRoles("TAMBERO", "DUENIO", "ADMIN", "VETERINARIO"),
   async (req, res) => {
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) {

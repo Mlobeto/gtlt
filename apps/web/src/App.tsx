@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import './App.css'
 import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
-import type { AuthToken } from './types/auth'
+import { TechnicianDashboardPage } from './pages/TechnicianDashboardPage'
+import { isTechnicianWebSession, type AuthToken } from './types/auth'
 
 function App() {
   const [auth, setAuth] = useState<AuthToken | null>(null)
@@ -20,6 +21,11 @@ function App() {
     setLoading(false)
   }, [])
 
+  const logout = () => {
+    localStorage.removeItem('gtlt_auth')
+    setAuth(null)
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-100">
@@ -31,11 +37,31 @@ function App() {
     )
   }
 
-  return auth ? (
-    <DashboardPage auth={auth} onLogout={() => { localStorage.removeItem('gtlt_auth'); setAuth(null) }} />
-  ) : (
-    <LoginPage onSuccess={(token) => { setAuth(token); localStorage.setItem('gtlt_auth', JSON.stringify(token)) }} />
-  )
+  if (!auth) {
+    return (
+      <LoginPage
+        onSuccess={(token) => {
+          setAuth(token)
+          localStorage.setItem('gtlt_auth', JSON.stringify(token))
+        }}
+      />
+    )
+  }
+
+  if (isTechnicianWebSession(auth.roles)) {
+    return (
+      <TechnicianDashboardPage
+        auth={auth}
+        onLogout={logout}
+        onSessionChange={(next) => {
+          setAuth(next)
+          localStorage.setItem('gtlt_auth', JSON.stringify(next))
+        }}
+      />
+    )
+  }
+
+  return <DashboardPage auth={auth} onLogout={logout} />
 }
 
 export default App

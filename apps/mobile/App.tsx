@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
 import NetInfo from "@react-native-community/netinfo";
 import {
   ApiError,
@@ -39,7 +40,9 @@ import {
   rejectServiceRequest,
   replacePartInstance,
   updateTamboSettings,
+  updateTamboLocation,
   uploadPhoto,
+  fetchTamboServiceProvider,
   type AppNotification,
   type PartInstanceItem,
   type PartTypeItem,
@@ -287,8 +290,17 @@ export default function App() {
   const [inviteTechEmail, setInviteTechEmail] = useState("");
   const [inviteTechName, setInviteTechName] = useState("");
   const [inviteCompany, setInviteCompany] = useState("");
+  const [inviteProviderId, setInviteProviderId] = useState<string | null>(null);
+  const [serviceProviders, setServiceProviders] = useState<
+    { id: string; name: string }[]
+  >([]);
   const [serviceUrgent, setServiceUrgent] = useState(false);
   const [requiresOwnerApproval, setRequiresOwnerApproval] = useState(false);
+  const [tamboLocation, setTamboLocation] = useState<{
+    latitude: number | null;
+    longitude: number | null;
+    address: string | null;
+  } | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [pendingApprovals, setPendingApprovals] = useState<ServiceRequestItem[]>(
@@ -369,12 +381,18 @@ export default function App() {
             const t = tambos.items.find((x) => x.id === existing.tamboId);
             if (t) {
               setRequiresOwnerApproval(Boolean(t.serviceRequiresOwnerApproval));
+              setTamboLocation({
+                latitude: t.latitude ?? null,
+                longitude: t.longitude ?? null,
+                address: t.address ?? null,
+              });
             }
           } catch {
             // ignore
           }
           if (isOwnerOrAdmin(existing.roles ?? [])) {
             void loadNotifications(existing);
+            void loadInviteProviders(existing.token, existing.tamboId);
           }
         }
       }
@@ -428,6 +446,11 @@ export default function App() {
       };
       await saveSession(next);
       setRequiresOwnerApproval(Boolean(tambo.serviceRequiresOwnerApproval));
+      setTamboLocation({
+        latitude: tambo.latitude ?? null,
+        longitude: tambo.longitude ?? null,
+        address: tambo.address ?? null,
+      });
       if (!techOnly) {
         await pullServerState(next.token, next.tamboId);
         await refreshLocal(next.tamboId);
@@ -436,6 +459,7 @@ export default function App() {
       setScreen("home");
       if (isOwnerOrAdmin(res.roles)) {
         void loadNotifications(next);
+        void loadInviteProviders(next.token, next.tamboId);
       }
       setStatus(
         techOnly
@@ -543,6 +567,53 @@ export default function App() {
     }
   }
 
+  async function handleUseCurrentLocation() {
+    if (!session) return;
+    if (!online) {
+      setStatus("Para guardar la ubicación hace falta señal.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const perm = await Location.requestForegroundPermissionsAsync();
+      if (perm.status !== "granted") {
+        setStatus("Sin permiso de ubicación. Activalo en Ajustes para marcar el tambo.");
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({});
+      let address: string | undefined;
+      try {
+        const places = await Location.reverseGeocodeAsync({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        });
+        const p = places[0];
+        if (p) {
+          address = [p.streetNumber, p.street, p.city, p.region]
+            .filter(Boolean)
+            .join(", ");
+        }
+      } catch {
+        // coordenadas alcanzan si no hay geocoding
+      }
+      const res = await updateTamboLocation(session.token, session.tamboId, {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        address: address || undefined,
+      });
+      setTamboLocation({
+        latitude: res.item.latitude,
+        longitude: res.item.longitude,
+        address: res.item.address,
+      });
+      setStatus("Ubicación del tambo guardada.");
+    } catch {
+      setStatus("No se pudo guardar la ubicación. Revisá el permiso y la señal.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleToggleOwnerApproval(next: boolean) {
     if (!session) return;
     if (!online) {
@@ -595,6 +666,15 @@ export default function App() {
     }
   }
 
+  async function loadInviteProviders(token: string, tamboId: string) {
+    try {
+      const result = await fetchTamboServiceProvider(token, tamboId);
+      setServiceProviders(result.catalog || []);
+    } catch {
+      setServiceProviders([]);
+    }
+  }
+
   async function handleInviteTechnician() {
     if (!session) return;
     if (!online) {
@@ -612,10 +692,12 @@ export default function App() {
         email: inviteTechEmail.trim(),
         name: inviteTechName.trim() || undefined,
         companyName: inviteCompany.trim() || undefined,
+        serviceProviderId: inviteProviderId || undefined,
       });
       setInviteTechEmail("");
       setInviteTechName("");
       setInviteCompany("");
+      setInviteProviderId(null);
       setStatus(
         `Invitación enviada. Pasale el código de tenant: ${session.tenantId}`,
       );
@@ -1720,37 +1802,80 @@ export default function App() {
                     </Text>
                   </Pressable>
 
-                  <Text style={styles.sectionInCard}>Invitar técnico</Text>
-                  <Text style={styles.help}>
-                    Después pasale el código de tenant:{" "}
-                    {session.tenantId || "(entrar de nuevo)"}
-                  </Text>
-                  <Text style={styles.label}>Correo del técnico</Text>
-                  <TextInput
-                    style={styles.input}
-                    autoCapitalize="none"
-                    value={inviteTechEmail}
-                    onChangeText={setInviteTechEmail}
-                  />
-                  <Text style={styles.label}>Nombre (opcional)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={inviteTechName}
-                    onChangeText={setInviteTechName}
-                  />
-                  <Text style={styles.label}>Empresa (opcional)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={inviteCompany}
-                    onChangeText={setInviteCompany}
-                  />
-                  <Pressable
-                    style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
-                    onPress={() => void handleInviteTechnician()}
-                    disabled={busy}
-                  >
-                    <Text style={styles.buttonSecondaryText}>Invitar</Text>
-                  </Pressable>
+                  {isOwnerOrAdmin(session.roles ?? []) ? (
+                    <>
+                      <View style={styles.divider} />
+                      <Text style={styles.sectionInCard}>Invitar técnico</Text>
+                      <Text style={styles.help}>
+                        Después pasale el código de tenant:{" "}
+                        {session.tenantId || "(entrar de nuevo)"}
+                      </Text>
+                      <Text style={styles.label}>Correo del técnico</Text>
+                      <TextInput
+                        style={styles.input}
+                        autoCapitalize="none"
+                        value={inviteTechEmail}
+                        onChangeText={setInviteTechEmail}
+                      />
+                      <Text style={styles.label}>Nombre (opcional)</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={inviteTechName}
+                        onChangeText={setInviteTechName}
+                      />
+                      <Text style={styles.label}>Empresa (opcional)</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={inviteCompany}
+                        onChangeText={setInviteCompany}
+                      />
+                      <Text style={styles.label}>Proveedor de service</Text>
+                      <View style={styles.wrapRow}>
+                        <Pressable
+                          style={[
+                            styles.choice,
+                            inviteProviderId == null && styles.choiceOn,
+                          ]}
+                          onPress={() => setInviteProviderId(null)}
+                        >
+                          <Text
+                            style={[
+                              styles.choiceText,
+                              inviteProviderId == null && styles.choiceTextOn,
+                            ]}
+                          >
+                            Independiente
+                          </Text>
+                        </Pressable>
+                        {serviceProviders.map((p) => (
+                          <Pressable
+                            key={p.id}
+                            style={[
+                              styles.choice,
+                              inviteProviderId === p.id && styles.choiceOn,
+                            ]}
+                            onPress={() => setInviteProviderId(p.id)}
+                          >
+                            <Text
+                              style={[
+                                styles.choiceText,
+                                inviteProviderId === p.id && styles.choiceTextOn,
+                              ]}
+                            >
+                              {p.name}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                      <Pressable
+                        style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                        onPress={() => void handleInviteTechnician()}
+                        disabled={busy}
+                      >
+                        <Text style={styles.buttonSecondaryText}>Invitar</Text>
+                      </Pressable>
+                    </>
+                  ) : null}
                   {status ? (
                     <View style={styles.feedback}>
                       <Text style={styles.feedbackText}>{status}</Text>
@@ -2237,6 +2362,23 @@ export default function App() {
                 <View style={styles.card}>
                   <Text style={styles.cardTitle}>⚙️ Equipo de ordeñe y frío</Text>
                   <Text style={styles.help}>Piezas vigentes de este tambo.</Text>
+                  <Text style={styles.sectionInCard}>Ubicación del tambo</Text>
+                  {tamboLocation?.address ? (
+                    <Text style={styles.itemMeta}>{tamboLocation.address}</Text>
+                  ) : tamboLocation?.latitude != null && tamboLocation.longitude != null ? (
+                    <Text style={styles.itemMeta}>
+                      {tamboLocation.latitude.toFixed(5)}, {tamboLocation.longitude.toFixed(5)}
+                    </Text>
+                  ) : (
+                    <Text style={styles.help}>Todavía no hay ubicación cargada.</Text>
+                  )}
+                  <Pressable
+                    style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                    onPress={() => void handleUseCurrentLocation()}
+                    disabled={busy}
+                  >
+                    <Text style={styles.buttonSecondaryText}>Usar mi ubicación actual</Text>
+                  </Pressable>
                   {status ? (
                     <View style={styles.feedback}>
                       <Text style={styles.feedbackText}>{status}</Text>
@@ -3049,6 +3191,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: colors.text,
     marginTop: space.sm,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginTop: space.lg,
+    marginBottom: space.sm,
   },
   item: {
     backgroundColor: colors.bgSubtle,

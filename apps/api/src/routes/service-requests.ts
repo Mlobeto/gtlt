@@ -7,6 +7,7 @@ import { requireTamboInTenant } from "../lib/tambo-scope.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
 import { hasAllTamboAccess } from "../lib/access.js";
+import type { AuthContext } from "../types/express.js";
 
 export const serviceRequestsRouter = Router();
 
@@ -61,6 +62,17 @@ function urgencyLabel(u: string) {
   return u === "URGENT" ? "URGENTE" : "Normal";
 }
 
+function isTecnicoOnly(auth: AuthContext) {
+  const farmRoles = new Set(["TAMBERO", "DUENIO", "ADMIN"]);
+  return auth.roles.includes("TECNICO") && !auth.roles.some((r) => farmRoles.has(r));
+}
+
+/** Técnico de un proveedor: solo ve pedidos dirigidos a ese proveedor. Independiente: todo el tambo. */
+function technicianProviderWhere(auth: AuthContext) {
+  if (!isTecnicoOnly(auth) || !auth.serviceProviderId) return {};
+  return { serviceProviderId: auth.serviceProviderId };
+}
+
 /** Crear solicitud — tambero/dueño. Ticket: mal → CANCELLED + nueva. */
 serviceRequestsRouter.post(
   "/",
@@ -107,6 +119,7 @@ serviceRequestsRouter.post(
         urgency: data.urgency,
         relatedPartInstanceId: data.relatedPartInstanceId ?? null,
         assignedTechnicianUserId: data.assignedTechnicianUserId ?? null,
+        serviceProviderId: tambo.defaultServiceProviderId,
         createdById: auth.userId,
         status,
       },
@@ -159,18 +172,14 @@ serviceRequestsRouter.get(
     const { tamboId, status } = parsed.data;
     await requireTamboInTenant(auth, tamboId);
 
-    const farmRoles = new Set(["TAMBERO", "DUENIO", "ADMIN"]);
-    const isTecnicoOnly =
-      auth.roles.includes("TECNICO") &&
-      !auth.roles.some((r) => farmRoles.has(r));
-
     const items = await prisma.serviceRequest.findMany({
       where: {
         tenantId: auth.tenantId,
         tamboId,
+        ...technicianProviderWhere(auth),
         ...(status
           ? { status }
-          : isTecnicoOnly
+          : isTecnicoOnly(auth)
             ? { status: { notIn: ["CANCELLED", "PENDING_APPROVAL"] } }
             : {}),
       },
@@ -209,11 +218,6 @@ serviceRequestsRouter.get(
     const { tamboId } = parsed.data;
     await requireTamboInTenant(auth, tamboId);
 
-    const farmRoles = new Set(["TAMBERO", "DUENIO", "ADMIN"]);
-    const isTecnicoOnly =
-      auth.roles.includes("TECNICO") &&
-      !auth.roles.some((r) => farmRoles.has(r));
-
     const [parts, requests, tambo] = await Promise.all([
       prisma.partInstance.findMany({
         where: { tenantId: auth.tenantId, tamboId, replacedAt: null },
@@ -224,7 +228,8 @@ serviceRequestsRouter.get(
         where: {
           tenantId: auth.tenantId,
           tamboId,
-          status: isTecnicoOnly
+          ...technicianProviderWhere(auth),
+          status: isTecnicoOnly(auth)
             ? { notIn: ["CANCELLED", "PENDING_APPROVAL"] }
             : { not: "CANCELLED" },
         },
@@ -245,13 +250,22 @@ serviceRequestsRouter.get(
           id: true,
           name: true,
           serviceRequiresOwnerApproval: true,
+          latitude: true,
+          longitude: true,
+          address: true,
         },
       }),
     ]);
 
     res.json({
       tamboId,
-      tambo,
+      tambo: tambo
+        ? {
+            ...tambo,
+            latitude: tambo.latitude == null ? null : Number(tambo.latitude),
+            longitude: tambo.longitude == null ? null : Number(tambo.longitude),
+          }
+        : null,
       partInstances: parts,
       serviceRequests: requests,
     });
@@ -360,7 +374,11 @@ serviceRequestsRouter.patch(
 
     const auth = req.auth!;
     const existing = await prisma.serviceRequest.findFirst({
-      where: { id: String(req.params.id), tenantId: auth.tenantId },
+      where: {
+        id: String(req.params.id),
+        tenantId: auth.tenantId,
+        ...technicianProviderWhere(auth),
+      },
     });
     if (!existing) throw new HttpError(404, "Service request not found");
     await requireTamboInTenant(auth, existing.tamboId);
@@ -373,12 +391,7 @@ serviceRequestsRouter.patch(
     }
 
     const data = parsed.data;
-    const farmRoles = new Set(["TAMBERO", "DUENIO", "ADMIN"]);
-    const isTecnicoOnly =
-      auth.roles.includes("TECNICO") &&
-      !auth.roles.some((r) => farmRoles.has(r));
-
-    if (isTecnicoOnly && data.description != null) {
+    if (isTecnicoOnly(auth) && data.description != null) {
       throw new HttpError(403, "Technician cannot edit description");
     }
 

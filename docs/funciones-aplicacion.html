@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>GTLT — Catálogo de funciones</title>
+  <style>
+    @page { size: A4; margin: 18mm 16mm 20mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Calibri, Arial, sans-serif;
+      color: #1A2E1C;
+      font-size: 11pt;
+      line-height: 1.45;
+      margin: 0;
+    }
+    h1 { font-size: 22pt; color: #2F7A3E; margin: 0 0 6px; }
+    h2 {
+      font-size: 14pt;
+      color: #2F7A3E;
+      border-bottom: 2px solid #2F7A3E;
+      padding-bottom: 4px;
+      margin: 22px 0 10px;
+      page-break-after: avoid;
+    }
+    h3 { font-size: 12pt; color: #246332; margin: 14px 0 6px; page-break-after: avoid; }
+    p, li { margin: 0 0 6px; }
+    .muted { color: #5F6F60; }
+    .cover {
+      border: 2px solid #2F7A3E;
+      padding: 28px 24px;
+      border-radius: 8px;
+      margin-bottom: 22px;
+    }
+    .cover .sub { font-size: 13pt; color: #5F6F60; margin-bottom: 16px; }
+    .meta { font-size: 10pt; color: #5F6F60; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 14px;
+      font-size: 10pt;
+    }
+    th, td {
+      border: 1px solid #D8DED4;
+      padding: 6px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #F7F8F5; color: #1A2E1C; }
+    .fn {
+      background: #F7F8F5;
+      border-left: 4px solid #2F7A3E;
+      padding: 8px 12px;
+      margin: 0 0 10px;
+      page-break-inside: avoid;
+    }
+    .fn strong { display: block; margin-bottom: 2px; }
+    .tag {
+      display: inline-block;
+      background: #4fd17033;
+      color: #246332;
+      font-size: 8.5pt;
+      font-weight: 700;
+      padding: 1px 7px;
+      border-radius: 10px;
+      margin-right: 4px;
+    }
+    .tag.warn { background: #faf20055; color: #6B5400; }
+    .tag.off { background: #eee; color: #666; }
+    ul { margin: 4px 0 10px 18px; padding: 0; }
+    footer.note { font-size: 9pt; color: #5F6F60; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="cover">
+    <h1>GTLT Tambos</h1>
+    <p class="sub">Gestión Tambera Lobeto Tambos — catálogo de funciones</p>
+    <p>Documento de producto: qué puede hacer cada persona en la app móvil y en el panel web, según el estado actual del sistema.</p>
+    <p class="meta">Fecha: 22 de septiembre de 2026 · Versión alineada al código del repositorio</p>
+  </div>
+
+  <h2>1. Qué es GTLT</h2>
+  <p>GTLT es un sistema para tambos chicos (hasta ~20 bajadas) en Argentina. Está pensado para cargar datos en el momento del ordeñe, con poca señal y sin jerga técnica. El idioma de la interfaz es español llano.</p>
+  <ul>
+    <li><strong>App móvil</strong> (Expo / celular): trabajo diario en el tambo. Offline-first: se guarda en el teléfono y se envía cuando hay internet.</li>
+    <li><strong>Panel web</strong>: dueño (consulta + soporte) y desarrolladora (cuentas, planes, prototipo).</li>
+    <li><strong>API</strong>: fuente de verdad en PostgreSQL, con tenant y tambo. El técnico solo ve equipo y service.</li>
+  </ul>
+
+  <h2>2. Quién usa qué</h2>
+  <table>
+    <tr><th>Rol</th><th>Dónde trabaja</th><th>En una frase</th></tr>
+    <tr><td>Tambero</td><td>Móvil</td><td>Carga ordeñe, vacas, sanidad, repro, entrega, equipo y pide service.</td></tr>
+    <tr><td>Dueño / Admin</td><td>Móvil + web</td><td>Mismo trabajo que el tambero si está en el campo; en web mira animales y tickets. Configura si el service necesita su OK.</td></tr>
+    <tr><td>Técnico</td><td>Móvil (pantalla propia)</td><td>Ve pedidos de service y el equipo del tambo. No ve vacas ni litros.</td></tr>
+    <tr><td>Veterinario</td><td>API (UI propia incompleta)</td><td>Puede tener acceso a historial del tambo; tareas asignadas todavía no están diseñadas del todo.</td></tr>
+    <tr><td>Desarrolladora</td><td>Web</td><td>Crea cuentas, planes, tickets internos y datos del prototipo.</td></tr>
+  </table>
+
+  <h2>3. App móvil — cuenta y sincronización</h2>
+  <div class="fn">
+    <strong>Entrar</strong>
+    <span class="tag">Móvil</span>
+    Usuario/correo + clave. Elige el primer tambo de la cuenta. Si es técnico, abre la pantalla de service; si no, el menú del tambo.
+  </div>
+  <div class="fn">
+    <strong>Activar invitación de técnico</strong>
+    <span class="tag">Móvil</span>
+    El técnico nuevo completa correo, clave y token de invitación (hoy se pasa a mano; el token dura 7 días y es de un solo uso).
+  </div>
+  <div class="fn">
+    <strong>Señal y pendientes</strong>
+    <span class="tag">Móvil</span>
+    Chip “Con señal / Sin señal” y cantidad de datos sin enviar. Se puede tocar “Enviar lo pendiente” o “Actualizar datos”. Al recuperar internet o al volver a la app, intenta enviar solo.
+  </div>
+  <div class="fn">
+    <strong>Salir</strong>
+    Cierra la sesión en el teléfono.
+  </div>
+
+  <h2>4. App móvil — menú del tambero / dueño</h2>
+
+  <h3>Ordeñe</h3>
+  <ul>
+    <li>Elegir turno mañana o tarde.</li>
+    <li>Empezar turno y anotar litros totales de la sesión (no por vaca).</li>
+    <li>Corregir litros si se cargó mal (el sistema anula el registro anterior y deja uno nuevo).</li>
+    <li><strong>Hablar (Plan B):</strong> escribir una frase tipo <em>101 posible mastitis</em> o <em>101 celo</em>. Confirmar en pantalla. El micrófono nativo / palabra GTLT todavía no corre en Expo Go.</li>
+  </ul>
+
+  <h3>Vacas</h3>
+  <ul>
+    <li>Listado por caravana, con foto si hay, y si está en ordeñe o seca.</li>
+    <li>Alta y edición de ficha: caravana, estado, nacimiento, raza (texto libre), notas, foto de perfil (cámara o galería; se sube a la nube al sincronizar).</li>
+    <li>Padre (padrote/sire del tenant) y alta de un padre nuevo si hace falta señal.</li>
+    <li>Ficha: resumen de preñez calculado con servicios, parto estimado y pariciones (no es diagnóstico).</li>
+    <li>Historial unificado: sanidad, repro, peso, fotos, control lechero.</li>
+    <li>Cargar peso (kg) con método: a ojo, cinta o balanza.</li>
+    <li>Foto de consulta (además de la de perfil); avisa a dueño/admin y veterinarios del tambo.</li>
+  </ul>
+
+  <h3>Sanidad</h3>
+  <ul>
+    <li>Por caravana: mastitis o tratamiento.</li>
+    <li>Producto opcional y días de retiro de leche.</li>
+    <li>Se guarda aunque no haya señal; entra a la lista de retiros.</li>
+  </ul>
+
+  <h3>Repro</h3>
+  <ul>
+    <li>Celo, servicio, parto estimado o parto, por caravana.</li>
+    <li>Fecha de parto estimado cuando corresponde.</li>
+  </ul>
+
+  <h3>Entrega</h3>
+  <ul>
+    <li>Litros del tanque vs litros que declara el camión.</li>
+    <li>Temperaturas de tanque y camión (opcional), para el “plus por temperatura” y fallas de frío.</li>
+  </ul>
+
+  <h3>Control lechero</h3>
+  <ul>
+    <li>Evento periódico: litros por vaca y por bajada.</li>
+    <li>Nombre del técnico (opcional).</li>
+  </ul>
+
+  <h3>Retiros</h3>
+  <ul>
+    <li>Lista de vacas cuya leche no se puede mezclar, con producto y hasta cuándo.</li>
+  </ul>
+
+  <h3>Equipo</h3>
+  <ul>
+    <li>Piezas vigentes del tambo (pezoneras, tubos, centralizador, copas, regulador/trampa de vacío, caños, recibidor, descarga, equipo de frío).</li>
+    <li>Alta de pieza: tipo, bajada si aplica, marca/modelo, foto.</li>
+    <li>Reemplazo: cierra la pieza anterior y crea una nueva (no se edita “en el lugar”).</li>
+    <li>Equipo de frío: marca, modelo, litros, capacidad de frío, controlador (p. ej. EKC).</li>
+  </ul>
+
+  <h3>Service</h3>
+  <ul>
+    <li>Pedir service: bomba de vacío, frío, grupo de ordeñe u otro; detalle en texto; urgencia normal o urgente.</li>
+    <li>Si el tambo exige OK del dueño, el pedido del tambero queda en espera y el técnico no lo ve hasta que se apruebe.</li>
+    <li>Dueño/admin: interruptor <em>Directo</em> vs <em>Con mi OK</em>.</li>
+    <li>Invitar técnico por correo (nombre y empresa opcionales) y pasarle el token de invitación.</li>
+  </ul>
+
+  <h3>Avisos</h3>
+  <ul>
+    <li>Bandeja in-app: pedidos de service, pendientes de aprobación, aprobado/rechazado.</li>
+    <li>Dueño: aprobar o rechazar pedidos en espera.</li>
+    <li>Marcar leído / todo leído. Push al celular todavía no está.</li>
+  </ul>
+
+  <h2>5. App móvil — técnico</h2>
+  <p>Al entrar con rol solo técnico no aparece el menú de vacas ni se sincroniza producción.</p>
+  <ul>
+    <li>Lista de pedidos abiertos del tambo (no ve los que esperan OK del dueño).</li>
+    <li>Urgencia visible. Abrir un pedido y cambiar estado: vista → en curso → resuelto, o cancelar.</li>
+    <li>Ver equipo cargado (piezas vigentes, frío si hay detalle).</li>
+    <li>Actualizar con señal. Sin señal no puede trabajar este módulo.</li>
+  </ul>
+
+  <h2>6. Panel web</h2>
+  <p>Solo entran cuentas con rol <strong>dueño</strong> o <strong>desarrolladora</strong>.</p>
+
+  <h3>Dueño</h3>
+  <div class="fn">
+    <strong>Animales</strong>
+    Elige tambo, lista vacas y abre historial (sanidad, repro, traslado, control, peso, foto). Consulta remota; la carga diaria sigue siendo el celular.
+  </div>
+  <div class="fn">
+    <strong>Tickets de soporte</strong>
+    Ve tickets del tenant (bug, consulta, mejora, otro). El dueño puede actualizar estado y nota interna según reglas del backend.
+  </div>
+
+  <h3>Desarrolladora</h3>
+  <div class="fn">
+    <strong>Tickets de soporte</strong>
+    Lista y filtro por estado; seguimiento interno del prototipo.
+  </div>
+  <div class="fn">
+    <strong>Configuración del prototipo</strong>
+    Nombre, versión, URL de código, URL de demo, notas, activo/inactivo.
+  </div>
+  <div class="fn">
+    <strong>Cuentas</strong>
+    Alta de tenant + dueño + plan (Estándar o Lifetime). Cambio de plan de un cliente.
+  </div>
+  <div class="fn">
+    <strong>Planes</strong>
+    Ver planes y editar precio en USD (el estándar se convierte a ARS en el modelo comercial).
+  </div>
+
+  <h2>7. Funciones de fondo (no son una pantalla, pero existen)</h2>
+  <table>
+    <tr><th>Función</th><th>Qué hace</th></tr>
+    <tr><td>Multitenant</td><td>Cada cliente es un tenant; los datos de un tambo no se mezclan con otro.</td></tr>
+    <tr><td>Alcance por tambo</td><td>Dueño/admin ven todos los tambos. Tambero, vet y técnico solo los asignados.</td></tr>
+    <tr><td>Correcciones append-only</td><td>Ordeñe, control lechero y entrega no se “editan”: se anula el anterior y se crea uno nuevo.</td></tr>
+    <tr><td>Fotos en la nube</td><td>Azure Blob; la ficha sube la foto local al sincronizar.</td></tr>
+    <tr><td>Caudalímetro / dispositivo</td><td>API de sesiones de flujo para hardware futuro; no hay pantalla de usuario todavía.</td></tr>
+    <tr><td>Suscripción</td><td>Planes en datos; el cobro (Mercado Pago) y el corte por falta de pago aún no bloquean la app.</td></tr>
+  </table>
+
+  <h2>8. Qué todavía no está en la app (para no confundir)</h2>
+  <ul>
+    <li>Voz nativa con palabra GTLT y micrófono continuo (hace falta development build, no Expo Go).</li>
+    <li>Chat con adjuntos de audio/imagen en el pedido de service.</li>
+    <li>Invitar tamberos desde el dueño (hoy la invitación mobile está para técnico).</li>
+    <li>Tickets de soporte desde el celular.</li>
+    <li>Panel web de alertas de vida útil de pezoneras / sensores de bomba.</li>
+    <li>Checkout público y WhatsApp/email automáticos.</li>
+    <li>UI veterinario de visitas/tareas asignadas.</li>
+  </ul>
+
+  <h2>9. Mapa rápido menú móvil</h2>
+  <table>
+    <tr><th>Botón</th><th>Para qué</th></tr>
+    <tr><td>Ordeñe</td><td>Turno, litros, corrección, comando escrito</td></tr>
+    <tr><td>Vacas</td><td>Ficha, foto, peso, historial, preñez</td></tr>
+    <tr><td>Sanidad</td><td>Mastitis / tratamiento / retiro</td></tr>
+    <tr><td>Repro</td><td>Celo, servicio, parto</td></tr>
+    <tr><td>Entrega</td><td>Tanque vs camión + temperaturas</td></tr>
+    <tr><td>Control lechero</td><td>Litros por vaca / bajada</td></tr>
+    <tr><td>Retiros</td><td>Leche que no se mezcla</td></tr>
+    <tr><td>Equipo</td><td>Piezas y reemplazos</td></tr>
+    <tr><td>Service</td><td>Pedir técnico, urgencia, invitar, OK del dueño</td></tr>
+    <tr><td>Avisos</td><td>Bandeja y aprobaciones</td></tr>
+  </table>
+
+  <p class="footer note">Este catálogo describe funciones de usuario. El detalle técnico está en docs/arquitectura.md y docs/reglas-negocio-app.md.</p>
+</body>
+</html>

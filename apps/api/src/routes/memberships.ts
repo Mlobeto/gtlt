@@ -1,22 +1,35 @@
 import { Router } from "express";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import crypto from "node:crypto";
 import { prisma } from "../lib/prisma.js";
 import { HttpError } from "../lib/http-error.js";
+import { createInvite } from "../lib/invites.js";
 import { requireTamboInTenant } from "../lib/tambo-scope.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
 
 export const membershipsRouter = Router();
 
-const inviteSchema = z
+const inviteTechnicianSchema = z
   .object({
     tamboId: z.string().uuid(),
     email: z.string().email().optional(),
     phone: z.string().trim().min(6).max(40).optional(),
     name: z.string().trim().min(1).max(120).optional(),
     companyName: z.string().trim().max(200).optional(),
+    serviceProviderId: z.string().uuid().optional(),
+  })
+  .refine((d) => Boolean(d.email || d.phone), {
+    message: "email or phone required",
+  });
+
+const inviteMemberSchema = z
+  .object({
+    tamboId: z.string().uuid(),
+    email: z.string().email().optional(),
+    phone: z.string().trim().min(6).max(40).optional(),
+    name: z.string().trim().min(1).max(120).optional(),
+    role: z.enum(["TAMBERO", "VETERINARIO"]),
   })
   .refine((d) => Boolean(d.email || d.phone), {
     message: "email or phone required",
@@ -36,7 +49,7 @@ membershipsRouter.post(
   authenticate,
   requireRoles("TAMBERO", "DUENIO", "ADMIN"),
   async (req, res) => {
-    const parsed = inviteSchema.safeParse(req.body);
+    const parsed = inviteTechnicianSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid body", details: parsed.error.flatten() });
       return;
@@ -46,80 +59,95 @@ membershipsRouter.post(
     const data = parsed.data;
     await requireTamboInTenant(auth, data.tamboId);
 
-    let user =
-      (data.email
-        ? await prisma.user.findUnique({ where: { email: data.email } })
-        : null) ??
-      (data.phone
-        ? await prisma.user.findFirst({ where: { phone: data.phone } })
-        : null);
-
-    if (!user) {
-      user = await prisma.user.create({
-        data: {
-          email: data.email,
-          phone: data.phone,
-          name: data.name?.trim() || data.email || data.phone || "Técnico",
-        },
+    if (data.serviceProviderId) {
+      const provider = await prisma.serviceProvider.findFirst({
+        where: { id: data.serviceProviderId, active: true },
       });
-    } else if (data.name?.trim()) {
-      user = await prisma.user.update({
-        where: { id: user.id },
-        data: { name: data.name.trim() },
-      });
+      if (!provider) throw new HttpError(404, "Service provider not found");
     }
 
-    const inviteToken = crypto.randomBytes(32).toString("hex");
-    const inviteTokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 días
-
-    const membership = await prisma.membership.upsert({
-      where: {
-        tenantId_userId: { tenantId: auth.tenantId, userId: user.id },
-      },
-      create: {
-        tenantId: auth.tenantId,
-        userId: user.id,
-        roles: ["TECNICO"],
-        status: "PENDING",
-        companyName: data.companyName,
-        inviteToken,
-        inviteTokenExpiresAt,
-      },
-      update: {
-        roles: ["TECNICO"],
-        status: "PENDING",
-        companyName: data.companyName ?? undefined,
-        inviteToken,
-        inviteTokenExpiresAt,
-      },
-      include: { tambos: true },
-    });
-
-    const already = membership.tambos.some((t) => t.tamboId === data.tamboId);
-    if (!already) {
-      await prisma.membershipTambo.create({
-        data: {
-          tenantId: auth.tenantId,
-          membershipId: membership.id,
-          tamboId: data.tamboId,
-        },
-      });
-    }
-
-    const full = await prisma.membership.findUniqueOrThrow({
-      where: { id: membership.id },
-      include: {
-        user: { select: { id: true, email: true, phone: true, name: true } },
-        tambos: { select: { tamboId: true } },
-      },
+    const { item, inviteToken } = await createInvite({
+      tenantId: auth.tenantId,
+      tamboId: data.tamboId,
+      email: data.email,
+      phone: data.phone,
+      name: data.name,
+      role: "TECNICO",
+      companyName: data.companyName,
+      serviceProviderId: data.serviceProviderId ?? null,
     });
 
     res.status(201).json({
-      item: full,
+      item,
       // TODO: hoy se entrega a mano/por WhatsApp; cuando haya envío de email automático
       // (docs/reglas-negocio-app.md), sacar este campo de la respuesta HTTP y mandarlo
       // solo por el canal privado.
       inviteToken,
+    });
+  },
+);
+
+membershipsRouter.post(
+  "/invite",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN"),
+  async (req, res) => {
+    const parsed = inviteMemberSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid body", details: parsed.error.flatten() });
+      return;
+    }
+
+    const auth = req.auth!;
+    const data = parsed.data;
+    await requireTamboInTenant(auth, data.tamboId);
+
+    const { item, inviteToken } = await createInvite({
+      tenantId: auth.tenantId,
+      tamboId: data.tamboId,
+      email: data.email,
+      phone: data.phone,
+      name: data.name,
+      role: data.role,
+    });
+
+    res.status(201).json({ item, inviteToken });
+  },
+);
+
+membershipsRouter.get(
+  "/",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN"),
+  async (req, res) => {
+    const parsed = z.object({ tamboId: z.string().uuid() }).safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid query", details: parsed.error.flatten() });
+      return;
+    }
+
+    const auth = req.auth!;
+    await requireTamboInTenant(auth, parsed.data.tamboId);
+
+    const items = await prisma.membership.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        tambos: { some: { tamboId: parsed.data.tamboId } },
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true, phone: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    res.json({
+      items: items.map((m) => ({
+        id: m.id,
+        roles: m.roles,
+        status: m.status,
+        companyName: m.companyName,
+        user: m.user,
+      })),
     });
   },
 );

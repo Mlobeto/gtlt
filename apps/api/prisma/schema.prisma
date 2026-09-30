@@ -140,6 +140,11 @@ enum DeviceKind {
   VACUUM_PUMP_SENSOR
 }
 
+enum PumpStatus {
+  ON
+  OFF
+}
+
 enum FlowIdentificationSource {
   RFID
   VOICE
@@ -205,6 +210,7 @@ model Tenant {
   appPrototypeConfigs  AppPrototypeConfig[]
   devices              Device[]
   flowSessions         FlowSession[]
+  pumpStatusEvents     PumpStatusEvent[]
   subscription         Subscription?
   sires                Sire[]
   animalPhotos         AnimalPhoto[]
@@ -221,11 +227,17 @@ model Tambo {
   bajadaCount Int      @map("bajada_count")
   /// Si true, el tambero no manda directo al técnico: queda PENDING_APPROVAL.
   serviceRequiresOwnerApproval Boolean @default(false) @map("service_requires_owner_approval")
+  /// Proveedor de service por defecto del tambo (catálogo global).
+  defaultServiceProviderId String? @map("default_service_provider_id") @db.Uuid
+  latitude  Decimal? @db.Decimal(9, 6)
+  longitude Decimal? @db.Decimal(9, 6)
+  address   String?
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   tenant              Tenant               @relation(fields: [tenantId], references: [id])
+  defaultServiceProvider ServiceProvider?  @relation(fields: [defaultServiceProviderId], references: [id])
   membershipTambos    MembershipTambo[]
   animals             Animal[]
   milkingSessions     MilkingSession[]
@@ -240,6 +252,7 @@ model Tambo {
   supportTickets      SupportTicket[]
   devices             Device[]
   flowSessions        FlowSession[]
+  pumpStatusEvents    PumpStatusEvent[]
 
   transfersFrom AnimalTransferEvent[] @relation("TransferFromTambo")
   transfersTo   AnimalTransferEvent[] @relation("TransferToTambo")
@@ -294,15 +307,18 @@ model Membership {
   status      MembershipStatus @default(ACTIVE)
   /// Ej. "Lobeto Tambos" — no es entidad Fabricante todavía.
   companyName String?          @map("company_name")
+  /// Proveedor formal del técnico. Null = independiente (ve todo el tambo).
+  serviceProviderId String? @map("service_provider_id") @db.Uuid
   /// Token de invitación random, de un solo uso (se limpia al aceptar). Ver reglas-negocio-app.md.
   inviteToken          String?   @unique @map("invite_token")
   inviteTokenExpiresAt DateTime? @map("invite_token_expires_at")
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
-  tenant Tenant            @relation(fields: [tenantId], references: [id])
-  user   User              @relation(fields: [userId], references: [id])
-  tambos MembershipTambo[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  user            User             @relation(fields: [userId], references: [id])
+  tambos          MembershipTambo[]
+  serviceProvider ServiceProvider? @relation(fields: [serviceProviderId], references: [id])
 
   @@unique([tenantId, userId])
   @@index([userId])
@@ -442,12 +458,31 @@ model Device {
   lastSeenAt   DateTime?  @map("last_seen_at")
   createdAt    DateTime   @default(now())
 
-  tenant      Tenant        @relation(fields: [tenantId], references: [id])
-  tambo       Tambo         @relation(fields: [tamboId], references: [id])
-  flowSessions FlowSession[]
+  tenant           Tenant           @relation(fields: [tenantId], references: [id])
+  tambo            Tambo            @relation(fields: [tamboId], references: [id])
+  flowSessions     FlowSession[]
+  pumpStatusEvents PumpStatusEvent[]
 
   @@index([tenantId, tamboId, bajadaNumber])
   @@map("devices")
+}
+
+model PumpStatusEvent {
+  id         String     @id @default(uuid()) @db.Uuid
+  tenantId   String     @map("tenant_id") @db.Uuid
+  tamboId    String     @map("tambo_id") @db.Uuid
+  deviceId   String     @map("device_id") @db.Uuid
+  status     PumpStatus
+  occurredAt DateTime   @map("occurred_at")
+  createdAt  DateTime   @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tambo  Tambo  @relation(fields: [tamboId], references: [id])
+  device Device @relation(fields: [deviceId], references: [id])
+
+  @@index([tenantId, tamboId, occurredAt])
+  @@index([deviceId, occurredAt])
+  @@map("pump_status_events")
 }
 
 model FlowSession {
@@ -859,6 +894,22 @@ model PartInstance {
   @@map("part_instances")
 }
 
+/// Catálogo global de proveedores de service (Lobeto, Omega, etc.).
+/// Solo un registro puede tener isDefault=true a la vez — se valida en API, no en DB.
+model ServiceProvider {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  isDefault Boolean  @default(false) @map("is_default")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tambos          Tambo[]
+  serviceRequests ServiceRequest[]
+  memberships     Membership[]
+
+  @@map("service_providers")
+}
+
 /// Ticket de service (no usa patrón VOIDED/corrects*: mal cargado → CANCELLED + uno nuevo).
 model ServiceRequest {
   id                      String                 @id @default(uuid()) @db.Uuid
@@ -870,6 +921,7 @@ model ServiceRequest {
   urgency                 ServiceRequestUrgency  @default(NORMAL)
   status                  ServiceRequestStatus   @default(OPEN)
   assignedTechnicianUserId String?               @map("assigned_technician_user_id") @db.Uuid
+  serviceProviderId         String?               @map("service_provider_id") @db.Uuid
   createdById             String                 @map("created_by_id") @db.Uuid
   /// Dueño/admin que aprobó (si pasó por PENDING_APPROVAL).
   approvedById            String?                @map("approved_by_id") @db.Uuid
@@ -884,6 +936,7 @@ model ServiceRequest {
   assignedTechnician  User?          @relation("ServiceRequestAssignedTo", fields: [assignedTechnicianUserId], references: [id])
   createdBy           User           @relation("ServiceRequestCreatedBy", fields: [createdById], references: [id])
   approvedBy          User?          @relation("ServiceRequestApprovedBy", fields: [approvedById], references: [id])
+  serviceProvider     ServiceProvider? @relation(fields: [serviceProviderId], references: [id])
 
   @@index([tenantId, tamboId, status])
   @@index([tenantId, assignedTechnicianUserId, status])

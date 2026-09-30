@@ -3,8 +3,9 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { signAccessToken } from "../lib/auth-tokens.js";
-import { resolveTamboIds } from "../lib/access.js";
+import { authContextFromMembership } from "../lib/access.js";
 import { authenticate } from "../middleware/authenticate.js";
+import { HttpError } from "../lib/http-error.js";
 
 export const authRouter = Router();
 
@@ -76,12 +77,7 @@ authRouter.post("/login", async (req, res) => {
     return;
   }
 
-  const auth = {
-    userId: user.id,
-    tenantId: membership.tenantId,
-    roles: membership.roles,
-    tamboIds: resolveTamboIds(membership),
-  };
+  const auth = authContextFromMembership(user.id, membership);
 
   const accessToken = signAccessToken(auth);
 
@@ -138,5 +134,42 @@ authRouter.get("/me", authenticate, async (req, res) => {
     roles: auth.roles,
     tamboAccess: auth.tamboIds === null ? "ALL" : "RESTRICTED",
     tambos,
+  });
+});
+
+authRouter.post("/switch-tenant", authenticate, async (req, res) => {
+  const parsed = z.object({ tenantId: z.string().uuid() }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid body", details: parsed.error.flatten() });
+    return;
+  }
+
+  const auth = req.auth!;
+  const membership = await prisma.membership.findFirst({
+    where: {
+      userId: auth.userId,
+      tenantId: parsed.data.tenantId,
+      status: "ACTIVE",
+    },
+    include: {
+      tenant: { select: { id: true, name: true } },
+      tambos: { select: { tamboId: true } },
+      user: { select: { id: true, email: true, name: true } },
+    },
+  });
+
+  if (!membership) {
+    throw new HttpError(403, "No membership for this tenant");
+  }
+
+  const ctx = authContextFromMembership(auth.userId, membership);
+  const accessToken = signAccessToken(ctx);
+
+  res.json({
+    accessToken,
+    user: membership.user,
+    tenant: membership.tenant,
+    roles: membership.roles,
+    tamboIds: ctx.tamboIds,
   });
 });

@@ -6,6 +6,8 @@ export type AuthContext = {
   roles: Role[];
   /** null = acceso a todos los tambos del tenant (dueño/admin) */
   tamboIds: string[] | null;
+  /** Proveedor del técnico. Null si no aplica o es independiente. */
+  serviceProviderId: string | null;
 };
 
 export type DeviceAuthContext = {

@@ -1,5 +1,6 @@
 import type { Membership, Role } from "@prisma/client";
 import { HttpError } from "./http-error.js";
+import type { AuthContext } from "../types/express.js";
 
 /** Dueño/admin ven todos los tambos del tenant. TECNICO nunca. */
 export function hasAllTamboAccess(roles: Role[]): boolean {
@@ -13,6 +14,20 @@ export function resolveTamboIds(
     return null;
   }
   return membership.tambos.map((t) => t.tamboId);
+}
+
+/** Mismo payload que emite POST /auth/login para una membership puntual. */
+export function authContextFromMembership(
+  userId: string,
+  membership: Membership & { tambos: { tamboId: string }[] },
+): AuthContext {
+  return {
+    userId,
+    tenantId: membership.tenantId,
+    roles: membership.roles,
+    tamboIds: resolveTamboIds(membership),
+    serviceProviderId: membership.serviceProviderId ?? null,
+  };
 }
 
 /** Valida que el tambo esté permitido para el auth actual. */

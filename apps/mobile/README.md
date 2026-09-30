@@ -31,7 +31,7 @@ $env:EXPO_PUBLIC_API_URL="http://192.168.x.x:3001"
 
 ## Correr
 
-Requiere **Expo Go SDK 54** en el teléfono (la del Play Store).
+Requiere **Expo Go SDK 57** en el teléfono (la del Play Store).
 
 ```powershell
 cd apps\mobile

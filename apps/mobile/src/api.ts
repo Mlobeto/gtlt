@@ -57,6 +57,9 @@ export function fetchTambos(token: string) {
       name: string;
       bajadaCount: number;
       serviceRequiresOwnerApproval?: boolean;
+      latitude?: number | null;
+      longitude?: number | null;
+      address?: string | null;
     }[];
   }>("/tambos", { token });
 }
@@ -549,6 +552,7 @@ export function inviteTechnician(
     phone?: string;
     name?: string;
     companyName?: string;
+    serviceProviderId?: string;
   },
 ) {
   return request<{ item: { id: string } }>("/memberships/invite-technician", {
@@ -558,6 +562,13 @@ export function inviteTechnician(
   });
 }
 
+export function fetchTamboServiceProvider(token: string, tamboId: string) {
+  return request<{
+    catalog: { id: string; name: string; isDefault: boolean; active: boolean }[];
+    selectedId: string | null;
+  }>(`/tambos/${encodeURIComponent(tamboId)}/service-provider`, { token });
+}
+
 export function fetchTechnicianWorkspace(token: string, tamboId: string) {
   return request<{
     tamboId: string;
@@ -565,6 +576,9 @@ export function fetchTechnicianWorkspace(token: string, tamboId: string) {
       id: string;
       name: string;
       serviceRequiresOwnerApproval: boolean;
+      latitude?: number | null;
+      longitude?: number | null;
+      address?: string | null;
     } | null;
     partInstances: PartInstanceItem[];
     serviceRequests: ServiceRequestItem[];
@@ -714,6 +728,26 @@ export function updateTamboSettings(
       serviceRequiresOwnerApproval: boolean;
     };
   }>(`/tambos/${tamboId}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateTamboLocation(
+  token: string,
+  tamboId: string,
+  payload: { latitude: number; longitude: number; address?: string },
+) {
+  return request<{
+    item: {
+      id: string;
+      name: string;
+      latitude: number | null;
+      longitude: number | null;
+      address: string | null;
+    };
+  }>(`/tambos/${tamboId}/location`, {
     method: "PATCH",
     token,
     body: JSON.stringify(payload),

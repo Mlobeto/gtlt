@@ -15,6 +15,7 @@ const FARM_ROLES: Role[] = ["TAMBERO", "DUENIO", "ADMIN", "VETERINARIO"];
 export const TECNICO_ALLOWED_PATH_PREFIXES = [
   "/health",
   "/auth",
+  "/my",
   "/tambos",
   "/part-types",
   "/part-instances",

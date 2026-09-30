@@ -13,6 +13,7 @@ export interface SupportTicket {
   updatedAt: string
   user?: { id: string; name: string; email?: string }
   tambo?: { id: string; name: string }
+  tenant?: { id: string; name: string }
 }
 
 export interface AppPrototypeConfig {

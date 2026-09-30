@@ -8,6 +8,8 @@ const DEMO_EMAIL = "admin@gtlt.local";
 const DEMO_PASSWORD = "demo1234";
 const DEMO_TECH_EMAIL = "tecnico@gtlt.local";
 const DEMO_TAMBERO_EMAIL = "tambero@gtlt.local";
+const DEMO_TAMBERO2_EMAIL = "tambero2@gtlt.local";
+const DEMO_VET_EMAIL = "vet@gtlt.local";
 const DEMO_DEV_EMAIL = "dev@gtlt.local";
 
 type PartTypeSeed = {
@@ -142,8 +144,44 @@ async function seedPartTypes() {
   console.log(`PartType seed OK: ${count} tipos en catálogo.`);
 }
 
+async function seedServiceProviders() {
+  let lobeto = await prisma.serviceProvider.findFirst({
+    where: { name: "Lobeto Tambos" },
+  });
+  if (!lobeto) {
+    lobeto = await prisma.serviceProvider.create({
+      data: { name: "Lobeto Tambos", isDefault: true, active: true },
+    });
+  } else {
+    await prisma.$transaction([
+      prisma.serviceProvider.updateMany({
+        where: { id: { not: lobeto.id } },
+        data: { isDefault: false },
+      }),
+      prisma.serviceProvider.update({
+        where: { id: lobeto.id },
+        data: { isDefault: true, active: true },
+      }),
+    ]);
+  }
+
+  const omega = await prisma.serviceProvider.findFirst({
+    where: { name: "Omega" },
+  });
+  if (!omega) {
+    await prisma.serviceProvider.create({
+      data: { name: "Omega", isDefault: false, active: true },
+    });
+  }
+
+  return prisma.serviceProvider.findFirstOrThrow({
+    where: { name: "Lobeto Tambos" },
+  });
+}
+
 async function seedDemoTenant() {
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
+  const defaultProvider = await seedServiceProviders();
 
   await prisma.plan.upsert({
     where: { code: "STANDARD" },
@@ -203,7 +241,13 @@ async function seedDemoTenant() {
         tenantId: tenant.id,
         name: "Tambo Demo",
         bajadaCount: 8,
+        defaultServiceProviderId: defaultProvider.id,
       },
+    });
+  } else if (!tambo.defaultServiceProviderId) {
+    tambo = await prisma.tambo.update({
+      where: { id: tambo.id },
+      data: { defaultServiceProviderId: defaultProvider.id },
     });
   }
 
@@ -335,6 +379,116 @@ async function seedDemoTenant() {
     });
   }
 
+  const vetUser = await prisma.user.upsert({
+    where: { email: DEMO_VET_EMAIL },
+    create: {
+      email: DEMO_VET_EMAIL,
+      name: "Veterinario Demo",
+      passwordHash,
+    },
+    update: {
+      name: "Veterinario Demo",
+      passwordHash,
+    },
+  });
+
+  const vetMembership = await prisma.membership.upsert({
+    where: {
+      tenantId_userId: { tenantId: tenant.id, userId: vetUser.id },
+    },
+    create: {
+      tenantId: tenant.id,
+      userId: vetUser.id,
+      roles: ["VETERINARIO"],
+      status: "ACTIVE",
+    },
+    update: {
+      roles: ["VETERINARIO"],
+      status: "ACTIVE",
+    },
+    include: { tambos: true },
+  });
+
+  if (!vetMembership.tambos.some((t) => t.tamboId === tambo.id)) {
+    await prisma.membershipTambo.create({
+      data: {
+        tenantId: tenant.id,
+        membershipId: vetMembership.id,
+        tamboId: tambo.id,
+      },
+    });
+  }
+
+  let tamboNorte = await prisma.tambo.findFirst({
+    where: { tenantId: tenant.id, name: "Tambo Norte" },
+  });
+
+  if (!tamboNorte) {
+    tamboNorte = await prisma.tambo.create({
+      data: {
+        tenantId: tenant.id,
+        name: "Tambo Norte",
+        bajadaCount: 8,
+        defaultServiceProviderId: defaultProvider.id,
+      },
+    });
+  } else if (!tamboNorte.defaultServiceProviderId) {
+    tamboNorte = await prisma.tambo.update({
+      where: { id: tamboNorte.id },
+      data: { defaultServiceProviderId: defaultProvider.id },
+    });
+  }
+
+  if (!techMembership.tambos.some((t) => t.tamboId === tamboNorte.id)) {
+    await prisma.membershipTambo.create({
+      data: {
+        tenantId: tenant.id,
+        membershipId: techMembership.id,
+        tamboId: tamboNorte.id,
+      },
+    });
+  }
+
+  const tambero2User = await prisma.user.upsert({
+    where: { email: DEMO_TAMBERO2_EMAIL },
+    create: {
+      email: DEMO_TAMBERO2_EMAIL,
+      name: "Tambero Norte",
+      passwordHash,
+    },
+    update: {
+      name: "Tambero Norte",
+      passwordHash,
+    },
+  });
+
+  const tambero2Membership = await prisma.membership.upsert({
+    where: {
+      tenantId_userId: { tenantId: tenant.id, userId: tambero2User.id },
+    },
+    create: {
+      tenantId: tenant.id,
+      userId: tambero2User.id,
+      roles: ["TAMBERO"],
+      status: "ACTIVE",
+    },
+    update: {
+      roles: ["TAMBERO"],
+      status: "ACTIVE",
+    },
+    include: { tambos: true },
+  });
+
+  if (!tambero2Membership.tambos.some((t) => t.tamboId === tamboNorte.id)) {
+    await prisma.membershipTambo.create({
+      data: {
+        tenantId: tenant.id,
+        membershipId: tambero2Membership.id,
+        tamboId: tamboNorte.id,
+      },
+    });
+  }
+
   const devUser = await prisma.user.upsert({
     where: { email: DEMO_DEV_EMAIL },
     create: {
@@ -367,11 +521,14 @@ async function seedDemoTenant() {
   console.log("Demo seed OK:");
   console.log(`  email:    ${DEMO_EMAIL}`);
   console.log(`  password: ${DEMO_PASSWORD}`);
-  console.log(`  tambero:  ${DEMO_TAMBERO_EMAIL} / ${DEMO_PASSWORD}`);
-  console.log(`  técnico:  ${DEMO_TECH_EMAIL} / ${DEMO_PASSWORD}`);
+  console.log(`  tambero:  ${DEMO_TAMBERO_EMAIL} / ${DEMO_PASSWORD} (solo Tambo Demo)`);
+  console.log(`  tambero2: ${DEMO_TAMBERO2_EMAIL} / ${DEMO_PASSWORD} (solo Tambo Norte)`);
+  console.log(`  vet:      ${DEMO_VET_EMAIL} / ${DEMO_PASSWORD} (solo Tambo Demo)`);
+  console.log(`  técnico:  ${DEMO_TECH_EMAIL} / ${DEMO_PASSWORD} (ambos tambos)`);
   console.log(`  dev:      ${DEMO_DEV_EMAIL} / ${DEMO_PASSWORD}`);
   console.log(`  tenant:   ${tenant.id} (${tenant.name})`);
   console.log(`  tambo:    ${tambo.id} (${tambo.name})`);
+  console.log(`  tambo2:   ${tamboNorte.id} (${tamboNorte.name})`);
   console.log(
     `  serviceRequiresOwnerApproval: ${tambo.serviceRequiresOwnerApproval}`,
   );

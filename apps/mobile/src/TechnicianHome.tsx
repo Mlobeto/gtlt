@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -15,7 +16,36 @@ import {
 import type { Session } from "./session";
 import { colors, font, radius, space, touch } from "./theme";
 
-type TechScreen = "home" | "equipment" | "request";
+type TamboLocation = {
+  id: string;
+  name: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
+};
+
+function mapsUrl(lat: number, lng: number) {
+  return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+}
+
+function TamboDirections({ tambo }: { tambo: TamboLocation | null | undefined }) {
+  if (!tambo) return null;
+  const lat = tambo.latitude;
+  const lng = tambo.longitude;
+  const hasCoords = lat != null && lng != null;
+  return (
+    <View style={{ gap: 4 }}>
+      {tambo.address ? <Text style={styles.itemMeta}>{tambo.address}</Text> : null}
+      {hasCoords ? (
+        <Pressable onPress={() => void Linking.openURL(mapsUrl(lat, lng))}>
+          <Text style={styles.link}>Cómo llegar</Text>
+        </Pressable>
+      ) : (
+        <Text style={styles.empty}>Ubicación no cargada</Text>
+      )}
+    </View>
+  );
+}
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_APPROVAL: "Espera dueño",
@@ -50,6 +80,8 @@ const NEXT_STATUS: Record<string, { value: string; label: string }[]> = {
   ],
 };
 
+type TechScreen = "home" | "equipment" | "request";
+
 type Props = {
   session: Session;
   online: boolean;
@@ -62,6 +94,7 @@ export function TechnicianHome({ session, online, onLogout, onStatus }: Props) {
   const [busy, setBusy] = useState(false);
   const [parts, setParts] = useState<PartInstanceItem[]>([]);
   const [requests, setRequests] = useState<ServiceRequestItem[]>([]);
+  const [tambo, setTambo] = useState<TamboLocation | null>(null);
   const [selected, setSelected] = useState<ServiceRequestItem | null>(null);
 
   const load = useCallback(async () => {
@@ -74,6 +107,7 @@ export function TechnicianHome({ session, online, onLogout, onStatus }: Props) {
       const ws = await fetchTechnicianWorkspace(session.token, session.tamboId);
       setParts(ws.partInstances);
       setRequests(ws.serviceRequests);
+      setTambo(ws.tambo ?? null);
       onStatus("");
     } catch {
       onStatus("No se pudo cargar el tambo. Revisá la señal.");
@@ -101,6 +135,7 @@ export function TechnicianHome({ session, online, onLogout, onStatus }: Props) {
       const ws = await fetchTechnicianWorkspace(session.token, session.tamboId);
       setParts(ws.partInstances);
       setRequests(ws.serviceRequests);
+      setTambo(ws.tambo ?? null);
       onStatus(`Pedido: ${STATUS_LABEL[status] ?? status}.`);
       if (status === "RESOLVED" || status === "CANCELLED") {
         setScreen("home");
@@ -137,6 +172,7 @@ export function TechnicianHome({ session, online, onLogout, onStatus }: Props) {
           <Text style={styles.help}>
             Pedidos del tambo y el equipo cargado. Solo ves lo de este tambo.
           </Text>
+          <TamboDirections tambo={tambo} />
           <Pressable
             style={[styles.buttonSecondary, busy && styles.disabled]}
             onPress={() => void load()}
@@ -225,6 +261,7 @@ export function TechnicianHome({ session, online, onLogout, onStatus }: Props) {
             {CATEGORY_LABEL[selected.category] ?? selected.category}
           </Text>
           <Text style={styles.help}>{selected.description}</Text>
+          <TamboDirections tambo={tambo} />
           <Text style={styles.itemMeta}>
             Estado: {STATUS_LABEL[selected.status] ?? selected.status}
           </Text>

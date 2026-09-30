@@ -5,23 +5,37 @@ import type { SupportTicket } from '../types/dashboard'
 
 interface TicketsTabProps {
   auth: AuthToken
-  /** Solo DUENIO/ADMIN pueden actualizar estado y notas (regla del backend). */
+  /** Solo DUENIO/ADMIN o desarrolladora (vía API admin) pueden actualizar estado y notas. */
   canManage: boolean
+  canCreate?: boolean
+  adminView?: boolean
 }
 
-export function TicketsTab({ auth, canManage }: TicketsTabProps) {
+export function TicketsTab({ auth, canManage, canCreate = false, adminView = false }: TicketsTabProps) {
   const [tickets, setTickets] = useState<SupportTicket[]>([])
+  const [tambos, setTambos] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null)
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [internalNote, setInternalNote] = useState('')
+  const [showCreate, setShowCreate] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [createForm, setCreateForm] = useState({
+    subject: '',
+    description: '',
+    category: 'QUESTION' as SupportTicket['category'],
+    priority: 'MEDIUM' as SupportTicket['priority'],
+    tamboId: '',
+  })
 
   const fetchTickets = async () => {
     try {
       setLoading(true)
-      const result = await api.getSupportTickets(auth.token, statusFilter || undefined)
+      const result = adminView
+        ? await api.getAdminSupportTickets(auth.token, statusFilter || undefined)
+        : await api.getSupportTickets(auth.token, statusFilter || undefined)
       setTickets(result.items || [])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar tickets')
@@ -31,16 +45,26 @@ export function TicketsTab({ auth, canManage }: TicketsTabProps) {
   }
 
   useEffect(() => {
+    if (!canCreate) return
+    api.getTambos(auth.token).then((r) => setTambos(r.items || [])).catch(() => undefined)
+  }, [auth, canCreate])
+
+  useEffect(() => {
     fetchTickets()
   }, [statusFilter])
 
   const handleUpdateStatus = async (ticketId: string, newStatus: string) => {
     try {
       setUpdatingStatus(true)
-      await api.updateSupportTicket(auth.token, ticketId, {
-        status: newStatus,
-        internalNote: internalNote || undefined,
-      })
+      await (adminView
+        ? api.updateAdminSupportTicket(auth.token, ticketId, {
+            status: newStatus,
+            internalNote: internalNote || undefined,
+          })
+        : api.updateSupportTicket(auth.token, ticketId, {
+            status: newStatus,
+            internalNote: internalNote || undefined,
+          }))
       setInternalNote('')
       setSelectedTicket(null)
       await fetchTickets()
@@ -92,6 +116,14 @@ export function TicketsTab({ auth, canManage }: TicketsTabProps) {
         >
           Actualizar
         </button>
+        {canCreate ? (
+          <button
+            onClick={() => setShowCreate((v) => !v)}
+            className="px-4 py-2 border border-green-600 text-green-700 rounded-lg hover:bg-green-50"
+          >
+            Nuevo ticket
+          </button>
+        ) : null}
       </div>
 
       {error && (
@@ -99,6 +131,100 @@ export function TicketsTab({ auth, canManage }: TicketsTabProps) {
           {error}
         </div>
       )}
+
+      {showCreate && canCreate ? (
+        <form
+          className="bg-white border rounded-lg p-4 space-y-3"
+          onSubmit={async (e) => {
+            e.preventDefault()
+            try {
+              setCreating(true)
+              setError('')
+              await api.createSupportTicket(auth.token, {
+                subject: createForm.subject,
+                description: createForm.description,
+                category: createForm.category,
+                priority: createForm.priority,
+                tamboId: createForm.tamboId || null,
+              })
+              setCreateForm({
+                subject: '',
+                description: '',
+                category: 'QUESTION',
+                priority: 'MEDIUM',
+                tamboId: '',
+              })
+              setShowCreate(false)
+              await fetchTickets()
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'No se pudo crear el ticket')
+            } finally {
+              setCreating(false)
+            }
+          }}
+        >
+          <input
+            required
+            className="w-full px-3 py-2 border rounded-lg"
+            placeholder="Asunto"
+            value={createForm.subject}
+            onChange={(e) => setCreateForm({ ...createForm, subject: e.target.value })}
+          />
+          <textarea
+            required
+            className="w-full px-3 py-2 border rounded-lg"
+            rows={4}
+            placeholder="Qué pasó"
+            value={createForm.description}
+            onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
+          />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <select
+              className="px-3 py-2 border rounded-lg"
+              value={createForm.category}
+              onChange={(e) =>
+                setCreateForm({ ...createForm, category: e.target.value as SupportTicket['category'] })
+              }
+            >
+              <option value="BUG">Falla</option>
+              <option value="QUESTION">Consulta</option>
+              <option value="IMPROVEMENT">Mejora</option>
+              <option value="OTHER">Otro</option>
+            </select>
+            <select
+              className="px-3 py-2 border rounded-lg"
+              value={createForm.priority}
+              onChange={(e) =>
+                setCreateForm({ ...createForm, priority: e.target.value as SupportTicket['priority'] })
+              }
+            >
+              <option value="LOW">Baja</option>
+              <option value="MEDIUM">Media</option>
+              <option value="HIGH">Alta</option>
+              <option value="URGENT">Urgente</option>
+            </select>
+            <select
+              className="px-3 py-2 border rounded-lg"
+              value={createForm.tamboId}
+              onChange={(e) => setCreateForm({ ...createForm, tamboId: e.target.value })}
+            >
+              <option value="">Sin tambo</option>
+              {tambos.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="submit"
+            disabled={creating}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50"
+          >
+            {creating ? 'Enviando...' : 'Crear ticket'}
+          </button>
+        </form>
+      ) : null}
 
       {loading ? (
         <div className="text-center py-8">
@@ -131,7 +257,10 @@ export function TicketsTab({ auth, canManage }: TicketsTabProps) {
                 </div>
               </div>
               <div className="flex justify-between items-center text-xs text-gray-500 mt-3">
-                <span>{ticket.user?.name} - {ticket.tambo?.name || 'Sin tambo'}</span>
+                <span>
+                  {ticket.tenant?.name ? `${ticket.tenant.name} · ` : ''}
+                  {ticket.user?.name} - {ticket.tambo?.name || 'Sin tambo'}
+                </span>
                 <span>{new Date(ticket.createdAt).toLocaleDateString('es-AR')}</span>
               </div>
             </div>

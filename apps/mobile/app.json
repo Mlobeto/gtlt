@@ -7,7 +7,10 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "GTLT usa tu ubicación para marcar dónde está el tambo, así el técnico sabe cómo llegar."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -16,7 +19,11 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -30,7 +37,14 @@
           "photosPermission": "GTLT necesita fotos para la ficha de cada vaca.",
           "cameraPermission": "GTLT necesita la cámara para sacar la foto de la vaca."
         }
-      ]
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "GTLT usa tu ubicación para marcar dónde está el tambo, así el técnico sabe cómo llegar."
+        }
+      ],
+      "expo-status-bar"
     ]
   }
 }
