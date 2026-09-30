@@ -1460,11 +1460,11 @@ export default function App() {
   }
 
   if (!ready) {
-    return (
+  return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Cargando...</Text>
-      </View>
+    </View>
     );
   }
 

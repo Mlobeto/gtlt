@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
-import type { AuthToken } from '../types/auth'
 
 export function TamboPicker({
   token,

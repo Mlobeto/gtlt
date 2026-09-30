@@ -4,7 +4,7 @@ Documento vivo de **colores, tipografía, formularios y componentes**.
 Toda pantalla de producto (mobile y web) debe alinearse acá.  
 Complementa [ux-usuario.md](./ux-usuario.md) (idioma y simplicidad).
 
-**Última actualización:** 2026-08-08
+**Última actualización:** 2026-09-29
 
 ---
 
@@ -26,20 +26,21 @@ Complementa [ux-usuario.md](./ux-usuario.md) (idioma y simplicidad).
 | Token | Hex | Uso |
 |---|---|---|
 | `color.bg` | `#FFFFFF` | Fondo de pantalla |
-| `color.bgSubtle` | `#F7F8F5` | Fondos secundarios / listas |
+| `color.bgSubtle` | `#F2F4F5` | Fondos secundarios / listas |
 | `color.surface` | `#FFFFFF` | Cards, formularios |
-| `color.border` | `#D8DED4` | Bordes de inputs y separadores |
-| `color.text` | `#1A2E1C` | Texto principal |
-| `color.textMuted` | `#5F6F60` | Ayudas, meta |
-| `color.primary` | `#2F7A3E` | Botón principal, links fuertes, éxito |
-| `color.primaryPressed` | `#246332` | Pressed / active del verde |
-| `color.primarySoft` | `#E7F3EA` | Fondo de botón secundario / chips ok |
-| `color.accent` | `#F0C419` | Amarillo — avisos, “falta enviar”, highlights |
-| `color.accentSoft` | `#FFF6CC` | Fondo de alerta suave |
-| `color.accentText` | `#6B5400` | Texto sobre amarillo suave |
-| `color.danger` | `#B42318` | Error / destructivo (usar poco) |
-| `color.dangerSoft` | `#FCEBEA` | Fondo error |
-| `color.success` | `#2F7A3E` | Igual que primary (consistencia) |
+| `color.border` | `#E1E5E8` | Bordes de inputs y separadores |
+| `color.text` | `#33383D` | Texto principal |
+| `color.textMuted` | `#6B7278` | Ayudas, meta |
+| `color.primary` | `#4C9A6A` | Botón principal, links fuertes, éxito (verde de marca) |
+| `color.primaryPressed` | `#3D7D57` | Pressed / active del verde |
+| `color.primarySoft` | `#E8F2EC` | Fondo de botón secundario / chips ok — **pálido, no saturado** |
+| `color.brandDark` | `#123B4F` | Headers, nav, superficies oscuras de marca (nuevo) |
+| `color.brandBlue` | `#1F6F8B` | Acentos secundarios, eyebrows, links de apoyo (nuevo) |
+| `color.accent` | `#F0C419` | Amarillo — avisos, "falta enviar" (sin cambios) |
+| `color.accentSoft` | `#FFF6CC` | Fondo de alerta suave — **pálido, no saturado** |
+| `color.accentText` | `#6B5400` | Texto sobre amarillo suave (sin cambios) |
+| `color.danger` | `#B42318` | Error / destructivo (sin cambios) |
+| `color.dangerSoft` | `#FCEBEA` | Fondo error (sin cambios) |
 
 ### Semántica rápida
 
@@ -53,14 +54,16 @@ Complementa [ux-usuario.md](./ux-usuario.md) (idioma y simplicidad).
 ```css
 :root {
   --color-bg: #ffffff;
-  --color-bg-subtle: #f7f8f5;
+  --color-bg-subtle: #f2f4f5;
   --color-surface: #ffffff;
-  --color-border: #d8ded4;
-  --color-text: #1a2e1c;
-  --color-text-muted: #5f6f60;
-  --color-primary: #2f7a3e;
-  --color-primary-pressed: #246332;
-  --color-primary-soft: #e7f3ea;
+  --color-border: #e1e5e8;
+  --color-text: #33383d;
+  --color-text-muted: #6b7278;
+  --color-primary: #4c9a6a;
+  --color-primary-pressed: #3d7d57;
+  --color-primary-soft: #e8f2ec;
+  --color-brand-dark: #123b4f;
+  --color-brand-blue: #1f6f8b;
   --color-accent: #f0c419;
   --color-accent-soft: #fff6cc;
   --color-accent-text: #6b5400;
@@ -200,3 +203,9 @@ Mensajes de feedback **dentro del formulario**, arriba de los botones — nunca 
 | Mobile | `apps/mobile/src/theme.ts` |
 | Web | (pendiente) `apps/web/src/styles/tokens.css` |
 | Doc | este archivo |
+
+---
+
+## Changelog
+
+- **2026-09-29** — Paleta alineada a la identidad usada en la presentación para socios — antes verde/amarillo saturado, ahora verde/azul oscuro con tintes pálidos. Colores de advertencia/error sin cambios.
