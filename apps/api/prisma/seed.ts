@@ -12,6 +12,24 @@ const DEMO_TAMBERO2_EMAIL = "tambero2@gtlt.local";
 const DEMO_VET_EMAIL = "vet@gtlt.local";
 const DEMO_DEV_EMAIL = "dev@gtlt.local";
 
+const SEED_MODE = process.env.SEED_MODE === "prod" ? "prod" : "dev";
+
+const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? DEMO_EMAIL;
+const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? DEMO_PASSWORD;
+const DEV_EMAIL = process.env.SEED_DEV_EMAIL ?? DEMO_DEV_EMAIL;
+const DEV_PASSWORD = process.env.SEED_DEV_PASSWORD ?? DEMO_PASSWORD;
+const TECH_EMAIL = process.env.SEED_TECH_EMAIL ?? DEMO_TECH_EMAIL;
+const TECH_PASSWORD = process.env.SEED_TECH_PASSWORD ?? DEMO_PASSWORD;
+const TAMBERO_EMAIL = process.env.SEED_TAMBERO_EMAIL ?? DEMO_TAMBERO_EMAIL;
+const TAMBERO_PASSWORD = process.env.SEED_TAMBERO_PASSWORD ?? DEMO_PASSWORD;
+const TAMBERO2_EMAIL = process.env.SEED_TAMBERO2_EMAIL ?? DEMO_TAMBERO2_EMAIL;
+const TAMBERO2_PASSWORD = process.env.SEED_TAMBERO2_PASSWORD ?? DEMO_PASSWORD;
+const VET_EMAIL = process.env.SEED_VET_EMAIL ?? DEMO_VET_EMAIL;
+const VET_PASSWORD = process.env.SEED_VET_PASSWORD ?? DEMO_PASSWORD;
+
+const TENANT_NAME = process.env.SEED_TENANT_NAME ?? "Mi tambo";
+const TAMBO_NAME = process.env.SEED_TAMBO_NAME ?? "Mi tambo";
+
 type PartTypeSeed = {
   code: string;
   name: string;
@@ -179,10 +197,7 @@ async function seedServiceProviders() {
   });
 }
 
-async function seedDemoTenant() {
-  const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
-  const defaultProvider = await seedServiceProviders();
-
+async function seedPlans() {
   await prisma.plan.upsert({
     where: { code: "STANDARD" },
     create: {
@@ -207,17 +222,26 @@ async function seedDemoTenant() {
     },
     update: {},
   });
+}
+
+async function seedDevTenant(defaultProvider: { id: string }) {
+  const adminPasswordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+  const techPasswordHash = await bcrypt.hash(TECH_PASSWORD, 10);
+  const tamberoPasswordHash = await bcrypt.hash(TAMBERO_PASSWORD, 10);
+  const tambero2PasswordHash = await bcrypt.hash(TAMBERO2_PASSWORD, 10);
+  const vetPasswordHash = await bcrypt.hash(VET_PASSWORD, 10);
+  const devPasswordHash = await bcrypt.hash(DEV_PASSWORD, 10);
 
   const user = await prisma.user.upsert({
-    where: { email: DEMO_EMAIL },
+    where: { email: ADMIN_EMAIL },
     create: {
-      email: DEMO_EMAIL,
+      email: ADMIN_EMAIL,
       name: "Admin Demo",
-      passwordHash,
+      passwordHash: adminPasswordHash,
     },
     update: {
       name: "Admin Demo",
-      passwordHash,
+      passwordHash: adminPasswordHash,
     },
   });
 
@@ -298,15 +322,15 @@ async function seedDemoTenant() {
   }
 
   const techUser = await prisma.user.upsert({
-    where: { email: DEMO_TECH_EMAIL },
+    where: { email: TECH_EMAIL },
     create: {
-      email: DEMO_TECH_EMAIL,
+      email: TECH_EMAIL,
       name: "Técnico Demo",
-      passwordHash,
+      passwordHash: techPasswordHash,
     },
     update: {
       name: "Técnico Demo",
-      passwordHash,
+      passwordHash: techPasswordHash,
     },
   });
 
@@ -340,15 +364,15 @@ async function seedDemoTenant() {
   }
 
   const tamberoUser = await prisma.user.upsert({
-    where: { email: DEMO_TAMBERO_EMAIL },
+    where: { email: TAMBERO_EMAIL },
     create: {
-      email: DEMO_TAMBERO_EMAIL,
+      email: TAMBERO_EMAIL,
       name: "Tambero Demo",
-      passwordHash,
+      passwordHash: tamberoPasswordHash,
     },
     update: {
       name: "Tambero Demo",
-      passwordHash,
+      passwordHash: tamberoPasswordHash,
     },
   });
 
@@ -380,15 +404,15 @@ async function seedDemoTenant() {
   }
 
   const vetUser = await prisma.user.upsert({
-    where: { email: DEMO_VET_EMAIL },
+    where: { email: VET_EMAIL },
     create: {
-      email: DEMO_VET_EMAIL,
+      email: VET_EMAIL,
       name: "Veterinario Demo",
-      passwordHash,
+      passwordHash: vetPasswordHash,
     },
     update: {
       name: "Veterinario Demo",
-      passwordHash,
+      passwordHash: vetPasswordHash,
     },
   });
 
@@ -450,15 +474,15 @@ async function seedDemoTenant() {
   }
 
   const tambero2User = await prisma.user.upsert({
-    where: { email: DEMO_TAMBERO2_EMAIL },
+    where: { email: TAMBERO2_EMAIL },
     create: {
-      email: DEMO_TAMBERO2_EMAIL,
+      email: TAMBERO2_EMAIL,
       name: "Tambero Norte",
-      passwordHash,
+      passwordHash: tambero2PasswordHash,
     },
     update: {
       name: "Tambero Norte",
-      passwordHash,
+      passwordHash: tambero2PasswordHash,
     },
   });
 
@@ -490,15 +514,15 @@ async function seedDemoTenant() {
   }
 
   const devUser = await prisma.user.upsert({
-    where: { email: DEMO_DEV_EMAIL },
+    where: { email: DEV_EMAIL },
     create: {
-      email: DEMO_DEV_EMAIL,
+      email: DEV_EMAIL,
       name: "Desarrolladora Demo",
-      passwordHash,
+      passwordHash: devPasswordHash,
     },
     update: {
       name: "Desarrolladora Demo",
-      passwordHash,
+      passwordHash: devPasswordHash,
     },
   });
 
@@ -518,14 +542,14 @@ async function seedDemoTenant() {
     },
   });
 
-  console.log("Demo seed OK:");
-  console.log(`  email:    ${DEMO_EMAIL}`);
-  console.log(`  password: ${DEMO_PASSWORD}`);
-  console.log(`  tambero:  ${DEMO_TAMBERO_EMAIL} / ${DEMO_PASSWORD} (solo Tambo Demo)`);
-  console.log(`  tambero2: ${DEMO_TAMBERO2_EMAIL} / ${DEMO_PASSWORD} (solo Tambo Norte)`);
-  console.log(`  vet:      ${DEMO_VET_EMAIL} / ${DEMO_PASSWORD} (solo Tambo Demo)`);
-  console.log(`  técnico:  ${DEMO_TECH_EMAIL} / ${DEMO_PASSWORD} (ambos tambos)`);
-  console.log(`  dev:      ${DEMO_DEV_EMAIL} / ${DEMO_PASSWORD}`);
+  console.log("SEED_MODE: dev");
+  console.log("Cuentas creadas:");
+  console.log(`  dueño/admin: ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`);
+  console.log(`  tambero:     ${TAMBERO_EMAIL} / ${TAMBERO_PASSWORD} (solo Tambo Demo)`);
+  console.log(`  tambero2:    ${TAMBERO2_EMAIL} / ${TAMBERO2_PASSWORD} (solo Tambo Norte)`);
+  console.log(`  vet:         ${VET_EMAIL} / ${VET_PASSWORD} (solo Tambo Demo)`);
+  console.log(`  técnico:     ${TECH_EMAIL} / ${TECH_PASSWORD} (ambos tambos)`);
+  console.log(`  dev:         ${DEV_EMAIL} / ${DEV_PASSWORD}`);
   console.log(`  tenant:   ${tenant.id} (${tenant.name})`);
   console.log(`  tambo:    ${tambo.id} (${tambo.name})`);
   console.log(`  tambo2:   ${tamboNorte.id} (${tamboNorte.name})`);
@@ -537,9 +561,126 @@ async function seedDemoTenant() {
   console.log(`  plan:     LIFETIME / ACTIVE`);
 }
 
+async function seedProdTenant(defaultProvider: { id: string }) {
+  const adminPasswordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+  const devPasswordHash = await bcrypt.hash(DEV_PASSWORD, 10);
+
+  const owner = await prisma.user.upsert({
+    where: { email: ADMIN_EMAIL },
+    create: {
+      email: ADMIN_EMAIL,
+      name: "Dueño",
+      passwordHash: adminPasswordHash,
+    },
+    update: {
+      passwordHash: adminPasswordHash,
+    },
+  });
+
+  let tenant = await prisma.tenant.findFirst({
+    where: { name: TENANT_NAME },
+  });
+
+  if (!tenant) {
+    tenant = await prisma.tenant.create({
+      data: { name: TENANT_NAME },
+    });
+  }
+
+  let tambo = await prisma.tambo.findFirst({
+    where: { tenantId: tenant.id, name: TAMBO_NAME },
+  });
+
+  if (!tambo) {
+    tambo = await prisma.tambo.create({
+      data: {
+        tenantId: tenant.id,
+        name: TAMBO_NAME,
+        bajadaCount: 8,
+        defaultServiceProviderId: defaultProvider.id,
+      },
+    });
+  } else if (!tambo.defaultServiceProviderId) {
+    tambo = await prisma.tambo.update({
+      where: { id: tambo.id },
+      data: { defaultServiceProviderId: defaultProvider.id },
+    });
+  }
+
+  const lifetimePlan = await prisma.plan.findUniqueOrThrow({
+    where: { code: "LIFETIME" },
+  });
+  await prisma.subscription.upsert({
+    where: { tenantId: tenant.id },
+    create: {
+      tenantId: tenant.id,
+      planId: lifetimePlan.id,
+      status: "ACTIVE",
+    },
+    update: {},
+  });
+
+  const ownerRoles: Role[] = ["DUENIO", "ADMIN"];
+  await prisma.membership.upsert({
+    where: {
+      tenantId_userId: { tenantId: tenant.id, userId: owner.id },
+    },
+    create: {
+      tenantId: tenant.id,
+      userId: owner.id,
+      roles: ownerRoles,
+    },
+    update: { roles: ownerRoles },
+  });
+
+  const devUser = await prisma.user.upsert({
+    where: { email: DEV_EMAIL },
+    create: {
+      email: DEV_EMAIL,
+      name: "Desarrolladora",
+      passwordHash: devPasswordHash,
+    },
+    update: {
+      passwordHash: devPasswordHash,
+    },
+  });
+
+  await prisma.membership.upsert({
+    where: {
+      tenantId_userId: { tenantId: tenant.id, userId: devUser.id },
+    },
+    create: {
+      tenantId: tenant.id,
+      userId: devUser.id,
+      roles: ["DESARROLLADORA"],
+      status: "ACTIVE",
+    },
+    update: {
+      roles: ["DESARROLLADORA"],
+      status: "ACTIVE",
+    },
+  });
+
+  console.log("SEED_MODE: prod");
+  console.log("Cuentas creadas:");
+  console.log(`  dueño/admin:    ${ADMIN_EMAIL} (DUENIO, ADMIN)`);
+  console.log(`  desarrolladora: ${DEV_EMAIL} (DESARROLLADORA)`);
+  console.log(`  tenant: ${tenant.id} (${tenant.name})`);
+  console.log(`  tambo:  ${tambo.id} (${tambo.name})`);
+  console.log("  (contraseñas no se imprimen en modo prod)");
+}
+
 async function main() {
   await seedPartTypes();
-  await seedDemoTenant();
+  await seedPlans();
+  const defaultProvider = await seedServiceProviders();
+
+  if (SEED_MODE === "dev") {
+    await seedDevTenant(defaultProvider);
+  }
+  if (SEED_MODE === "prod") {
+    await seedProdTenant(defaultProvider);
+  }
 }
 
 main()
