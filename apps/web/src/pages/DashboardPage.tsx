@@ -7,6 +7,8 @@ import { TodayTab } from '../components/TodayTab'
 import { AnimalsTab } from '../components/AnimalsTab'
 import { TeamTab } from '../components/TeamTab'
 import { SettingsTab } from '../components/SettingsTab'
+import { AppShell } from '../components/AppShell'
+import { Button } from '../components/ui'
 import { api } from '../lib/api'
 import type { AuthToken } from '../types/auth'
 
@@ -38,12 +40,14 @@ export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
   const [helpOpen, setHelpOpen] = useState(false)
   const [loadingMe, setLoadingMe] = useState(true)
   const [user, setUser] = useState<any>(null)
+  const [tenantName, setTenantName] = useState('')
 
   useEffect(() => {
     const fetchMe = async () => {
       try {
         const data = await api.getMe(auth.token)
         setUser(data.user)
+        setTenantName(data.tenant?.name ?? '')
       } catch (err) {
         console.error('Failed to fetch user', err)
       } finally {
@@ -54,56 +58,31 @@ export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
     fetchMe()
   }, [auth.token])
 
+  const roleLabel = isOwner ? 'Dueño/a del tambo' : 'Desarrollador/a'
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-green-700">GTLT Dashboard</h1>
-            <p className="text-sm text-gray-600 mt-1">
-              {!loadingMe && user
-                ? `Hola, ${user.name} · ${isOwner ? 'Dueño/a del tambo' : 'Desarrollador/a'}`
-                : 'Cargando...'}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            {isOwner && (
-              <button
-                type="button"
-                onClick={() => setHelpOpen(true)}
-                className="text-sm text-gray-500 hover:text-gray-800 px-2 py-1"
-                title="Soporte"
-              >
-                ¿Necesitás ayuda?
-              </button>
-            )}
+    <>
+      <AppShell
+        title={tabs.find((t) => t.id === activeTab)?.label ?? ''}
+        subtitle={tenantName || undefined}
+        nav={tabs.map((t) => ({ key: t.id, label: t.label }))}
+        active={activeTab}
+        onSelect={setActiveTab}
+        user={{ name: !loadingMe && user ? user.name : 'Cargando...', role: roleLabel }}
+        onLogout={onLogout}
+        headerRight={
+          isOwner ? (
             <button
-              onClick={onLogout}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="text-sm text-ink-muted hover:text-ink px-2 py-1"
+              title="Soporte"
             >
-              Salir
+              ¿Necesitás ayuda?
             </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex space-x-4 mb-6 border-b border-gray-200">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2 font-medium border-b-2 transition ${
-                activeTab === tab.id
-                  ? 'text-green-600 border-green-600'
-                  : 'text-gray-600 border-transparent hover:text-gray-900'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
+          ) : undefined
+        }
+      >
         <div>
           {activeTab === 'today' && isOwner && <TodayTab auth={auth} />}
           {activeTab === 'tickets' && isDeveloper && !isOwner && (
@@ -121,31 +100,27 @@ export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
           {activeTab === 'team' && isOwner && <TeamTab auth={auth} />}
           {activeTab === 'settings' && isOwner && <SettingsTab auth={auth} />}
         </div>
-      </main>
+      </AppShell>
 
       {helpOpen && isOwner && (
         <div className="fixed inset-0 z-50 flex items-start justify-center p-4 sm:p-8">
           <button
             type="button"
-            className="absolute inset-0 bg-black/40"
+            className="absolute inset-0 bg-brand-dark/50"
             aria-label="Cerrar ayuda"
             onClick={() => setHelpOpen(false)}
           />
-          <div className="relative z-10 w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white rounded-lg shadow-xl p-6">
+          <div className="relative z-10 w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-surface border border-line rounded-xl shadow-xl p-6">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Soporte</h2>
-              <button
-                type="button"
-                onClick={() => setHelpOpen(false)}
-                className="text-sm text-gray-500 hover:text-gray-800"
-              >
+              <h2 className="text-lg font-bold text-ink">Soporte</h2>
+              <Button variant="ghost" onClick={() => setHelpOpen(false)}>
                 Cerrar
-              </button>
+              </Button>
             </div>
             <TicketsTab auth={auth} canManage={isOwner} canCreate={isOwner} adminView={false} />
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import type { AuthToken } from '../types/auth'
 import { TamboPicker, useTamboId } from './TamboPicker'
+import { Badge, Button, Card, EmptyState, ErrorBanner, StatCard } from './ui'
 
 const CATEGORY_LABEL: Record<string, string> = {
   VACUUM_PUMP: 'Bomba de vacío',
@@ -155,136 +156,153 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
   const statusLabel =
     pumpStatus === 'ON' ? 'Encendida' : pumpStatus === 'OFF' ? 'Apagada' : 'Sin datos'
 
+  const isLoading = !ready || loading
+  const countValue = (n: number) => (isLoading ? '—' : n)
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center gap-4">
-        <h3 className="text-lg font-semibold text-gray-900">Hoy</h3>
+      <div className="flex justify-end">
         <TamboPicker token={auth.token} tamboId={tamboId} onChange={setTamboId} />
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>
-      )}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
 
-      <section className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
-        <h4 className="font-semibold text-gray-900">Service pendiente de tu OK</h4>
-        {!ready || loading ? (
-          <p className="text-sm text-gray-500">Cargando...</p>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard
+          label="Bomba de vacío"
+          value={
+            <span className="inline-flex items-center gap-2">
+              <span
+                aria-hidden
+                className={`h-2.5 w-2.5 rounded-full ${pumpStatus === 'ON' ? 'bg-primary-light' : 'bg-ink-muted'}`}
+              />
+              {isLoading ? '—' : statusLabel}
+            </span>
+          }
+          detail={!isLoading && lastChangeAt ? `Último cambio: ${formatTime(lastChangeAt)}` : undefined}
+        />
+        <StatCard
+          label="Service por aprobar"
+          value={countValue(pendingServices.length)}
+          tone={!isLoading && pendingServices.length > 0 ? 'warn' : undefined}
+        />
+        <StatCard
+          label="Fotos por revisar"
+          value={countValue(pendingPhotos.length)}
+          tone={!isLoading && pendingPhotos.length > 0 ? 'warn' : undefined}
+        />
+      </div>
+
+      <Card title="Service pendiente de tu OK">
+        {isLoading ? (
+          <EmptyState>Cargando...</EmptyState>
         ) : pendingServices.length === 0 ? (
-          <p className="text-sm text-gray-500">No hay solicitudes esperando tu aprobación</p>
+          <EmptyState>No hay solicitudes esperando tu aprobación</EmptyState>
         ) : (
           <ul className="space-y-3">
             {pendingServices.map((r) => (
-              <li key={r.id} className="border border-gray-100 rounded-lg p-3 space-y-2">
-                <div className="flex flex-wrap justify-between gap-2">
-                  <p className="font-medium text-gray-900">
-                    {r.urgency === 'URGENT' ? 'URGENTE · ' : ''}
-                    {CATEGORY_LABEL[r.category] ?? r.category}
-                  </p>
-                  <p className="text-xs text-gray-500">
+              <li key={r.id} className="border border-line rounded-lg p-4 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={r.urgency === 'URGENT' ? 'danger' : 'neutral'}>
+                      {r.urgency === 'URGENT' ? 'URGENTE' : 'Normal'}
+                    </Badge>
+                    <p className="font-semibold text-ink">{CATEGORY_LABEL[r.category] ?? r.category}</p>
+                  </div>
+                  <p className="text-xs text-ink-muted">
                     {new Date(r.createdAt).toLocaleString('es-AR')}
                   </p>
                 </div>
-                <p className="text-sm text-gray-700">{r.description}</p>
-                <p className="text-xs text-gray-500">Pidió: {r.createdBy?.name ?? 'Alguien del tambo'}</p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    disabled={busyId === r.id}
-                    onClick={() => void actService(r.id, 'approve')}
-                    className="px-3 py-1.5 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-                  >
+                <p className="text-sm text-ink">{r.description}</p>
+                <p className="text-xs text-ink-muted">Pidió: {r.createdBy?.name ?? 'Alguien del tambo'}</p>
+                <div className="flex gap-2 pt-1">
+                  <Button disabled={busyId === r.id} onClick={() => void actService(r.id, 'approve')}>
                     Aprobar
-                  </button>
-                  <button
-                    type="button"
+                  </Button>
+                  <Button
+                    variant="secondary"
                     disabled={busyId === r.id}
                     onClick={() => void actService(r.id, 'reject')}
-                    className="px-3 py-1.5 text-sm font-medium bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 disabled:opacity-50"
                   >
                     Rechazar
-                  </button>
+                  </Button>
                 </div>
               </li>
             ))}
           </ul>
         )}
-      </section>
+      </Card>
 
-      <section className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
-        <h4 className="font-semibold text-gray-900">Fotos de consulta sin revisar</h4>
-        {!ready || loading ? (
-          <p className="text-sm text-gray-500">Cargando...</p>
+      <Card title="Fotos de consulta sin revisar">
+        {isLoading ? (
+          <EmptyState>Cargando...</EmptyState>
         ) : pendingPhotos.length === 0 ? (
-          <p className="text-sm text-gray-500">No hay fotos de consulta pendientes</p>
+          <EmptyState>No hay fotos de consulta pendientes</EmptyState>
         ) : (
-          <ul className="space-y-3">
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {pendingPhotos.map((p) => (
-              <li key={p.id} className="border border-gray-100 rounded-lg p-3 space-y-2">
+              <li key={p.id} className="border border-line rounded-lg p-3 space-y-2">
                 {p.photoUrl ? (
                   <img
                     src={p.photoUrl}
                     alt={`Consulta caravana ${p.animal?.earTag ?? ''}`}
-                    className="max-h-48 rounded-lg border border-gray-100 object-cover"
+                    className="w-full max-h-48 rounded-lg border border-line object-cover"
                   />
                 ) : null}
-                <p className="font-medium text-gray-900">Caravana {p.animal?.earTag ?? '—'}</p>
-                {p.note ? <p className="text-sm text-gray-700">{p.note}</p> : null}
-                <p className="text-xs text-gray-500">
+                <p className="font-semibold text-ink">Caravana {p.animal?.earTag ?? '—'}</p>
+                {p.note ? <p className="text-sm text-ink">{p.note}</p> : null}
+                <p className="text-xs text-ink-muted">
                   {new Date(p.takenAt).toLocaleString('es-AR')}
                 </p>
-                <button
-                  type="button"
-                  disabled={busyId === p.id}
-                  onClick={() => void markPhotoSeen(p)}
-                  className="px-3 py-1.5 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-                >
+                <Button disabled={busyId === p.id} onClick={() => void markPhotoSeen(p)}>
                   Marcar como visto
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
         )}
-      </section>
+      </Card>
 
-      <section className="bg-white border border-gray-200 rounded-lg p-4 space-y-4">
-        <h4 className="font-semibold text-gray-900">Bomba de vacío</h4>
-
-        {!ready || loading ? (
+      <Card title="Bomba de vacío">
+        {isLoading ? (
           <div className="text-center py-8">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         ) : !tamboId ? (
-          <p className="text-sm text-gray-500">No hay tambos para mostrar.</p>
+          <EmptyState>No hay tambos para mostrar.</EmptyState>
         ) : (
-          <>
+          <div className="space-y-4">
             <div>
-              <p className="text-2xl font-semibold text-gray-900">{statusLabel}</p>
+              <p className="text-2xl font-bold text-ink">{statusLabel}</p>
               {lastChangeAt ? (
-                <p className="text-sm text-gray-500 mt-1">
+                <p className="text-sm text-ink-muted mt-1">
                   Último cambio: {new Date(lastChangeAt).toLocaleString('es-AR')}
                 </p>
               ) : (
-                <p className="text-sm text-gray-500 mt-1">Todavía no hay un cambio registrado.</p>
+                <p className="text-sm text-ink-muted mt-1">Todavía no hay un cambio registrado.</p>
               )}
             </div>
 
             <div>
-              <h5 className="text-sm font-semibold text-gray-700 mb-2">Intervalos de hoy</h5>
+              <h5 className="text-sm font-semibold text-ink mb-2">Intervalos de hoy</h5>
               {intervals.length === 0 ? (
-                <p className="text-sm text-gray-500">Sin actividad registrada hoy</p>
+                <p className="text-sm text-ink-muted">Sin actividad registrada hoy</p>
               ) : (
-                <ul className="divide-y divide-gray-100 border border-gray-100 rounded-lg">
+                <ul className="divide-y divide-line border border-line rounded-lg">
                   {intervals.map((interval) => (
                     <li
                       key={`${interval.deviceId}-${interval.start}`}
-                      className="px-3 py-2 text-sm flex justify-between gap-4"
+                      className="px-4 py-2.5 text-sm flex items-center justify-between gap-4"
                     >
-                      <span className="text-gray-800">
+                      <span className="flex items-center gap-2 text-ink">
                         {formatTime(interval.start)} –{' '}
-                        {interval.ongoing || !interval.end ? 'en curso' : formatTime(interval.end)}
+                        {interval.ongoing || !interval.end ? (
+                          <Badge tone="ok">en curso</Badge>
+                        ) : (
+                          formatTime(interval.end)
+                        )}
                       </span>
-                      <span className="text-gray-500">
+                      <span className="text-ink-muted">
                         {formatDuration(interval.durationMinutes, interval.ongoing)}
                       </span>
                     </li>
@@ -292,9 +310,9 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
                 </ul>
               )}
             </div>
-          </>
+          </div>
         )}
-      </section>
+      </Card>
     </div>
   )
 }
