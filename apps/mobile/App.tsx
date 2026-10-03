@@ -6,7 +6,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   Share,
   StyleSheet,
@@ -14,6 +13,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
@@ -235,7 +235,7 @@ function addDaysISO(days: number): string {
     .slice(0, 10);
 }
 
-export default function App() {
+function AppContent() {
   const [ready, setReady] = useState(false);
   const [screen, setScreen] = useState<Screen>("home");
   const [session, setSession] = useState<Session | null>(null);
@@ -1556,10 +1556,12 @@ export default function App() {
 
   if (!ready) {
   return (
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Cargando...</Text>
     </View>
+      </SafeAreaView>
     );
   }
 
@@ -1569,7 +1571,7 @@ export default function App() {
   );
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <StatusBar style="dark" />
       <KeyboardAvoidingView
         style={styles.flex}
@@ -3283,6 +3285,14 @@ export default function App() {
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppContent />
+    </SafeAreaProvider>
   );
 }
 
