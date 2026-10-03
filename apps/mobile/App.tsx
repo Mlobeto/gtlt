@@ -3087,7 +3087,7 @@ const styles = StyleSheet.create({
   },
   chipOk: { backgroundColor: colors.primarySoft },
   chipWarn: { backgroundColor: colors.accentSoft },
-  chipText: { color: colors.primary, fontWeight: "700", fontSize: font.meta },
+  chipText: { color: colors.primaryPressed, fontWeight: "700", fontSize: font.meta },
   chipTextWarn: { color: colors.accentText },
   card: {
     backgroundColor: colors.surface,
@@ -3128,7 +3128,7 @@ const styles = StyleSheet.create({
   menuLabel: { fontSize: 20, fontWeight: "700", color: colors.text },
   menuHint: { fontSize: 15, color: colors.textMuted },
   backRow: { paddingVertical: space.sm },
-  backText: { fontSize: font.body, color: colors.primary, fontWeight: "600" },
+  backText: { fontSize: font.body, color: colors.primaryPressed, fontWeight: "600" },
   row: { flexDirection: "row", gap: space.sm },
   wrapRow: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   choice: {
@@ -3154,7 +3154,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   choiceText: { fontSize: font.body, color: colors.textMuted, fontWeight: "600" },
-  choiceTextOn: { color: colors.primary },
+  choiceTextOn: { color: colors.primaryPressed },
   button: {
     backgroundColor: colors.primary,
     paddingVertical: space.lg,
@@ -3176,7 +3176,7 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: colors.bg, fontWeight: "700", fontSize: font.button },
   buttonSecondaryText: {
-    color: colors.primary,
+    color: colors.primaryPressed,
     fontWeight: "700",
     fontSize: font.button,
   },

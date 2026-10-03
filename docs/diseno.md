@@ -31,8 +31,9 @@ Complementa [ux-usuario.md](./ux-usuario.md) (idioma y simplicidad).
 | `color.border` | `#E1E5E8` | Bordes de inputs y separadores |
 | `color.text` | `#33383D` | Texto principal |
 | `color.textMuted` | `#6B7278` | Ayudas, meta |
-| `color.primary` | `#4C9A6A` | Botón principal, links fuertes, éxito (verde de marca) |
-| `color.primaryPressed` | `#3D7D57` | Pressed / active del verde |
+| `color.primary` | `#3D7D57` | Botón principal, links fuertes, éxito (contraste 4.9:1 con blanco) |
+| `color.primaryPressed` | `#2F6A47` | Pressed / active del verde; texto verde sobre `primarySoft` |
+| `color.primaryLight` | `#4C9A6A` | Verde de marca del PDF — **solo decorativo** (puntos, barras, bordes), nunca texto: con blanco da 3.4:1 |
 | `color.primarySoft` | `#E8F2EC` | Fondo de botón secundario / chips ok — **pálido, no saturado** |
 | `color.brandDark` | `#123B4F` | Headers, nav, superficies oscuras de marca (nuevo) |
 | `color.brandBlue` | `#1F6F8B` | Acentos secundarios, eyebrows, links de apoyo (nuevo) |
@@ -49,28 +50,54 @@ Complementa [ux-usuario.md](./ux-usuario.md) (idioma y simplicidad).
 - **Sin señal / Falta enviar** → amarillo (`accent` / `accentSoft`)
 - **Error** → rojo solo cuando bloquea la acción
 
-### CSS variables (web futuro)
+### CSS variables (web)
+
+Definidas con `@theme` (Tailwind v4) en `apps/web/src/index.css`. Cada variable genera sus utilidades (`--color-ink` → `text-ink`, `bg-ink`, `border-ink`…).
 
 ```css
-:root {
-  --color-bg: #ffffff;
-  --color-bg-subtle: #f2f4f5;
-  --color-surface: #ffffff;
-  --color-border: #e1e5e8;
-  --color-text: #33383d;
-  --color-text-muted: #6b7278;
-  --color-primary: #4c9a6a;
-  --color-primary-pressed: #3d7d57;
-  --color-primary-soft: #e8f2ec;
-  --color-brand-dark: #123b4f;
-  --color-brand-blue: #1f6f8b;
-  --color-accent: #f0c419;
-  --color-accent-soft: #fff6cc;
-  --color-accent-text: #6b5400;
-  --color-danger: #b42318;
-  --color-danger-soft: #fcebea;
+@theme {
+  --color-surface: #FFFFFF;
+  --color-subtle: #F2F4F5;
+  --color-line: #E1E5E8;
+  --color-ink: #33383D;
+  --color-ink-muted: #6B7278;
+
+  --color-primary: #3D7D57;
+  --color-primary-deep: #2F6A47;
+  --color-primary-light: #4C9A6A;
+  --color-primary-soft: #E8F2EC;
+
+  --color-brand-dark: #123B4F;
+  --color-brand-blue: #1F6F8B;
+
+  --color-accent: #F0C419;
+  --color-accent-soft: #FFF6CC;
+  --color-accent-text: #6B5400;
+
+  --color-danger: #B42318;
+  --color-danger-soft: #FCEBEA;
+
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-brand: "Fraunces", Georgia, serif;
 }
 ```
+
+Utilidades del web:
+
+| Utilidad | Uso |
+|---|---|
+| `text-ink` | Texto principal |
+| `text-ink-muted` | Ayudas, meta |
+| `border-line` | Bordes y separadores |
+| `bg-surface` | Cards, formularios |
+| `bg-subtle` | Fondo de la app, filas hover |
+| `bg-primary` / `hover:bg-primary-deep` | Botón principal |
+| `bg-primary-soft` | Fondo ok / botón secundario hover |
+| `text-brand-dark` / `text-brand-blue` | Marca, acentos de apoyo |
+| `bg-accent-soft` / `text-accent-text` | Avisos |
+| `bg-danger` / `bg-danger-soft` | Error / destructivo |
+
+Componentes base: `apps/web/src/components/ui.tsx` (`Card`, `Button`, `Badge`, `Field`, `EmptyState`, `ErrorBanner`, `StatCard`) y `AppShell.tsx`.
 
 Tokens RN: `apps/mobile/src/theme.ts`.
 
@@ -201,11 +228,12 @@ Mensajes de feedback **dentro del formulario**, arriba de los botones — nunca 
 | Plataforma | Archivo |
 |---|---|
 | Mobile | `apps/mobile/src/theme.ts` |
-| Web | (pendiente) `apps/web/src/styles/tokens.css` |
+| Web | `apps/web/src/index.css` (`@theme`) |
 | Doc | este archivo |
 
 ---
 
 ## Changelog
 
+- **2026-10-03** — Contraste: `primary` pasa a `#3D7D57` (4.9:1 con blanco); el verde del PDF `#4C9A6A` queda como `primaryLight`, solo decorativo. Web: tokens con `@theme` en `index.css` (Tailwind v4 no cargaba `tailwind.config.ts`, que se borró).
 - **2026-09-29** — Paleta alineada a la identidad usada en la presentación para socios — antes verde/amarillo saturado, ahora verde/azul oscuro con tintes pálidos. Colores de advertencia/error sin cambios.
