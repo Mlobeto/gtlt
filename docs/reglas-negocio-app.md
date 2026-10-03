@@ -47,8 +47,15 @@ Aplica a `MilkingSession`, `ControlLechero` (header) y `MilkDelivery`:
 - `TECNICO` **nunca** acceso automático a todos los tambos; es actor externo (puede ser de distintos fabricantes; `companyName` texto libre en Membership).
 - `Membership.status`: `PENDING` (invitación) | `ACTIVE`. Login solo con `ACTIVE`.
 - API: sesión solo-`TECNICO` tiene **lista blanca** de recursos (`part-types`, `part-instances`, `service-requests`, `tambos`, `auth`). Animales/producción/sanidad/repro denegados a nivel guard global.
-- **Pendiente:** invitar/activar `TAMBERO` desde el dueño (análogo a `invite-technician` en `memberships.ts`, hoy solo existe para `TECNICO`). El dueño debe poder dar de alta más de un tambero.
-- **Aceptación de invitación (`POST /memberships/accept-invite/register`) requiere `inviteToken`** — no `tenantId` + email/teléfono. El token se genera en `POST /invite-technician` (32 bytes random, hex), expira a los **7 días** y es de **un solo uso** (se limpia al aceptar). Hoy se entrega manualmente (viaja en la respuesta HTTP del endpoint de invitación, campo `inviteToken`); cuando exista envío automático por email/WhatsApp, ese campo debe dejar de viajar en la respuesta.
+### Invitaciones
+
+- Endpoints: `POST /memberships/invite-technician` (dueño/tambero/admin invita `TECNICO`) y `POST /memberships/invite` (dueño/admin invita `TAMBERO` o `VETERINARIO`). Crean un `User` stub si no existe, la `Membership` en `PENDING` y el `MembershipTambo`.
+- **El token identifica la membership** — nunca `tenantId` + email/teléfono. 32 bytes random (hex), vence a los **7 días** y es de **un solo uso** (se limpia al aceptar). Hoy se entrega a mano: viaja en la respuesta del endpoint de invitación (`inviteToken`) y el panel/app ofrece copiarlo o compartirlo. Cuando exista envío automático por email/WhatsApp, ese campo debe dejar de viajar en la respuesta.
+- **Invitado sin cuenta** → `POST /memberships/accept-invite/register` con `inviteToken` + clave. Solo sirve para usuarios stub (sin contraseña).
+- **Nunca se sobrescribe la contraseña de una cuenta existente.** Si el usuario del token ya tiene clave, el register responde `409` `code: "ACCOUNT_EXISTS"` sin escribir nada; el invitado debe iniciar sesión con su clave y aceptar autenticado.
+- **Aceptar autenticado** → `POST /memberships/accept-invite` con `inviteToken`. Busca la membership por token (no por el tenant de la sesión, así sirve para invitaciones de otro tenant) y exige que `membership.userId` sea el usuario logueado (`403` si no). Vale para cualquier rol.
+- **Invitar a alguien que ya es miembro `ACTIVE` del tenant no cambia sus roles ni su estado.** Si ya tiene el rol pedido, solo se le agrega el tambo (respuesta con `inviteToken: null`); si tiene otro rol, `409` y no se toca nada.
+- Login con usuario en varios tenants: `/auth/login` responde `400` con `tenants`; web y mobile muestran la lista y reintentan con el `tenantId` elegido.
 
 ## Veterinario — acceso dual (pendiente de diseño)
 

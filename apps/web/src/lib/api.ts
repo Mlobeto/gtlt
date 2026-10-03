@@ -1,5 +1,33 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
+export class ApiError extends Error {
+  status: number
+  code?: string
+  body?: unknown
+
+  constructor(message: string, status: number, code?: string, body?: unknown) {
+    super(message)
+    this.status = status
+    this.code = code
+    this.body = body
+  }
+}
+
+async function toApiError(res: Response, fallback: string) {
+  const body = await res.json().catch(() => null)
+  return new ApiError(body?.error || fallback, res.status, body?.code, body)
+}
+
+export type AcceptedInvite = {
+  item: {
+    id: string
+    roles: string[]
+    tenant: { id: string; name: string }
+    tambos: { tamboId: string }[]
+    user: { id: string; email: string | null; name: string }
+  }
+}
+
 export const api = {
   async login(email: string, password: string, tenantId?: string) {
     const res = await fetch(`${API_URL}/auth/login`, {
@@ -265,11 +293,31 @@ export const api = {
       },
       body: JSON.stringify(data),
     })
-    if (!res.ok) {
-      const body = await res.json().catch(() => null)
-      throw new Error(body?.error || 'Failed to invite member')
-    }
-    return res.json()
+    if (!res.ok) throw await toApiError(res, 'Failed to invite member')
+    return res.json() as Promise<{ item: { id: string }; inviteToken: string | null }>
+  },
+
+  async acceptInviteRegister(data: { inviteToken: string; password: string; name?: string }) {
+    const res = await fetch(`${API_URL}/memberships/accept-invite/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo activar la invitación')
+    return res.json() as Promise<AcceptedInvite>
+  },
+
+  async acceptInvite(token: string, inviteToken: string) {
+    const res = await fetch(`${API_URL}/memberships/accept-invite`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ inviteToken }),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo aceptar la invitación')
+    return res.json() as Promise<AcceptedInvite>
   },
 
   async getTamboServiceProvider(token: string, tamboId: string) {

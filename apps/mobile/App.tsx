@@ -8,6 +8,7 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -19,7 +20,8 @@ import * as Location from "expo-location";
 import NetInfo from "@react-native-community/netinfo";
 import {
   ApiError,
-  acceptTechnicianInviteRegister,
+  acceptInvite,
+  acceptInviteRegister,
   approveServiceRequest,
   createPartInstance,
   createServiceRequest,
@@ -237,8 +239,8 @@ export default function App() {
   const [status, setStatus] = useState<string>("");
   const [busy, setBusy] = useState(false);
 
-  const [email, setEmail] = useState("admin@gtlt.local");
-  const [password, setPassword] = useState("demo1234");
+  const [email, setEmail] = useState(__DEV__ ? "admin@gtlt.local" : "");
+  const [password, setPassword] = useState(__DEV__ ? "demo1234" : "");
   const [earTag, setEarTag] = useState("101");
   const [productName, setProductName] = useState("");
   const [daysWithdrawal, setDaysWithdrawal] = useState("3");
@@ -282,8 +284,10 @@ export default function App() {
   );
   const [pregnancy, setPregnancy] = useState<PregnancySummary | null>(null);
   const [loginMode, setLoginMode] = useState<"login" | "acceptInvite">("login");
-  const [inviteTenantId, setInviteTenantId] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [inviteName, setInviteName] = useState("");
+  const [loginTenants, setLoginTenants] = useState<{ id: string; name: string }[]>([]);
+  const [inviteResult, setInviteResult] = useState<{ token: string | null } | null>(null);
   const [serviceCategory, setServiceCategory] =
     useState<ServiceCategory>("VACUUM_PUMP");
   const [serviceDescription, setServiceDescription] = useState("");
@@ -425,11 +429,12 @@ export default function App() {
     };
   }, [refreshLocal, runAutoSync]);
 
-  async function handleLogin() {
+  async function handleLogin(tenantId?: string) {
     setBusy(true);
     setStatus("Entrando...");
     try {
-      const res = await apiLogin(email.trim(), password);
+      const res = await apiLogin(email.trim(), password, tenantId);
+      setLoginTenants([]);
       const tambos = await fetchTambos(res.accessToken);
       if (!tambos.items.length) {
         throw new Error("No encontramos un tambo para esta cuenta.");
@@ -470,8 +475,16 @@ export default function App() {
       if (err instanceof ApiError && err.code === "MEMBERSHIP_PENDING") {
         setLoginMode("acceptInvite");
         setStatus(
-          "Tenés una invitación pendiente. Completá el código del tambo (tenant) y una clave.",
+          "Tenés una invitación pendiente. Pegá el código de invitación y elegí una clave.",
         );
+      } else if (
+        err instanceof ApiError &&
+        err.status === 400 &&
+        Array.isArray(err.body?.tenants) &&
+        err.body.tenants.length > 0
+      ) {
+        setLoginTenants(err.body.tenants);
+        setStatus("Tenés acceso a más de un tambo. Elegí con cuál entrar.");
       } else {
         setStatus("No se pudo entrar. Revisá usuario, contraseña o la señal.");
       }
@@ -481,8 +494,9 @@ export default function App() {
   }
 
   async function handleAcceptInvite() {
-    if (!inviteTenantId.trim()) {
-      setStatus("Falta el código del tenant que te pasaron.");
+    const code = inviteCode.replace(/\s+/g, "");
+    if (!code) {
+      setStatus("Pegá el código de invitación que te pasaron.");
       return;
     }
     if (password.trim().length < 6) {
@@ -490,20 +504,57 @@ export default function App() {
       return;
     }
     setBusy(true);
-    setStatus("Activando cuenta...");
+    setStatus("Activando invitación...");
+    const done = () => {
+      setInviteCode("");
+      setLoginMode("login");
+      setStatus("Invitación aceptada. Ya podés entrar.");
+    };
+    const failMessage = (err: unknown) => {
+      if (err instanceof ApiError && err.status === 404) return "Código inválido o ya usado.";
+      if (err instanceof ApiError && err.status === 410) return "El código venció. Pedí uno nuevo.";
+      return "No se pudo activar la invitación. Revisá el código y la señal.";
+    };
     try {
-      await acceptTechnicianInviteRegister({
-        tenantId: inviteTenantId.trim(),
-        email: email.trim(),
+      await acceptInviteRegister({
+        inviteToken: code,
         password: password.trim(),
         name: inviteName.trim() || undefined,
       });
-      setLoginMode("login");
-      setStatus("Cuenta lista. Tocá Entrar.");
-    } catch {
-      setStatus(
-        "No se pudo activar. Revisá correo, código del tenant y que te hayan invitado.",
-      );
+      done();
+    } catch (err) {
+      if (!(err instanceof ApiError && err.code === "ACCOUNT_EXISTS")) {
+        setStatus(failMessage(err));
+        setBusy(false);
+        return;
+      }
+      let accessToken: string;
+      try {
+        accessToken = (await apiLogin(email.trim(), password)).accessToken;
+      } catch (loginErr) {
+        const firstTenant =
+          loginErr instanceof ApiError && Array.isArray(loginErr.body?.tenants)
+            ? loginErr.body.tenants[0]?.id
+            : undefined;
+        if (!firstTenant) {
+          setStatus("Esa cuenta ya existe y la clave no coincide. Usá tu clave de siempre.");
+          setBusy(false);
+          return;
+        }
+        try {
+          accessToken = (await apiLogin(email.trim(), password, firstTenant)).accessToken;
+        } catch {
+          setStatus("Esa cuenta ya existe y la clave no coincide. Usá tu clave de siempre.");
+          setBusy(false);
+          return;
+        }
+      }
+      try {
+        await acceptInvite(accessToken, code);
+        done();
+      } catch (acceptErr) {
+        setStatus(failMessage(acceptErr));
+      }
     } finally {
       setBusy(false);
     }
@@ -687,7 +738,7 @@ export default function App() {
     }
     setBusy(true);
     try {
-      await inviteTechnician(session.token, {
+      const res = await inviteTechnician(session.token, {
         tamboId: session.tamboId,
         email: inviteTechEmail.trim(),
         name: inviteTechName.trim() || undefined,
@@ -698,8 +749,11 @@ export default function App() {
       setInviteTechName("");
       setInviteCompany("");
       setInviteProviderId(null);
+      setInviteResult({ token: res.inviteToken });
       setStatus(
-        `Invitación enviada. Pasale el código de tenant: ${session.tenantId}`,
+        res.inviteToken
+          ? "Invitación creada. Compartile el código."
+          : "Ya era miembro: se le dio acceso a este tambo",
       );
     } catch {
       setStatus("No se pudo invitar. Revisá el correo y la señal.");
@@ -710,6 +764,7 @@ export default function App() {
 
   async function handleLogout() {
     await clearSession();
+    setInviteResult(null);
     setSession(null);
     setScreen("home");
     setWithdrawals([]);
@@ -1508,9 +1563,23 @@ export default function App() {
               <Text style={styles.help}>
                 {loginMode === "login"
                   ? "Usá el usuario y la clave que te dieron."
-                  : "Si te invitaron como técnico, poné el código del tenant y elegí una clave."}
+                  : "Pegá el código de invitación que te pasaron y elegí una clave. Si ya tenés cuenta, usá tu clave de siempre."}
               </Text>
-              <Text style={styles.label}>Usuario o correo</Text>
+              {loginMode === "acceptInvite" ? (
+                <>
+                  <Text style={styles.label}>Código de invitación</Text>
+                  <TextInput
+                    style={styles.input}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    value={inviteCode}
+                    onChangeText={(t) => setInviteCode(t.replace(/\s+/g, ""))}
+                  />
+                </>
+              ) : null}
+              <Text style={styles.label}>
+                {loginMode === "login" ? "Usuario o correo" : "Tu correo"}
+              </Text>
               <TextInput
                 style={styles.input}
                 autoCapitalize="none"
@@ -1519,14 +1588,6 @@ export default function App() {
               />
               {loginMode === "acceptInvite" ? (
                 <>
-                  <Text style={styles.label}>Código del tenant</Text>
-                  <TextInput
-                    style={styles.input}
-                    autoCapitalize="none"
-                    value={inviteTenantId}
-                    onChangeText={setInviteTenantId}
-                    placeholder="UUID que te pasó el tambo"
-                  />
                   <Text style={styles.label}>Tu nombre (opcional)</Text>
                   <TextInput
                     style={styles.input}
@@ -1547,10 +1608,24 @@ export default function App() {
                   <Text style={styles.feedbackText}>{status}</Text>
                 </View>
               ) : null}
+              {loginMode === "login" && loginTenants.length > 0 ? (
+                <View style={{ gap: space.sm, marginBottom: space.md }}>
+                  {loginTenants.map((t) => (
+                    <Pressable
+                      key={t.id}
+                      style={[styles.choice, busy && styles.buttonDisabled]}
+                      disabled={busy}
+                      onPress={() => void handleLogin(t.id)}
+                    >
+                      <Text style={styles.choiceText}>{t.name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
               <Pressable
                 style={[styles.button, busy && styles.buttonDisabled]}
-                onPress={
-                  loginMode === "login" ? handleLogin : handleAcceptInvite
+                onPress={() =>
+                  void (loginMode === "login" ? handleLogin() : handleAcceptInvite())
                 }
                 disabled={busy}
               >
@@ -1561,6 +1636,7 @@ export default function App() {
               <Pressable
                 onPress={() => {
                   setStatus("");
+                  setLoginTenants([]);
                   setLoginMode((m) =>
                     m === "login" ? "acceptInvite" : "login",
                   );
@@ -1568,7 +1644,7 @@ export default function App() {
               >
                 <Text style={styles.link}>
                   {loginMode === "login"
-                    ? "Soy técnico nuevo (aceptar invitación)"
+                    ? "Tengo un código de invitación"
                     : "Ya tengo cuenta — Entrar"}
                 </Text>
               </Pressable>
@@ -1807,8 +1883,7 @@ export default function App() {
                       <View style={styles.divider} />
                       <Text style={styles.sectionInCard}>Invitar técnico</Text>
                       <Text style={styles.help}>
-                        Después pasale el código de tenant:{" "}
-                        {session.tenantId || "(entrar de nuevo)"}
+                        Al invitar te damos un código para compartirle. Vence en 7 días.
                       </Text>
                       <Text style={styles.label}>Correo del técnico</Text>
                       <TextInput
@@ -1874,6 +1949,32 @@ export default function App() {
                       >
                         <Text style={styles.buttonSecondaryText}>Invitar</Text>
                       </Pressable>
+                      {inviteResult ? (
+                        <View style={styles.feedback}>
+                          {inviteResult.token ? (
+                            <>
+                              <Text style={styles.label}>Código de invitación</Text>
+                              <Text style={styles.feedbackText} selectable>
+                                {inviteResult.token}
+                              </Text>
+                              <Pressable
+                                style={styles.button}
+                                onPress={() =>
+                                  void Share.share({
+                                    message: `Te invité a GTLT. Instalá la app, tocá «Tengo un código de invitación» y pegá este código: ${inviteResult.token}. Vence en 7 días.`,
+                                  })
+                                }
+                              >
+                                <Text style={styles.buttonText}>Compartir invitación</Text>
+                              </Pressable>
+                            </>
+                          ) : (
+                            <Text style={styles.feedbackText}>
+                              Ya era miembro: se le dio acceso a este tambo
+                            </Text>
+                          )}
+                        </View>
+                      ) : null}
                     </>
                   ) : null}
                   {status ? (

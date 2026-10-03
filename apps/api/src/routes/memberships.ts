@@ -35,9 +35,8 @@ const inviteMemberSchema = z
     message: "email or phone required",
   });
 
-const acceptSchema = z.object({
-  name: z.string().trim().min(1).max(120).optional(),
-  password: z.string().min(6).max(100).optional(),
+const acceptInviteSchema = z.object({
+  inviteToken: z.string().min(32),
 });
 
 /**
@@ -153,18 +152,14 @@ membershipsRouter.get(
 );
 
 /**
- * Técnico con JWT (membership pendiente se permite solo vía token especial…
- * En este spike: login con password tras setear en accept, o accept con user ya logueado.
- *
- * Flujo: invite crea user; técnico hace POST accept-invite autenticado
- * (debe poder loguearse si ya tenía password, o registrarse).
- * Para stub sin password: POST /memberships/accept-invite/register con email+password.
+ * Usuario que ya tiene cuenta acepta una invitación (de cualquier tenant y rol).
+ * La membership se identifica por el token; debe pertenecer al usuario logueado.
  */
 membershipsRouter.post(
   "/accept-invite",
   authenticate,
   async (req, res) => {
-    const parsed = acceptSchema.safeParse(req.body ?? {});
+    const parsed = acceptInviteSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid body", details: parsed.error.flatten() });
       return;
@@ -172,40 +167,26 @@ membershipsRouter.post(
 
     const auth = req.auth!;
     const membership = await prisma.membership.findUnique({
-      where: {
-        tenantId_userId: { tenantId: auth.tenantId, userId: auth.userId },
-      },
+      where: { inviteToken: parsed.data.inviteToken },
     });
 
-    if (!membership) {
-      throw new HttpError(404, "Membership not found");
+    if (!membership || membership.status === "ACTIVE") {
+      throw new HttpError(404, "Invalid or already-used invitation");
     }
-    if (!membership.roles.includes("TECNICO")) {
-      throw new HttpError(403, "Not a technician membership");
+    if (membership.userId !== auth.userId) {
+      throw new HttpError(403, "This invitation belongs to another user");
     }
-
-    if (parsed.data.password) {
-      const passwordHash = await bcrypt.hash(parsed.data.password, 10);
-      await prisma.user.update({
-        where: { id: auth.userId },
-        data: {
-          passwordHash,
-          ...(parsed.data.name ? { name: parsed.data.name } : {}),
-        },
-      });
-    } else if (parsed.data.name) {
-      await prisma.user.update({
-        where: { id: auth.userId },
-        data: { name: parsed.data.name },
-      });
+    if (!membership.inviteTokenExpiresAt || membership.inviteTokenExpiresAt < new Date()) {
+      throw new HttpError(410, "Invitation expired");
     }
 
     const updated = await prisma.membership.update({
       where: { id: membership.id },
-      data: { status: "ACTIVE" },
+      data: { status: "ACTIVE", inviteToken: null, inviteTokenExpiresAt: null },
       include: {
         user: { select: { id: true, email: true, phone: true, name: true } },
         tambos: { select: { tamboId: true } },
+        tenant: { select: { id: true, name: true } },
       },
     });
 
@@ -243,6 +224,13 @@ membershipsRouter.post("/accept-invite/register", async (req, res) => {
   }
   if (!membership.inviteTokenExpiresAt || membership.inviteTokenExpiresAt < new Date()) {
     throw new HttpError(410, "Invitation expired");
+  }
+  if (membership.user.passwordHash) {
+    res.status(409).json({
+      error: "Ya existe una cuenta con este usuario. Ingresá con tu clave y aceptá la invitación.",
+      code: "ACCOUNT_EXISTS",
+    });
+    return;
   }
 
   const passwordHash = await bcrypt.hash(data.password, 10);

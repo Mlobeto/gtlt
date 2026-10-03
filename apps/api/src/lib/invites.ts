@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { Role } from "@prisma/client";
 import { prisma } from "./prisma.js";
+import { HttpError } from "./http-error.js";
 
 type CreateInviteInput = {
   tenantId: string;
@@ -28,6 +29,35 @@ export async function createInvite(input: CreateInviteInput) {
       : input.role === "VETERINARIO"
         ? "Veterinario"
         : "Tambero";
+
+  if (user) {
+    const existing = await prisma.membership.findUnique({
+      where: { tenantId_userId: { tenantId: input.tenantId, userId: user.id } },
+      include: { tambos: true },
+    });
+    if (existing?.status === "ACTIVE") {
+      if (!existing.roles.includes(input.role)) {
+        throw new HttpError(409, "Esa persona ya es miembro con otro rol. No se cambia automáticamente.");
+      }
+      if (!existing.tambos.some((t) => t.tamboId === input.tamboId)) {
+        await prisma.membershipTambo.create({
+          data: {
+            tenantId: input.tenantId,
+            membershipId: existing.id,
+            tamboId: input.tamboId,
+          },
+        });
+      }
+      const item = await prisma.membership.findUniqueOrThrow({
+        where: { id: existing.id },
+        include: {
+          user: { select: { id: true, email: true, phone: true, name: true } },
+          tambos: { select: { tamboId: true } },
+        },
+      });
+      return { item, inviteToken: null };
+    }
+  }
 
   if (!user) {
     user = await prisma.user.create({

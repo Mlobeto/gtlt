@@ -3,10 +3,12 @@ import { API_URL } from "./config";
 export class ApiError extends Error {
   status: number;
   code?: string;
-  constructor(message: string, status: number, code?: string) {
+  body?: any;
+  constructor(message: string, status: number, code?: string, body?: any) {
     super(message);
     this.status = status;
     this.code = code;
+    this.body = body;
   }
 }
 
@@ -38,15 +40,16 @@ async function request<T>(
       body.error ?? `HTTP ${res.status}`,
       res.status,
       body.code,
+      body,
     );
   }
   return body as T;
 }
 
-export function login(email: string, password: string) {
+export function login(email: string, password: string, tenantId?: string) {
   return request<LoginResponse>("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, ...(tenantId ? { tenantId } : {}) }),
   });
 }
 
@@ -524,23 +527,34 @@ export type AppNotification = {
   createdAt: string;
 };
 
-export function acceptTechnicianInviteRegister(payload: {
-  tenantId: string;
-  email?: string;
-  phone?: string;
+type AcceptedInvite = {
+  item: {
+    id: string;
+    roles: string[];
+    tenant: { id: string; name: string };
+    tambos: { tamboId: string }[];
+    user: { id: string; email: string | null; name: string };
+  };
+};
+
+/** Invitado sin cuenta: crea su clave y activa la membership con el código. */
+export function acceptInviteRegister(payload: {
+  inviteToken: string;
   password: string;
   name?: string;
 }) {
-  return request<{
-    item: {
-      id: string;
-      tenant: { id: string; name: string };
-      tambos: { tamboId: string }[];
-      user: { id: string; email: string | null; name: string };
-    };
-  }>("/memberships/accept-invite/register", {
+  return request<AcceptedInvite>("/memberships/accept-invite/register", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+/** Usuario que ya tiene cuenta: activa la invitación estando logueado. */
+export function acceptInvite(token: string, inviteToken: string) {
+  return request<AcceptedInvite>("/memberships/accept-invite", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ inviteToken }),
   });
 }
 
@@ -555,7 +569,7 @@ export function inviteTechnician(
     serviceProviderId?: string;
   },
 ) {
-  return request<{ item: { id: string } }>("/memberships/invite-technician", {
+  return request<{ item: { id: string }; inviteToken: string | null }>("/memberships/invite-technician", {
     method: "POST",
     token,
     body: JSON.stringify(payload),

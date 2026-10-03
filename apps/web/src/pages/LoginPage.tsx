@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api } from '../lib/api'
+import { api, ApiError, type AcceptedInvite } from '../lib/api'
 import { WEB_ALLOWED_ROLES, type AuthToken } from '../types/auth'
 import { Button, Card, ErrorBanner, Field } from '../components/ui'
 
@@ -19,12 +19,86 @@ function isTenantRequiredError(
   )
 }
 
+const hasWebRole = (roles: string[]) =>
+  roles.some((role) => WEB_ALLOWED_ROLES.includes(role as (typeof WEB_ALLOWED_ROLES)[number]))
+
 export function LoginPage({ onSuccess }: LoginPageProps) {
-  const [email, setEmail] = useState('admin@gtlt.local')
-  const [password, setPassword] = useState('demo1234')
+  const [email, setEmail] = useState(import.meta.env.DEV ? 'admin@gtlt.local' : '')
+  const [password, setPassword] = useState(import.meta.env.DEV ? 'demo1234' : '')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [tenants, setTenants] = useState<TenantChoice[] | null>(null)
+  const [mode, setMode] = useState<'login' | 'invite'>('login')
+  const [inviteCode, setInviteCode] = useState('')
+  const [inviteName, setInviteName] = useState('')
+  const [notice, setNotice] = useState('')
+
+  const switchMode = (next: 'login' | 'invite') => {
+    setMode(next)
+    setError('')
+    setNotice('')
+  }
+
+  const inviteFailMessage = (err: unknown) => {
+    if (err instanceof ApiError && err.status === 404) return 'Código inválido o ya usado.'
+    if (err instanceof ApiError && err.status === 410) return 'El código venció. Pedí uno nuevo.'
+    return err instanceof Error ? err.message : 'No se pudo activar la invitación.'
+  }
+
+  const loginForInvite = async () => {
+    try {
+      return (await api.login(email, password)).accessToken as string
+    } catch (err) {
+      if (!isTenantRequiredError(err) || !err.tenants[0]) return null
+      try {
+        return (await api.login(email, password, err.tenants[0].id)).accessToken as string
+      } catch {
+        return null
+      }
+    }
+  }
+
+  const handleAcceptInvite = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const code = inviteCode.replace(/\s+/g, '')
+    if (!code) {
+      setError('Pegá el código de invitación que te pasaron.')
+      return
+    }
+    setError('')
+    setNotice('')
+    setLoading(true)
+    try {
+      let accepted: AcceptedInvite
+      try {
+        accepted = await api.acceptInviteRegister({
+          inviteToken: code,
+          password,
+          name: inviteName.trim() || undefined,
+        })
+      } catch (err) {
+        if (!(err instanceof ApiError && err.code === 'ACCOUNT_EXISTS')) throw err
+        const accessToken = await loginForInvite()
+        if (!accessToken) {
+          setError('Esa cuenta ya existe y la clave no coincide. Usá tu clave de siempre.')
+          return
+        }
+        accepted = await api.acceptInvite(accessToken, code)
+      }
+      setInviteCode('')
+      setInviteName('')
+      setMode('login')
+      setNotice(
+        hasWebRole(accepted.item.roles)
+          ? 'Cuenta lista, ingresá'
+          : 'Tu cuenta quedó activa. Entrá desde la app del celular.',
+      )
+    } catch (err) {
+      setError(inviteFailMessage(err))
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const finishLogin = (result: {
     accessToken: string
@@ -33,7 +107,7 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
     roles?: string[]
   }) => {
     const roles: string[] = result.roles ?? []
-    if (!roles.some((role) => WEB_ALLOWED_ROLES.includes(role as (typeof WEB_ALLOWED_ROLES)[number]))) {
+    if (!hasWebRole(roles)) {
       setError('Esta cuenta no tiene acceso al panel web (dueño/a, desarrollador/a o técnico).')
       setTenants(null)
       return
@@ -103,8 +177,57 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
                 Volver
               </Button>
             </div>
+          ) : mode === 'invite' ? (
+            <form onSubmit={handleAcceptInvite} className="space-y-4">
+              <p className="text-sm text-ink">
+                Pegá el código de invitación que te pasaron y elegí una clave. Si ya tenés cuenta, usá tu clave de siempre.
+              </p>
+              <Field
+                label="Código de invitación"
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value.replace(/\s+/g, ''))}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                disabled={loading}
+              />
+              <Field
+                label="Tu correo"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={loading}
+              />
+              <Field
+                label="Tu nombre (opcional)"
+                value={inviteName}
+                onChange={(e) => setInviteName(e.target.value)}
+                disabled={loading}
+              />
+              <Field
+                label="Clave"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+              />
+
+              {error && <ErrorBanner>{error}</ErrorBanner>}
+
+              <Button type="submit" disabled={loading} className="w-full">
+                {loading ? 'Activando...' : 'Activar invitación'}
+              </Button>
+              <Button variant="ghost" onClick={() => switchMode('login')} disabled={loading} className="w-full">
+                Ya tengo cuenta — Entrar
+              </Button>
+            </form>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
+              {notice && (
+                <div className="bg-primary-soft border border-primary/30 text-primary-deep px-4 py-3 rounded-lg text-sm">
+                  {notice}
+                </div>
+              )}
               <Field
                 label="Email"
                 type="email"
@@ -126,6 +249,9 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
               <Button type="submit" disabled={loading} className="w-full">
                 {loading ? 'Conectando...' : 'Iniciar Sesión'}
               </Button>
+              <Button variant="ghost" onClick={() => switchMode('invite')} disabled={loading} className="w-full">
+                Tengo un código de invitación
+              </Button>
             </form>
           )}
 
@@ -135,9 +261,11 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
             </div>
           ) : null}
 
-          <p className="text-xs text-ink-muted text-center mt-6">
-            Usuario de demo: admin@gtlt.local / demo1234
-          </p>
+          {import.meta.env.DEV && (
+            <p className="text-xs text-ink-muted text-center mt-6">
+              Usuario de demo: admin@gtlt.local / demo1234
+            </p>
+          )}
         </Card>
       </div>
     </div>
