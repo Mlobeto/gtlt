@@ -19,6 +19,7 @@ coverage/
 # Prisma
 apps/api/prisma/*.db
 apps/api/prisma/*.db-journal
+apps/api/scripts/create-test-*
 
 # OS / IDE
 .DS_Store
@@ -30,3 +31,4 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+apps/api/scripts/create-test-*
