@@ -26,8 +26,12 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -50,6 +54,15 @@
         }
       ],
       "expo-status-bar"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "cbd1d3df-ada1-469e-8cb8-4871a7569e55"
+      }
+    },
+    "owner": "mlobeto",
+    "updates": {
+      "url": "https://u.expo.dev/cbd1d3df-ada1-469e-8cb8-4871a7569e55"
+    }
   }
 }
