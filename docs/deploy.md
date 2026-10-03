@@ -63,6 +63,8 @@ Si el deploy falla por permisos al actualizar el Container App, sumar el rol **R
 
 La credencial federada cubre **solo `main`**. `workflow_dispatch` tiene que correr desde esa rama.
 
+GitHub puede presentar el subject con IDs numéricos de owner y repo en lugar del formato clásico. Para este repo eso es `repo:Mlobeto@111536207/gtlt@1328273993:ref:refs/heads/main`, y está cargado como segunda credencial federada (`gtlt-main-ids`). Si el login falla con `AADSTS700213`, el error muestra el subject exacto que hay que registrar.
+
 ## Logs
 
 ```powershell
