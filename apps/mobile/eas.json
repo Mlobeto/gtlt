@@ -1,0 +1,17 @@
+{
+  "cli": { "version": ">= 12.0.0", "appVersionSource": "remote" },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "android": { "buildType": "apk" },
+      "env": { "EXPO_PUBLIC_API_URL": "https://gtlt-api.proudmoss-fef6994b.eastus2.azurecontainerapps.io" }
+    },
+    "production": {
+      "channel": "production",
+      "autoIncrement": true,
+      "android": { "buildType": "app-bundle" },
+      "env": { "EXPO_PUBLIC_API_URL": "https://gtlt-api.proudmoss-fef6994b.eastus2.azurecontainerapps.io" }
+    }
+  }
+}

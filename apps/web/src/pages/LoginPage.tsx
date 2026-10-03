@@ -146,10 +146,15 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
 
   return (
     <div className="min-h-screen bg-subtle md:grid md:grid-cols-2">
-      <div className="bg-brand-dark text-white px-6 py-6 md:flex md:flex-col md:justify-center md:px-12 lg:px-20">
-        <h1 className="font-brand text-3xl md:text-6xl font-bold leading-none">Gestión LT</h1>
-        <p className="mt-2 md:mt-4 text-base md:text-2xl font-semibold">Lobeto Tambos</p>
+      <div className="relative bg-brand-dark text-white px-6 py-6 md:flex md:flex-col md:justify-center md:px-12 lg:px-20">
+        <h1>
+          <img src="/cal-logo-white.svg" alt="CAL" className="h-10 md:h-20 w-auto" />
+        </h1>
+        <p className="mt-2 md:mt-4 text-base md:text-2xl font-semibold">Gestión tambera</p>
         <p className="hidden md:block mt-3 text-lg text-white/70">El tambo, ordenado y a la vista</p>
+        <p className="hidden md:block absolute bottom-6 inset-x-12 lg:inset-x-20 text-xs text-white/60">
+          En memoria de Carlos Alberto Lobeto, fundador de Lobeto Tambos.
+        </p>
       </div>
 
       <div className="flex items-start md:items-center justify-center p-4 py-8 md:p-8">

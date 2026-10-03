@@ -1,20 +1,25 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "CAL",
+    "slug": "gtlt",
+    "scheme": "gtlt",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "GTLT usa tu ubicación para marcar dónde está el tambo, así el técnico sabe cómo llegar."
+        "NSLocationWhenInUseUsageDescription": "CAL usa tu ubicación para marcar dónde está el tambo, así el técnico sabe cómo llegar."
       }
     },
     "android": {
+      "package": "com.gtlt.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#123B4F",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -34,14 +39,14 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "GTLT necesita fotos para la ficha de cada vaca.",
-          "cameraPermission": "GTLT necesita la cámara para sacar la foto de la vaca."
+          "photosPermission": "CAL necesita fotos para la ficha de cada vaca.",
+          "cameraPermission": "CAL necesita la cámara para sacar la foto de la vaca."
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "GTLT usa tu ubicación para marcar dónde está el tambo, así el técnico sabe cómo llegar."
+          "locationWhenInUsePermission": "CAL usa tu ubicación para marcar dónde está el tambo, así el técnico sabe cómo llegar."
         }
       ],
       "expo-status-bar"

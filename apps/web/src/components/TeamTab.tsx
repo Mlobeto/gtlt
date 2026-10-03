@@ -25,7 +25,7 @@ const ROLE_LABEL: Record<string, string> = {
 
 function inviteMessage(token: string) {
   return (
-    `Te invité a Gestión LT. Instalá la app, tocá «Tengo un código de invitación» y pegá este código: ${token}. Vence en 7 días.` +
+    `Te invité a CAL. Instalá la app, tocá «Tengo un código de invitación» y pegá este código: ${token}. Vence en 7 días.` +
     ` También podés activarla en ${window.location.origin}`
   )
 }
