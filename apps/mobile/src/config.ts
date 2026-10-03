@@ -1,8 +1,9 @@
 /**
  * En el celular físico NO sirve localhost (apunta al teléfono).
- * Usá la IP LAN de la PC (la misma que aparece en exp://IP:808x).
+ * Producción Azure por defecto. Para API local: EXPO_PUBLIC_API_URL.
  *
  * Override: $env:EXPO_PUBLIC_API_URL="http://192.168.x.x:3001"
  */
 export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL ?? "http://192.168.0.213:3001";
+  process.env.EXPO_PUBLIC_API_URL ??
+  "https://gtlt-api.proudmoss-fef6994b.eastus2.azurecontainerapps.io";
