@@ -147,8 +147,8 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
   return (
     <div className="min-h-screen bg-subtle md:grid md:grid-cols-2">
       <div className="bg-brand-dark text-white px-6 py-6 md:flex md:flex-col md:justify-center md:px-12 lg:px-20">
-        <h1 className="font-brand text-3xl md:text-6xl font-bold leading-none">GTLT</h1>
-        <p className="mt-2 md:mt-4 text-base md:text-2xl font-semibold">Gestión Tambera</p>
+        <h1 className="font-brand text-3xl md:text-6xl font-bold leading-none">Gestión LT</h1>
+        <p className="mt-2 md:mt-4 text-base md:text-2xl font-semibold">Lobeto Tambos</p>
         <p className="hidden md:block mt-3 text-lg text-white/70">El tambo, ordenado y a la vista</p>
       </div>
 

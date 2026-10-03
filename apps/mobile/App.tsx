@@ -1581,7 +1581,7 @@ export default function App() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            <Text style={styles.title}>GTLT Tambos</Text>
+            <Text style={styles.title}>Gestión LT</Text>
             <View style={[styles.chip, online ? styles.chipOk : styles.chipWarn]}>
               <Text style={[styles.chipText, !online && styles.chipTextWarn]}>
                 {online ? "Con señal" : "Sin señal"}
@@ -2076,7 +2076,7 @@ export default function App() {
                                 style={styles.button}
                                 onPress={() =>
                                   void Share.share({
-                                    message: `Te invité a GTLT. Instalá la app, tocá «Tengo un código de invitación» y pegá este código: ${inviteResult.token}. Vence en 7 días.`,
+                                    message: `Te invitó ${session.userName} a Gestión LT. Instalá la app, tocá «Tengo un código de invitación» y pegá este código: ${inviteResult.token}. Vence en 7 días.`,
                                   })
                                 }
                               >
