@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../lib/api'
 import { WEB_ALLOWED_ROLES, type AuthToken } from '../types/auth'
+import { Button, Card, ErrorBanner, Field } from '../components/ui'
 
 interface LoginPageProps {
   onSuccess: (token: AuthToken) => void
@@ -70,90 +71,74 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-md">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-green-700">GTLT</h1>
-          <p className="text-gray-600 mt-2">Gestión Tambera</p>
-        </div>
+    <div className="min-h-screen bg-subtle md:grid md:grid-cols-2">
+      <div className="bg-brand-dark text-white px-6 py-6 md:flex md:flex-col md:justify-center md:px-12 lg:px-20">
+        <h1 className="font-brand text-3xl md:text-6xl font-bold leading-none">GTLT</h1>
+        <p className="mt-2 md:mt-4 text-base md:text-2xl font-semibold">Gestión Tambera</p>
+        <p className="hidden md:block mt-3 text-lg text-white/70">El tambo, ordenado y a la vista</p>
+      </div>
 
-        {tenants ? (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-700">
-              Esta cuenta está en más de un tambo. Elegí con cuál entrar.
-            </p>
-            <ul className="space-y-2">
-              {tenants.map((t) => (
-                <li key={t.id}>
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => void tryLogin(t.id)}
-                    className="w-full text-left px-4 py-3 border border-gray-200 rounded-lg hover:border-green-600 hover:bg-green-50 disabled:opacity-50"
-                  >
-                    <span className="font-medium text-gray-900">{t.name}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <button
-              type="button"
-              className="text-sm text-gray-500 hover:text-gray-800"
-              onClick={() => setTenants(null)}
-              disabled={loading}
-            >
-              Volver
-            </button>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <input
+      <div className="flex items-start md:items-center justify-center p-4 py-8 md:p-8">
+        <Card className="w-full max-w-md p-6 sm:p-8">
+          {tenants ? (
+            <div className="space-y-4">
+              <p className="text-sm text-ink">
+                Esta cuenta está en más de un tambo. Elegí con cuál entrar.
+              </p>
+              <ul className="space-y-2">
+                {tenants.map((t) => (
+                  <li key={t.id}>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => void tryLogin(t.id)}
+                      className="w-full text-left px-4 py-3 border border-line rounded-lg hover:border-primary hover:bg-primary-soft disabled:opacity-60"
+                    >
+                      <span className="font-semibold text-ink">{t.name}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <Button variant="ghost" onClick={() => setTenants(null)} disabled={loading}>
+                Volver
+              </Button>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <Field
+                label="Email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                 disabled={loading}
               />
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-              <input
+              <Field
+                label="Contraseña"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                 disabled={loading}
               />
+
+              {error && <ErrorBanner>{error}</ErrorBanner>}
+
+              <Button type="submit" disabled={loading} className="w-full">
+                {loading ? 'Conectando...' : 'Iniciar Sesión'}
+              </Button>
+            </form>
+          )}
+
+          {tenants && error ? (
+            <div className="mt-4">
+              <ErrorBanner>{error}</ErrorBanner>
             </div>
+          ) : null}
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-            >
-              {loading ? 'Conectando...' : 'Iniciar Sesión'}
-            </button>
-          </form>
-        )}
-
-        {tenants && error ? (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm mt-4">
-            {error}
-          </div>
-        ) : null}
-
-        <p className="text-xs text-gray-500 text-center mt-6">
-          Usuario de demo: admin@gtlt.local / demo1234
-        </p>
+          <p className="text-xs text-ink-muted text-center mt-6">
+            Usuario de demo: admin@gtlt.local / demo1234
+          </p>
+        </Card>
       </div>
     </div>
   )
