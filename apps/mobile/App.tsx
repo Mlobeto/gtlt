@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
@@ -51,6 +51,7 @@ import {
   type ServiceRequestItem,
 } from "./src/api";
 import { TechnicianHome } from "./src/TechnicianHome";
+import { buildActionLists, type ActionLists } from "./src/animals/actionLists";
 import {
   countPendingOutbox,
   getDb,
@@ -117,7 +118,17 @@ type Screen =
   | "parts"
   | "partForm"
   | "service"
-  | "notifications";
+  | "notifications"
+  | "today";
+
+type TodaySectionKey = keyof ActionLists;
+
+const TODAY_SECTIONS: { key: TodaySectionKey; emoji: string; label: string }[] = [
+  { key: "calvingSoon", emoji: "🐄", label: "Partos próximos" },
+  { key: "dryOff", emoji: "🌾", label: "Para secar" },
+  { key: "withdrawals", emoji: "❌", label: "Retiros de leche" },
+  { key: "pregnancyCheck", emoji: "🔍", label: "Para tacto (revisar preñez)" },
+];
 
 type ServiceCategory =
   | "VACUUM_PUMP"
@@ -319,6 +330,34 @@ export default function App() {
   const [partBrandModel, setPartBrandModel] = useState("");
   const [partNotes, setPartNotes] = useState("");
   const [partPhotoUri, setPartPhotoUri] = useState<string | null>(null);
+
+  const actionLists = useMemo(
+    () => buildActionLists({ animals, repros, withdrawals, now: new Date() }),
+    [animals, repros, withdrawals],
+  );
+  const scrollRef = useRef<ScrollView>(null);
+  const detailFromTodayRef = useRef(false);
+  const pendingTodaySectionRef = useRef<TodaySectionKey | null>(null);
+  const todayLayoutRef = useRef<{
+    card?: number;
+    sections: Partial<Record<TodaySectionKey, number>>;
+  }>({ sections: {} });
+
+  function scrollToPendingTodaySection() {
+    const key = pendingTodaySectionRef.current;
+    const { card, sections } = todayLayoutRef.current;
+    const sectionY = key ? sections[key] : undefined;
+    if (!key || card == null || sectionY == null) return;
+    pendingTodaySectionRef.current = null;
+    scrollRef.current?.scrollTo({ y: card + sectionY, animated: false });
+  }
+
+  function openToday(section: TodaySectionKey) {
+    setStatus("");
+    pendingTodaySectionRef.current = section;
+    todayLayoutRef.current = { sections: {} };
+    setScreen("today");
+  }
 
   const sessionRef = useRef<Session | null>(null);
   const onlineRef = useRef(true);
@@ -1505,6 +1544,7 @@ export default function App() {
   }
 
   function goHome() {
+    detailFromTodayRef.current = false;
     if (milkingShiftActive) {
       setMilkingShiftActive(false);
       setVoiceCaptureOpen(false);
@@ -1536,6 +1576,7 @@ export default function App() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
@@ -1671,7 +1712,8 @@ export default function App() {
                   onPress={() => {
                     setStatus("");
                     if (screen === "animalDetail") {
-                      setScreen("animals");
+                      setScreen(detailFromTodayRef.current ? "today" : "animals");
+                      detailFromTodayRef.current = false;
                     } else if (screen === "animalForm") {
                       setScreen(
                         animalFormMode === "edit" && selectedAnimalId
@@ -1693,6 +1735,79 @@ export default function App() {
                       : "← Volver al inicio"}
                   </Text>
                 </Pressable>
+              ) : null}
+
+              {screen === "home" ? (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Hoy</Text>
+                  {TODAY_SECTIONS.every((s) => actionLists[s.key].length === 0) ? (
+                    <Text style={styles.help}>Hoy no hay nada pendiente.</Text>
+                  ) : (
+                    TODAY_SECTIONS.filter((s) => actionLists[s.key].length > 0).map((s) => (
+                      <Pressable
+                        key={s.key}
+                        style={styles.todayRow}
+                        onPress={() => openToday(s.key)}
+                      >
+                        <Text style={styles.todayRowLabel}>
+                          {s.emoji} {s.label} · {actionLists[s.key].length}
+                        </Text>
+                        <Text style={styles.todayRowArrow}>›</Text>
+                      </Pressable>
+                    ))
+                  )}
+                </View>
+              ) : null}
+
+              {screen === "today" ? (
+                <View
+                  style={styles.card}
+                  onLayout={(e) => {
+                    todayLayoutRef.current.card = e.nativeEvent.layout.y;
+                    scrollToPendingTodaySection();
+                  }}
+                >
+                  <Text style={styles.cardTitle}>Hoy</Text>
+                  {TODAY_SECTIONS.map((s) => (
+                    <View
+                      key={s.key}
+                      style={styles.todaySection}
+                      onLayout={(e) => {
+                        todayLayoutRef.current.sections[s.key] = e.nativeEvent.layout.y;
+                        scrollToPendingTodaySection();
+                      }}
+                    >
+                      <Text style={styles.sectionInCard}>
+                        {s.emoji} {s.label}
+                      </Text>
+                      {actionLists[s.key].length === 0 ? (
+                        <Text style={styles.meta}>Nada por acá.</Text>
+                      ) : (
+                        actionLists[s.key].map((item) => (
+                          <Pressable
+                            key={item.animalId}
+                            style={styles.todayRow}
+                            onPress={() => {
+                              setStatus("");
+                              detailFromTodayRef.current = true;
+                              void openAnimalDetail(item.animalId);
+                            }}
+                          >
+                            <View style={styles.todayItemText}>
+                              <Text style={styles.todayItemTitle}>Caravana {item.earTag}</Text>
+                              <Text style={styles.meta}>{item.detail}</Text>
+                            </View>
+                            {item.severity === "late" ? (
+                              <View style={[styles.chip, styles.chipWarn]}>
+                                <Text style={[styles.chipText, styles.chipTextWarn]}>Atrasado</Text>
+                              </View>
+                            ) : null}
+                          </Pressable>
+                        ))
+                      )}
+                    </View>
+                  ))}
+                </View>
               ) : null}
 
               {screen === "home" ? (
@@ -3228,6 +3343,20 @@ const styles = StyleSheet.create({
   menuTextWrap: { flex: 1, gap: 2 },
   menuLabel: { fontSize: 20, fontWeight: "700", color: colors.text },
   menuHint: { fontSize: 15, color: colors.textMuted },
+  todayRow: {
+    minHeight: touch.min,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
+    paddingVertical: space.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  todayRowLabel: { flex: 1, fontSize: font.body, fontWeight: "600", color: colors.text },
+  todayRowArrow: { fontSize: font.title, color: colors.textMuted },
+  todaySection: { gap: space.xs },
+  todayItemText: { flex: 1, gap: 2 },
+  todayItemTitle: { fontSize: font.body, fontWeight: "700", color: colors.text },
   backRow: { paddingVertical: space.sm },
   backText: { fontSize: font.body, color: colors.primaryPressed, fontWeight: "600" },
   row: { flexDirection: "row", gap: space.sm },
