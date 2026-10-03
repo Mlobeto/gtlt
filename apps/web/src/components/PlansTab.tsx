@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { api } from '../lib/api'
 import type { AuthToken } from '../types/auth'
 import type { AdminPlan } from '../types/dashboard'
+import { Badge, Button, Card, ErrorBanner, inputClass } from './ui'
 
 interface PlansTabProps {
   auth: AuthToken
@@ -65,49 +66,37 @@ export function PlansTab({ auth }: PlansTabProps) {
 
   return (
     <div className="space-y-6">
-      <h3 className="text-lg font-semibold text-gray-900">Planes</h3>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
 
       {loading ? (
         <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
           {plans.map((plan) => (
-            <div key={plan.id} className="bg-white border border-gray-200 rounded-lg p-4">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h4 className="font-semibold text-gray-900">{plan.name} ({plan.code})</h4>
+            <Card key={plan.id}>
+              <div className="flex justify-between items-start gap-2">
+                <div className="min-w-0">
+                  <h4 className="font-semibold text-ink">{plan.name} ({plan.code})</h4>
                   {plan.priceUsd ? (
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-ink-muted mt-1">
                       USD {plan.priceUsd} → $ {plan.priceArs} ARS
                       {plan.fxRate ? ` (dólar oficial $${plan.fxRate})` : ''}
                     </p>
                   ) : (
-                    <p className="text-sm text-gray-600 mt-1">Sin costo</p>
+                    <p className="text-sm text-ink-muted mt-1">Sin costo</p>
                   )}
                   {plan.priceArsUpdatedAt && (
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-ink-muted mt-1">
                       Actualizado: {new Date(plan.priceArsUpdatedAt).toLocaleString('es-AR')}
                     </p>
                   )}
                 </div>
-                <span
-                  className={`px-2 py-1 rounded text-xs font-medium ${
-                    plan.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                  }`}
-                >
-                  {plan.active ? 'Activo' : 'Inactivo'}
-                </span>
+                <Badge tone={plan.active ? 'ok' : 'neutral'}>{plan.active ? 'Activo' : 'Inactivo'}</Badge>
               </div>
 
-              <div className="flex items-center gap-2 mt-3">
+              <div className="flex flex-wrap items-center gap-2 mt-4">
                 {editingId === plan.id ? (
                   <>
                     <input
@@ -116,39 +105,25 @@ export function PlansTab({ auth }: PlansTabProps) {
                       value={priceDraft}
                       onChange={(e) => setPriceDraft(e.target.value)}
                       placeholder="Precio en USD"
-                      className="px-2 py-1 border border-gray-300 rounded text-sm w-32"
+                      className={`${inputClass} w-32`}
                     />
-                    <button
-                      onClick={() => savePrice(plan.id)}
-                      disabled={saving}
-                      className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 text-sm"
-                    >
+                    <Button onClick={() => savePrice(plan.id)} disabled={saving}>
                       Guardar
-                    </button>
-                    <button
-                      onClick={() => setEditingId(null)}
-                      className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 text-sm"
-                    >
+                    </Button>
+                    <Button variant="ghost" onClick={() => setEditingId(null)}>
                       Cancelar
-                    </button>
+                    </Button>
                   </>
                 ) : (
-                  <button
-                    onClick={() => startEdit(plan)}
-                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 text-sm"
-                  >
+                  <Button variant="secondary" onClick={() => startEdit(plan)}>
                     Editar precio (USD)
-                  </button>
+                  </Button>
                 )}
-                <button
-                  onClick={() => toggleActive(plan)}
-                  disabled={saving}
-                  className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 text-sm"
-                >
+                <Button variant="ghost" onClick={() => toggleActive(plan)} disabled={saving}>
                   {plan.active ? 'Desactivar' : 'Activar'}
-                </button>
+                </Button>
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}

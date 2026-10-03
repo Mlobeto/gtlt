@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { TamboPicker } from '../components/TamboPicker'
+import { AppShell, type NavItem } from '../components/AppShell'
+import { Badge, Button, Card, EmptyState, ErrorBanner, type BadgeTone } from '../components/ui'
 import type { AuthToken } from '../types/auth'
 
 function mapsUrl(lat: number, lng: number) {
@@ -21,20 +23,20 @@ function TamboDirections({
   const lng = tambo.longitude
   const hasCoords = lat != null && lng != null
   return (
-    <div className="text-sm text-gray-600 space-y-1">
+    <div className="text-sm text-ink-muted space-y-1">
       {tambo.address ? <p>{tambo.address}</p> : null}
       {hasCoords ? (
         <a
           href={mapsUrl(lat, lng)}
           target="_blank"
           rel="noreferrer"
-          className="text-green-700 font-medium hover:underline"
+          className="text-primary-deep font-semibold hover:underline"
           onClick={(e) => e.stopPropagation()}
         >
           Cómo llegar
         </a>
       ) : (
-        <p className="text-gray-500">Ubicación no cargada</p>
+        <p className="text-ink-muted">Ubicación no cargada</p>
       )}
     </div>
   )
@@ -47,6 +49,12 @@ const STATUS_LABEL: Record<string, string> = {
   IN_PROGRESS: 'En curso',
   RESOLVED: 'Resuelta',
   CANCELLED: 'Cancelada',
+}
+
+function statusTone(status: string): BadgeTone {
+  if (status === 'OPEN') return 'ok'
+  if (status === 'RESOLVED' || status === 'CANCELLED') return 'neutral'
+  return 'warn'
 }
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -253,150 +261,150 @@ export function TechnicianDashboardPage({
     }
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-green-700">GTLT Service</h1>
-            <p className="text-sm text-gray-600 mt-1">
-              {!loadingMe && user ? `Hola, ${user.name} · Técnico` : 'Cargando...'}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            {view === 'tambo' ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setView('inbox')
-                    setStatusMsg('')
-                    setError('')
-                  }}
-                  className="text-sm text-gray-500 hover:text-gray-800 px-2 py-1"
-                >
-                  Ver todo de nuevo
-                </button>
-                <TamboPicker token={auth.token} tamboId={tamboId} onChange={setTamboId} />
-              </>
-            ) : null}
-            <button
-              onClick={onLogout}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
-            >
-              Salir
-            </button>
-          </div>
-        </div>
-      </header>
+  const backToInbox = () => {
+    setView('inbox')
+    setStatusMsg('')
+    setError('')
+  }
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>
-        )}
+  const nav: NavItem<'inbox' | 'tambo'>[] = [{ key: 'inbox', label: 'Bandeja' }]
+  if (tamboId) nav.push({ key: 'tambo', label: workspaceTambo?.name ?? 'Tambo' })
+
+  return (
+    <AppShell
+      title={view === 'inbox' ? 'Bandeja' : workspaceTambo?.name ?? 'Tambo'}
+      subtitle="Service"
+      nav={nav}
+      active={view}
+      onSelect={(key) => (key === 'inbox' ? backToInbox() : setView('tambo'))}
+      user={{ name: !loadingMe && user ? user.name : 'Cargando...', role: 'Técnico' }}
+      onLogout={onLogout}
+      headerRight={
+        view === 'tambo' ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="ghost" onClick={backToInbox}>
+              Ver todo de nuevo
+            </Button>
+            <TamboPicker token={auth.token} tamboId={tamboId} onChange={setTamboId} />
+          </div>
+        ) : undefined
+      }
+    >
+      <div className="space-y-6">
+        {error && <ErrorBanner>{error}</ErrorBanner>}
         {statusMsg && (
-          <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg">
+          <div className="bg-primary-soft border border-primary/30 text-primary-deep px-4 py-3 rounded-lg text-sm">
             {statusMsg}
           </div>
         )}
 
         {view === 'inbox' ? (
-          <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-gray-900">Todos tus pedidos abiertos</h2>
-            <p className="text-sm text-gray-600">
+          <Card title="Todos tus pedidos abiertos">
+            <p className="text-sm text-ink-muted mb-4">
               Pedidos de todos tus clientes. Tocá uno para entrar a ese tambo.
             </p>
             {loadingInbox ? (
               <div className="text-center py-8">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
             ) : inbox.length === 0 ? (
-              <p className="text-sm text-gray-500">No tenés pedidos pendientes en ningún tambo</p>
+              <EmptyState>No tenés pedidos pendientes en ningún tambo</EmptyState>
             ) : (
               <ul className="space-y-3">
                 {inbox.map((item) => (
-                  <li key={item.id} className="bg-white border border-gray-200 rounded-lg p-4 space-y-2">
+                  <li
+                    key={item.id}
+                    className="border border-line rounded-lg p-4 space-y-2 hover:border-primary/40 hover:bg-subtle transition"
+                  >
                     <button
                       type="button"
                       disabled={openingId === item.id}
                       onClick={() => void openInboxItem(item)}
-                      className="w-full text-left space-y-1 disabled:opacity-50"
+                      className="w-full text-left space-y-1 disabled:opacity-60"
                     >
-                      <div className="flex flex-wrap justify-between gap-2">
-                        <p className="font-semibold text-gray-900">
-                          {item.urgency === 'URGENT' ? 'URGENTE · ' : ''}
-                          {CATEGORY_LABEL[item.category] ?? item.category}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          {STATUS_LABEL[item.status] ?? item.status}
-                          {item.createdAt
-                            ? ` · ${new Date(item.createdAt).toLocaleString('es-AR')}`
-                            : ''}
-                        </p>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {item.urgency === 'URGENT' ? <Badge tone="danger">URGENTE</Badge> : null}
+                          <p className="font-semibold text-ink">
+                            {CATEGORY_LABEL[item.category] ?? item.category}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge tone={statusTone(item.status)}>
+                            {STATUS_LABEL[item.status] ?? item.status}
+                          </Badge>
+                          {item.createdAt ? (
+                            <span className="text-xs text-ink-muted">
+                              {new Date(item.createdAt).toLocaleString('es-AR')}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-ink-muted">
                         {item.tenant.name} · {item.tambo.name}
                       </p>
-                      <p className="text-sm text-gray-700">{item.description}</p>
+                      <p className="text-sm text-ink">{item.description}</p>
                     </button>
                     <TamboDirections tambo={item.tambo} />
                   </li>
                 ))}
               </ul>
             )}
-          </section>
+          </Card>
         ) : (
           <>
-            <p className="text-sm text-gray-600">
-              Pedidos del tambo y el equipo cargado. Solo ves lo de este tambo.
-            </p>
-            <TamboDirections tambo={workspaceTambo} />
+            <Card>
+              <p className="text-sm text-ink-muted mb-2">
+                Pedidos del tambo y el equipo cargado. Solo ves lo de este tambo.
+              </p>
+              <TamboDirections tambo={workspaceTambo} />
+            </Card>
 
-            <section className="space-y-3">
-              <h2 className="text-lg font-semibold text-gray-900">Pedidos</h2>
+            <Card title="Pedidos">
               {loading ? (
                 <div className="text-center py-8">
-                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                 </div>
               ) : !tamboId ? (
-                <p className="text-sm text-gray-500">No hay tambos para mostrar.</p>
+                <EmptyState>No hay tambos para mostrar.</EmptyState>
               ) : requests.length === 0 ? (
-                <p className="text-sm text-gray-500">No hay pedidos abiertos.</p>
+                <EmptyState>No hay pedidos abiertos.</EmptyState>
               ) : (
                 <ul className="space-y-3">
                   {requests.map((r) => {
                     const next = NEXT_STATUS[r.status] ?? []
                     return (
-                      <li key={r.id} className="bg-white border border-gray-200 rounded-lg p-4 space-y-2">
-                        <div className="flex flex-wrap justify-between gap-2">
-                          <p className="font-semibold text-gray-900">
-                            {r.urgency === 'URGENT' ? 'URGENTE · ' : ''}
-                            {CATEGORY_LABEL[r.category] ?? r.category}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {STATUS_LABEL[r.status] ?? r.status} ·{' '}
-                            {new Date(r.createdAt).toLocaleString('es-AR')}
-                          </p>
+                      <li key={r.id} className="border border-line rounded-lg p-4 space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {r.urgency === 'URGENT' ? <Badge tone="danger">URGENTE</Badge> : null}
+                            <p className="font-semibold text-ink">{CATEGORY_LABEL[r.category] ?? r.category}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge tone={statusTone(r.status)}>{STATUS_LABEL[r.status] ?? r.status}</Badge>
+                            <span className="text-xs text-ink-muted">
+                              {new Date(r.createdAt).toLocaleString('es-AR')}
+                            </span>
+                          </div>
                         </div>
-                        <p className="text-sm text-gray-700">{r.description}</p>
+                        <p className="text-sm text-ink">{r.description}</p>
                         <TamboDirections tambo={workspaceTambo} />
                         {r.relatedPartInstance?.partType?.name ? (
-                          <p className="text-xs text-gray-500">Pieza: {r.relatedPartInstance.partType.name}</p>
+                          <p className="text-xs text-ink-muted">Pieza: {r.relatedPartInstance.partType.name}</p>
                         ) : null}
                         {next.length === 0 ? (
-                          <p className="text-sm text-gray-500">Este pedido ya está cerrado.</p>
+                          <p className="text-sm text-ink-muted">Este pedido ya está cerrado.</p>
                         ) : (
                           <div className="flex flex-wrap gap-2 pt-1">
                             {next.map((opt) => (
-                              <button
+                              <Button
                                 key={opt.value}
-                                type="button"
+                                variant={opt.value === 'CANCELLED' ? 'secondary' : 'primary'}
                                 disabled={busyId === r.id}
                                 onClick={() => void changeStatus(r.id, opt.value)}
-                                className="px-3 py-1.5 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
                               >
                                 {opt.label}
-                              </button>
+                              </Button>
                             ))}
                           </div>
                         )}
@@ -405,25 +413,24 @@ export function TechnicianDashboardPage({
                   })}
                 </ul>
               )}
-            </section>
+            </Card>
 
-            <section className="space-y-3">
-              <h2 className="text-lg font-semibold text-gray-900">Equipo del tambo</h2>
+            <Card title="Equipo del tambo">
               {loading ? (
-                <p className="text-sm text-gray-500">Cargando equipo...</p>
+                <EmptyState>Cargando equipo...</EmptyState>
               ) : parts.length === 0 ? (
-                <p className="text-sm text-gray-500">Todavía no hay piezas cargadas.</p>
+                <EmptyState>Todavía no hay piezas cargadas.</EmptyState>
               ) : (
                 <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {parts.map((p) => (
-                    <li key={p.id} className="bg-white border border-gray-200 rounded-lg p-4 space-y-2">
-                      <p className="font-semibold text-gray-900">{p.partType.name}</p>
-                      <p className="text-sm text-gray-600">
+                    <li key={p.id} className="border border-line rounded-lg p-4 space-y-2">
+                      <p className="font-semibold text-ink">{p.partType.name}</p>
+                      <p className="text-sm text-ink-muted">
                         {p.bajadaNumber != null ? `Bajada ${p.bajadaNumber}` : 'Nivel tambo'}
                         {p.brandModel ? ` · ${p.brandModel}` : ''}
                       </p>
                       {p.coldDetail ? (
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-ink-muted">
                           Frío: {p.coldDetail.brand} {p.coldDetail.model} · {p.coldDetail.capacityLiters} L
                         </p>
                       ) : null}
@@ -431,17 +438,18 @@ export function TechnicianDashboardPage({
                         <img
                           src={p.photoUrl}
                           alt={p.partType.name}
-                          className="mt-1 max-h-40 rounded-lg border border-gray-100 object-cover"
+                          className="mt-1 w-full max-h-40 rounded-lg border border-line object-cover"
                         />
                       ) : null}
                     </li>
                   ))}
                 </ul>
               )}
-            </section>
+            </Card>
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }
+

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import type { AuthToken } from '../types/auth'
+import { Card, ErrorBanner, inputClass } from './ui'
 
 interface SettingsTabProps {
   auth: AuthToken
@@ -60,43 +61,44 @@ export function SettingsTab({ auth }: SettingsTabProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <h3 className="text-lg font-semibold text-gray-900">Configuración del tambo</h3>
-      <p className="text-sm text-gray-600">
-        Elegí el proveedor de service por defecto. No se puede dar de alta uno nuevo desde acá.
-      </p>
-      {tambos.length > 1 && (
+    <Card title="Configuración del tambo" className="max-w-2xl">
+      <div className="space-y-4">
+        <p className="text-sm text-ink-muted">
+          Elegí el proveedor de service por defecto. No se puede dar de alta uno nuevo desde acá.
+        </p>
+        {tambos.length > 1 && (
+          <select
+            value={tamboId}
+            onChange={(e) => setTamboId(e.target.value)}
+            className={`${inputClass} max-w-md`}
+          >
+            {tambos.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {error && <ErrorBanner>{error}</ErrorBanner>}
+        {status && (
+          <div className="bg-primary-soft border border-primary/30 text-primary-deep px-4 py-3 rounded-lg text-sm">
+            {status}
+          </div>
+        )}
         <select
-          value={tamboId}
-          onChange={(e) => setTamboId(e.target.value)}
-          className="px-3 py-2 border rounded-lg"
+          value={selectedId}
+          onChange={(e) => void save(e.target.value)}
+          disabled={saving || catalog.length === 0}
+          className={`${inputClass} max-w-md`}
         >
-          {tambos.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
+          <option value="">Sin proveedor</option>
+          {catalog.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
             </option>
           ))}
         </select>
-      )}
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>
-      )}
-      {status && (
-        <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg">{status}</div>
-      )}
-      <select
-        value={selectedId}
-        onChange={(e) => void save(e.target.value)}
-        disabled={saving || catalog.length === 0}
-        className="w-full max-w-md px-3 py-2 border rounded-lg"
-      >
-        <option value="">Sin proveedor</option>
-        {catalog.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
-        ))}
-      </select>
-    </div>
+      </div>
+    </Card>
   )
 }

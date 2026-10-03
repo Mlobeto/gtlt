@@ -50,7 +50,7 @@ export function AppShell<K extends string>({
                 onClick={() => onSelect(item.key)}
                 aria-current={isActive ? 'page' : undefined}
                 className={`shrink-0 text-left px-3 py-2 rounded-lg text-sm font-semibold transition ${
-                  isActive ? 'bg-white/15 text-white' : 'text-white/70 hover:text-white hover:bg-white/10'
+                  isActive ? 'bg-surface/15 text-white' : 'text-white/70 hover:text-white hover:bg-surface/10'
                 }`}
               >
                 {item.label}
@@ -69,7 +69,7 @@ export function AppShell<K extends string>({
           <button
             type="button"
             onClick={onLogout}
-            className="w-full min-h-10 rounded-lg border border-white/20 text-sm font-semibold text-white/90 hover:bg-white/10"
+            className="w-full min-h-10 rounded-lg border border-white/20 text-sm font-semibold text-white/90 hover:bg-surface/10"
           >
             Salir
           </button>

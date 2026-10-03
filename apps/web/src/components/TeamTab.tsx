@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import type { AuthToken } from '../types/auth'
+import { Badge, Button, Card, EmptyState, ErrorBanner, inputClass } from './ui'
 
 interface TeamTabProps {
   auth: AuthToken
@@ -105,110 +106,105 @@ export function TeamTab({ auth }: TeamTabProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center gap-4">
-        <h3 className="text-lg font-semibold text-gray-900">Equipo del tambo</h3>
-        <div className="flex gap-2">
-          {tambos.length > 1 && (
-            <select
-              value={tamboId}
-              onChange={(e) => {
-                setInviteToken('')
-                setTamboId(e.target.value)
-              }}
-              className="px-3 py-2 border border-gray-300 rounded-lg"
-            >
-              {tambos.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          )}
-          <button
-            onClick={() => setShowForm((v) => !v)}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-          >
-            Invitar
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>
-      )}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
 
       {inviteToken ? (
-        <div className="bg-yellow-50 border border-yellow-200 text-yellow-900 px-4 py-3 rounded-lg text-sm">
+        <div className="bg-accent-soft border border-accent/40 text-accent-text px-4 py-3 rounded-lg text-sm">
           Invitación lista. Pasale este token (7 días, un solo uso):
-          <code className="block mt-2 break-all bg-white p-2 rounded border">{inviteToken}</code>
+          <code className="block mt-2 break-all bg-surface p-2 rounded border border-line text-ink">
+            {inviteToken}
+          </code>
         </div>
       ) : null}
 
-      {showForm ? (
-        <form onSubmit={handleInvite} className="bg-white border rounded-lg p-4 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input
-              className="px-3 py-2 border rounded-lg"
-              placeholder="Correo"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-            />
-            <input
-              className="px-3 py-2 border rounded-lg"
-              placeholder="Teléfono (si no hay correo)"
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-            />
-            <input
-              className="px-3 py-2 border rounded-lg"
-              placeholder="Nombre (opcional)"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-            />
-            <select
-              className="px-3 py-2 border rounded-lg"
-              value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value as 'TAMBERO' | 'VETERINARIO' })}
-            >
-              <option value="TAMBERO">Tambero</option>
-              <option value="VETERINARIO">Veterinario</option>
-            </select>
+      <Card
+        title="Equipo del tambo"
+        action={
+          <div className="flex flex-wrap gap-2">
+            {tambos.length > 1 && (
+              <select
+                value={tamboId}
+                onChange={(e) => {
+                  setInviteToken('')
+                  setTamboId(e.target.value)
+                }}
+                className={inputClass}
+              >
+                {tambos.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <Button onClick={() => setShowForm((v) => !v)}>Invitar</Button>
           </div>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50"
-          >
-            {submitting ? 'Enviando...' : 'Crear invitación'}
-          </button>
-        </form>
-      ) : null}
-
-      {loading ? (
-        <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-        </div>
-      ) : members.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">Nadie asignado a este tambo todavía.</div>
-      ) : (
-        <div className="space-y-2">
-          {members.map((m) => (
-            <div key={m.id} className="bg-white border rounded-lg p-4 flex justify-between">
-              <div>
-                <p className="font-semibold">{m.user.name}</p>
-                <p className="text-sm text-gray-600">
-                  {m.user.email || m.user.phone || 'Sin contacto'}
-                  {m.companyName ? ` · ${m.companyName}` : ''}
-                </p>
-              </div>
-              <div className="text-right text-sm">
-                <p>{m.roles.map((r) => ROLE_LABEL[r] ?? r).join(', ')}</p>
-                <p className="text-gray-500">{m.status === 'ACTIVE' ? 'Activo' : 'Pendiente'}</p>
-              </div>
+        }
+      >
+        {showForm ? (
+          <form onSubmit={handleInvite} className="border border-line rounded-lg p-4 space-y-3 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input
+                className={inputClass}
+                placeholder="Correo"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+              />
+              <input
+                className={inputClass}
+                placeholder="Teléfono (si no hay correo)"
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              />
+              <input
+                className={inputClass}
+                placeholder="Nombre (opcional)"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
+              <select
+                className={inputClass}
+                value={form.role}
+                onChange={(e) => setForm({ ...form, role: e.target.value as 'TAMBERO' | 'VETERINARIO' })}
+              >
+                <option value="TAMBERO">Tambero</option>
+                <option value="VETERINARIO">Veterinario</option>
+              </select>
             </div>
-          ))}
-        </div>
-      )}
+            <Button type="submit" disabled={submitting}>
+              {submitting ? 'Enviando...' : 'Crear invitación'}
+            </Button>
+          </form>
+        ) : null}
+
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        ) : members.length === 0 ? (
+          <EmptyState>Nadie asignado a este tambo todavía.</EmptyState>
+        ) : (
+          <ul className="divide-y divide-line">
+            {members.map((m) => (
+              <li key={m.id} className="py-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-ink">{m.user.name}</p>
+                  <p className="text-sm text-ink-muted break-all">
+                    {m.user.email || m.user.phone || 'Sin contacto'}
+                    {m.companyName ? ` · ${m.companyName}` : ''}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-ink">{m.roles.map((r) => ROLE_LABEL[r] ?? r).join(', ')}</span>
+                  <Badge tone={m.status === 'ACTIVE' ? 'ok' : 'warn'}>
+                    {m.status === 'ACTIVE' ? 'Activo' : 'Pendiente'}
+                  </Badge>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
     </div>
   )
 }

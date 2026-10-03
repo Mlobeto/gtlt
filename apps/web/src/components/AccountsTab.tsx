@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { api } from '../lib/api'
 import type { AuthToken } from '../types/auth'
 import type { AdminTenant } from '../types/dashboard'
+import { Badge, Button, Card, EmptyState, ErrorBanner, Field, SelectField, inputClass, type BadgeTone } from './ui'
 
 interface AccountsTabProps {
   auth: AuthToken
@@ -80,139 +81,108 @@ export function AccountsTab({ auth }: AccountsTabProps) {
     }
   }
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      ACTIVE: 'bg-green-100 text-green-800',
-      PAST_DUE: 'bg-yellow-100 text-yellow-800',
-      CANCELED: 'bg-red-100 text-red-800',
+  const getStatusTone = (status: string): BadgeTone => {
+    const tones: Record<string, BadgeTone> = {
+      ACTIVE: 'ok',
+      PAST_DUE: 'warn',
+      CANCELED: 'danger',
     }
-    return colors[status] || 'bg-gray-100 text-gray-800'
+    return tones[status] || 'neutral'
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold text-gray-900">Cuentas</h3>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
-        >
-          {showForm ? 'Cancelar' : 'Crear cuenta'}
-        </button>
+      <div className="flex justify-end">
+        <Button onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancelar' : 'Crear cuenta'}</Button>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
 
       {showForm && (
-        <form onSubmit={handleCreate} className="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del tambo / tenant</label>
-              <input
+        <Card>
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field
+                label="Nombre del tambo / tenant"
                 type="text"
                 value={formData.tenantName}
                 onChange={(e) => setFormData({ ...formData, tenantName: e.target.value })}
                 placeholder="ej. Tambo García"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
                 required
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del dueño</label>
-              <input
+              <Field
+                label="Nombre del dueño"
                 type="text"
                 value={formData.ownerName}
                 onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
                 required
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email del dueño</label>
-              <input
+              <Field
+                label="Email del dueño"
                 type="email"
                 value={formData.ownerEmail}
                 onChange={(e) => setFormData({ ...formData, ownerEmail: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
                 required
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña inicial</label>
-              <input
+              <Field
+                label="Contraseña inicial"
                 type="text"
                 value={formData.ownerPassword}
                 onChange={(e) => setFormData({ ...formData, ownerPassword: e.target.value })}
                 placeholder="mínimo 6 caracteres"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
                 required
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Plan</label>
-              <select
+              <SelectField
+                label="Plan"
                 value={formData.planCode}
                 onChange={(e) =>
                   setFormData({ ...formData, planCode: e.target.value as 'STANDARD' | 'LIFETIME' })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
               >
                 <option value="STANDARD">Estándar (pago)</option>
                 <option value="LIFETIME">Lifetime (gratis de por vida)</option>
-              </select>
+              </SelectField>
             </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-            >
-              {submitting ? 'Creando...' : 'Crear cuenta'}
-            </button>
-          </div>
-        </form>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setShowForm(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting ? 'Creando...' : 'Crear cuenta'}
+              </Button>
+            </div>
+          </form>
+        </Card>
       )}
 
       {loading ? (
         <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
       ) : tenants.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">No hay cuentas todavía</div>
+        <EmptyState>No hay cuentas todavía</EmptyState>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {tenants.map((tenant) => (
-            <div key={tenant.id} className="bg-white border border-gray-200 rounded-lg p-4">
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <h3 className="font-semibold text-gray-900">{tenant.name}</h3>
-                  <p className="text-sm text-gray-600">
+            <Card key={tenant.id}>
+              <div className="flex flex-wrap justify-between items-start gap-2 mb-2">
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-ink">{tenant.name}</h3>
+                  <p className="text-sm text-ink-muted break-all">
                     {tenant.owner ? `${tenant.owner.name} · ${tenant.owner.email}` : 'Sin dueño asignado'}
                   </p>
                 </div>
                 {tenant.subscription && (
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(tenant.subscription.status)}`}>
+                  <Badge tone={getStatusTone(tenant.subscription.status)}>
                     {tenant.subscription.status}
-                  </span>
+                  </Badge>
                 )}
               </div>
 
               {tenant.subscription && (
                 <div className="flex flex-wrap items-center gap-3 mt-3 text-sm">
-                  <span className="text-gray-600">
-                    Plan: <strong>{tenant.subscription.plan.name}</strong>
+                  <span className="text-ink-muted">
+                    Plan: <strong className="text-ink">{tenant.subscription.plan.name}</strong>
                     {tenant.subscription.plan.priceUsd
                       ? ` · USD ${tenant.subscription.plan.priceUsd} (≈ $${tenant.subscription.plan.priceArs} ARS)`
                       : ' · sin costo'}
@@ -224,32 +194,31 @@ export function AccountsTab({ auth }: AccountsTabProps) {
                       handlePlanChange(tenant.id, e.target.value as 'STANDARD' | 'LIFETIME')
                     }
                     disabled={savingId === tenant.id}
-                    className="px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 text-sm"
+                    className={`${inputClass} w-auto py-1.5 text-sm`}
                   >
                     <option value="STANDARD">Estándar</option>
                     <option value="LIFETIME">Lifetime</option>
                   </select>
 
                   {tenant.subscription.status === 'CANCELED' ? (
-                    <button
+                    <Button
                       onClick={() => handleStatusChange(tenant.id, 'ACTIVE')}
                       disabled={savingId === tenant.id}
-                      className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 text-sm"
                     >
                       Reactivar
-                    </button>
+                    </Button>
                   ) : (
-                    <button
+                    <Button
+                      variant="danger"
                       onClick={() => handleStatusChange(tenant.id, 'CANCELED')}
                       disabled={savingId === tenant.id}
-                      className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 text-sm"
                     >
                       Dar de baja
-                    </button>
+                    </Button>
                   )}
                 </div>
               )}
-            </div>
+            </Card>
           ))}
         </div>
       )}

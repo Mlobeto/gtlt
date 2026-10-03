@@ -31,7 +31,7 @@ export function TamboPicker({
     <select
       value={tamboId}
       onChange={(e) => onChange(e.target.value)}
-      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+      className="px-3 py-2 bg-surface border border-line rounded-lg text-ink focus:outline-none focus:ring-2 focus:ring-primary"
     >
       {tambos.map((t) => (
         <option key={t.id} value={t.id}>

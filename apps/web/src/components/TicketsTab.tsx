@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { api } from '../lib/api'
 import type { AuthToken } from '../types/auth'
 import type { SupportTicket } from '../types/dashboard'
+import { Badge, Button, EmptyState, ErrorBanner, inputClass, type BadgeTone } from './ui'
 
 interface TicketsTabProps {
   auth: AuthToken
@@ -75,34 +76,37 @@ export function TicketsTab({ auth, canManage, canCreate = false, adminView = fal
     }
   }
 
-  const getPriorityColor = (priority: string) => {
-    const colors: Record<string, string> = {
-      LOW: 'bg-blue-100 text-blue-800',
-      MEDIUM: 'bg-yellow-100 text-yellow-800',
-      HIGH: 'bg-orange-100 text-orange-800',
-      URGENT: 'bg-red-100 text-red-800',
+  const getPriorityTone = (priority: string): BadgeTone => {
+    const tones: Record<string, BadgeTone> = {
+      LOW: 'neutral',
+      MEDIUM: 'info',
+      HIGH: 'danger',
+      URGENT: 'danger',
     }
-    return colors[priority] || 'bg-gray-100 text-gray-800'
+    return tones[priority] || 'neutral'
   }
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      OPEN: 'bg-green-100 text-green-800',
-      IN_REVIEW: 'bg-blue-100 text-blue-800',
-      IN_PROGRESS: 'bg-yellow-100 text-yellow-800',
-      CLOSED: 'bg-gray-100 text-gray-800',
+  const getStatusTone = (status: string): BadgeTone => {
+    const tones: Record<string, BadgeTone> = {
+      OPEN: 'ok',
+      IN_REVIEW: 'warn',
+      IN_PROGRESS: 'warn',
+      CLOSED: 'neutral',
     }
-    return colors[status] || 'bg-gray-100 text-gray-800'
+    return tones[status] || 'neutral'
   }
+
+  const labelClass = 'block text-sm font-semibold text-ink mb-1'
+  const readonlyClass = 'text-ink bg-subtle p-3 rounded-lg'
 
   return (
     <div className="space-y-6">
       {/* Filter */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+          className={`${inputClass} w-auto`}
         >
           <option value="">Todos los estados</option>
           <option value="OPEN">Abierto</option>
@@ -110,31 +114,19 @@ export function TicketsTab({ auth, canManage, canCreate = false, adminView = fal
           <option value="IN_PROGRESS">En progreso</option>
           <option value="CLOSED">Cerrado</option>
         </select>
-        <button
-          onClick={fetchTickets}
-          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-        >
-          Actualizar
-        </button>
+        <Button onClick={fetchTickets}>Actualizar</Button>
         {canCreate ? (
-          <button
-            onClick={() => setShowCreate((v) => !v)}
-            className="px-4 py-2 border border-green-600 text-green-700 rounded-lg hover:bg-green-50"
-          >
+          <Button variant="secondary" onClick={() => setShowCreate((v) => !v)}>
             Nuevo ticket
-          </button>
+          </Button>
         ) : null}
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
 
       {showCreate && canCreate ? (
         <form
-          className="bg-white border rounded-lg p-4 space-y-3"
+          className="bg-surface border border-line rounded-xl p-5 space-y-3"
           onSubmit={async (e) => {
             e.preventDefault()
             try {
@@ -165,14 +157,14 @@ export function TicketsTab({ auth, canManage, canCreate = false, adminView = fal
         >
           <input
             required
-            className="w-full px-3 py-2 border rounded-lg"
+            className={inputClass}
             placeholder="Asunto"
             value={createForm.subject}
             onChange={(e) => setCreateForm({ ...createForm, subject: e.target.value })}
           />
           <textarea
             required
-            className="w-full px-3 py-2 border rounded-lg"
+            className={inputClass}
             rows={4}
             placeholder="Qué pasó"
             value={createForm.description}
@@ -180,7 +172,7 @@ export function TicketsTab({ auth, canManage, canCreate = false, adminView = fal
           />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <select
-              className="px-3 py-2 border rounded-lg"
+              className={inputClass}
               value={createForm.category}
               onChange={(e) =>
                 setCreateForm({ ...createForm, category: e.target.value as SupportTicket['category'] })
@@ -192,7 +184,7 @@ export function TicketsTab({ auth, canManage, canCreate = false, adminView = fal
               <option value="OTHER">Otro</option>
             </select>
             <select
-              className="px-3 py-2 border rounded-lg"
+              className={inputClass}
               value={createForm.priority}
               onChange={(e) =>
                 setCreateForm({ ...createForm, priority: e.target.value as SupportTicket['priority'] })
@@ -204,7 +196,7 @@ export function TicketsTab({ auth, canManage, canCreate = false, adminView = fal
               <option value="URGENT">Urgente</option>
             </select>
             <select
-              className="px-3 py-2 border rounded-lg"
+              className={inputClass}
               value={createForm.tamboId}
               onChange={(e) => setCreateForm({ ...createForm, tamboId: e.target.value })}
             >
@@ -216,47 +208,39 @@ export function TicketsTab({ auth, canManage, canCreate = false, adminView = fal
               ))}
             </select>
           </div>
-          <button
-            type="submit"
-            disabled={creating}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50"
-          >
+          <Button type="submit" disabled={creating}>
             {creating ? 'Enviando...' : 'Crear ticket'}
-          </button>
+          </Button>
         </form>
       ) : null}
 
       {loading ? (
         <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
       ) : tickets.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          No hay tickets para mostrar
-        </div>
+        <EmptyState>No hay tickets para mostrar</EmptyState>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {tickets.map((ticket) => (
             <div
               key={ticket.id}
-              className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition cursor-pointer"
+              className="bg-surface border border-line rounded-xl p-4 hover:border-primary/40 hover:bg-subtle transition cursor-pointer"
               onClick={() => setSelectedTicket(ticket)}
             >
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <h3 className="font-semibold text-gray-900">{ticket.subject}</h3>
-                  <p className="text-sm text-gray-600 mt-1">{ticket.description.substring(0, 100)}...</p>
+              <div className="flex flex-wrap justify-between items-start gap-2 mb-2">
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-ink">{ticket.subject}</h3>
+                  <p className="text-sm text-ink-muted mt-1 break-words">
+                    {ticket.description.substring(0, 100)}...
+                  </p>
                 </div>
                 <div className="flex gap-2">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${getPriorityColor(ticket.priority)}`}>
-                    {ticket.priority}
-                  </span>
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(ticket.status)}`}>
-                    {ticket.status}
-                  </span>
+                  <Badge tone={getPriorityTone(ticket.priority)}>{ticket.priority}</Badge>
+                  <Badge tone={getStatusTone(ticket.status)}>{ticket.status}</Badge>
                 </div>
               </div>
-              <div className="flex justify-between items-center text-xs text-gray-500 mt-3">
+              <div className="flex flex-wrap justify-between items-center gap-2 text-xs text-ink-muted mt-3">
                 <span>
                   {ticket.tenant?.name ? `${ticket.tenant.name} · ` : ''}
                   {ticket.user?.name} - {ticket.tambo?.name || 'Sin tambo'}
@@ -270,44 +254,36 @@ export function TicketsTab({ auth, canManage, canCreate = false, adminView = fal
 
       {/* Modal para actualizar ticket */}
       {selectedTicket && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">{selectedTicket.subject}</h2>
-            
+        <div className="fixed inset-0 bg-brand-dark/50 flex items-center justify-center z-50">
+          <div className="bg-surface border border-line rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold text-ink mb-4">{selectedTicket.subject}</h2>
+
             <div className="space-y-4 mb-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Descripción
-                </label>
-                <p className="text-gray-700 bg-gray-50 p-3 rounded">{selectedTicket.description}</p>
+                <label className={labelClass}>Descripción</label>
+                <p className={readonlyClass}>{selectedTicket.description}</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Categoría
-                  </label>
-                  <p className="text-gray-700 bg-gray-50 p-3 rounded">{selectedTicket.category}</p>
+                  <label className={labelClass}>Categoría</label>
+                  <p className={readonlyClass}>{selectedTicket.category}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Prioridad
-                  </label>
-                  <p className="text-gray-700 bg-gray-50 p-3 rounded">{selectedTicket.priority}</p>
+                  <label className={labelClass}>Prioridad</label>
+                  <p className={readonlyClass}>{selectedTicket.priority}</p>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Estado
-                </label>
+                <label className={labelClass}>Estado</label>
                 {canManage ? (
                   <select
                     value={selectedTicket.status}
                     onChange={(e) =>
                       setSelectedTicket({ ...selectedTicket, status: e.target.value as any })
                     }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    className={inputClass}
                   >
                     <option value="OPEN">Abierto</option>
                     <option value="IN_REVIEW">En revisión</option>
@@ -315,20 +291,18 @@ export function TicketsTab({ auth, canManage, canCreate = false, adminView = fal
                     <option value="CLOSED">Cerrado</option>
                   </select>
                 ) : (
-                  <p className="text-gray-700 bg-gray-50 p-3 rounded">{selectedTicket.status}</p>
+                  <p className={readonlyClass}>{selectedTicket.status}</p>
                 )}
               </div>
 
               {canManage && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Nota interna
-                  </label>
+                  <label className={labelClass}>Nota interna</label>
                   <textarea
                     value={internalNote}
                     onChange={(e) => setInternalNote(e.target.value)}
                     placeholder="Agregar nota interna (visible solo para el equipo)"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    className={inputClass}
                     rows={3}
                   />
                 </div>
@@ -336,20 +310,16 @@ export function TicketsTab({ auth, canManage, canCreate = false, adminView = fal
             </div>
 
             <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setSelectedTicket(null)}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
+              <Button variant="secondary" onClick={() => setSelectedTicket(null)}>
                 {canManage ? 'Cancelar' : 'Cerrar'}
-              </button>
+              </Button>
               {canManage && (
-                <button
+                <Button
                   onClick={() => handleUpdateStatus(selectedTicket.id, selectedTicket.status)}
                   disabled={updatingStatus}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
                 >
                   {updatingStatus ? 'Guardando...' : 'Guardar'}
-                </button>
+                </Button>
               )}
             </div>
           </div>
