@@ -1,3 +1,4 @@
+import { File } from "expo-file-system";
 import { API_URL } from "./config";
 
 export class ApiError extends Error {
@@ -375,13 +376,8 @@ export function createWeightEvent(
 
 /** Sube una foto local (uri del celular) a Azure Blob Storage y devuelve su URL pública. */
 export async function uploadPhoto(token: string, localUri: string): Promise<{ url: string }> {
-  const filename = localUri.split("/").pop() || "photo.jpg";
-  const ext = filename.split(".").pop()?.toLowerCase();
-  const type = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
-
   const form = new FormData();
-  // React Native FormData: objeto con uri/name/type en vez de un Blob real.
-  form.append("file", { uri: localUri, name: filename, type } as unknown as Blob);
+  form.append("file", new File(localUri));
 
   const res = await fetch(`${API_URL}/uploads/photo`, {
     method: "POST",
