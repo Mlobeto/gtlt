@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from '../lib/api'
+import { api, type PartInstanceItem } from '../lib/api'
 import type { AuthToken } from '../types/auth'
 import { TamboPicker, useTamboId } from './TamboPicker'
 import { Badge, Button, Card, EmptyState, ErrorBanner, StatCard } from './ui'
@@ -65,6 +65,7 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
   const [intervals, setIntervals] = useState<PumpInterval[]>([])
   const [pendingServices, setPendingServices] = useState<PendingService[]>([])
   const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([])
+  const [dueParts, setDueParts] = useState<PartInstanceItem[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -75,6 +76,7 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
       setIntervals([])
       setPendingServices([])
       setPendingPhotos([])
+      setDueParts([])
       setLoading(false)
       return
     }
@@ -86,11 +88,12 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
         setError('')
         const from = startOfLocalDay(new Date()).toISOString()
         const to = endOfLocalDay(new Date()).toISOString()
-        const [statusRes, historyRes, servicesRes, photosRes] = await Promise.all([
+        const [statusRes, historyRes, servicesRes, photosRes, partsRes] = await Promise.all([
           api.getPumpStatus(auth.token, tamboId),
           api.getPumpStatusHistory(auth.token, tamboId, from, to),
           api.getServiceRequests(auth.token, tamboId, 'PENDING_APPROVAL'),
           api.getPendingPhotos(auth.token, tamboId),
+          api.getPartInstances(auth.token, tamboId),
         ])
         if (cancelled) return
         setPumpStatus(statusRes.status)
@@ -98,6 +101,11 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
         setIntervals(historyRes.intervals || [])
         setPendingServices(servicesRes.items || [])
         setPendingPhotos(photosRes.items || [])
+        setDueParts(
+          (partsRes.items || []).filter(
+            (p) => p.life?.kind === 'USAGE_BASED' && (p.life.status === 'SOON' || p.life.status === 'OVERDUE'),
+          ),
+        )
       } catch (err) {
         if (cancelled) return
         setError(err instanceof Error ? err.message : 'Error al cargar el estado de hoy')
@@ -106,6 +114,7 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
         setIntervals([])
         setPendingServices([])
         setPendingPhotos([])
+        setDueParts([])
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -192,6 +201,36 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
           tone={!isLoading && pendingPhotos.length > 0 ? 'warn' : undefined}
         />
       </div>
+
+      <Card title="Piezas por cambiar">
+        {isLoading ? (
+          <EmptyState>Cargando...</EmptyState>
+        ) : dueParts.length === 0 ? (
+          <EmptyState>Ninguna pieza próxima o vencida</EmptyState>
+        ) : (
+          <ul className="space-y-3">
+            {dueParts.map((p) => (
+              <li key={p.id} className="border border-line rounded-lg p-4 space-y-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-semibold text-ink">
+                    {p.partType.name}
+                    {p.bajadaNumber != null ? ` · bajada ${p.bajadaNumber}` : ''}
+                  </p>
+                  <Badge tone={p.life?.status === 'OVERDUE' ? 'danger' : 'warn'}>
+                    {p.life?.status === 'OVERDUE' ? 'Para cambiar' : 'Cambiar pronto'}
+                  </Badge>
+                </div>
+                <p className="text-sm text-ink-muted">
+                  Avance: {Math.round(Math.min(p.life?.percent ?? 0, 1) * 100)}%
+                  {p.life?.estimatedReplacementDate
+                    ? ` · estimado ${new Date(p.life.estimatedReplacementDate).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}`
+                    : ''}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <Card title="Service pendiente de tu OK">
         {isLoading ? (

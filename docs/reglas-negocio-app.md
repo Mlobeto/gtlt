@@ -30,7 +30,17 @@ Validaciones que **no** se expresan como constraint de PostgreSQL (dependen de o
 4. **Quién carga / reemplaza (decisión de producto)**
    - Alta y reemplazo de piezas de ordeñe y frío: **mobile**, en el tambo.
    - Pueden hacerlo **`TAMBERO` o `DUENIO`** (también `ADMIN` si aplica).
-   - Alertas de vida útil / pedidos / resumen remoto: web dueño (Fase 2); no bloquean la carga en mobile.
+   - La fecha de instalación es **obligatoria** y **corregible** (`PATCH /part-instances/:id`). No puede ser anterior a 2000-01-01 ni más de un día en el futuro.
+   - `installedAtApprox = true` cuando se eligió un chip relativo (“hace 3 meses”); `false` si es “Hoy” o una fecha escrita `AAAA-MM-DD`.
+
+5. **Vida útil**
+   - `REACTIVE`: se cambia cuando falla; **sin vencimiento**.
+   - `USAGE_BASED`: tiene vida útil planificada por **ordeñes** y/o **meses** (el nombre del enum quedó por historia). Vale la regla que se cumpla primero (el mayor porcentaje).
+   - `BRANDED`: ficha propia (equipo de frío). No se crea ni se asigna desde el catálogo de la desarrolladora.
+   - Estimación de ordeñes: `2 turnos/día × vacas ACTIVE del tambo / bajadaCount` (reparto parejo; las secas no se ordeñan). Días enteros desde `installedAt`. Si `usageCounter` trae valor, **tiene prioridad** y se marca como “contado”.
+   - Por tiempo: días / (`lifeMonths` × 30,44). Estado: `OK` &lt; 80 %, `SOON` 80–100 %, `OVERDUE` ≥ 100 %.
+   - El catálogo lo administra la desarrolladora (`/admin/part-types`). **No se borran tipos**: solo se desactivan. Las piezas ya cargadas se conservan.
+   - Los umbrales efectivos son los de `TenantPartTypeConfig` si existen; si no, los del `PartType`. Las demás piezas no tienen vencimiento.
 
 ## Correcciones append-only
 

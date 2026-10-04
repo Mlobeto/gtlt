@@ -644,15 +644,43 @@ export type ServiceRequestItem = {
   assignedTechnician?: { id: string; name: string; email: string | null } | null;
 };
 
+export type PartLifeStatus = "OK" | "SOON" | "OVERDUE";
+
+export type PartLife = {
+  kind: "NONE" | "USAGE_BASED";
+  status?: PartLifeStatus;
+  percent?: number;
+  usageSource?: "COUNTED" | "ESTIMATED";
+  byUsage?: {
+    percent: number;
+    milkings: number;
+    threshold: number;
+    usageSource: "COUNTED" | "ESTIMATED";
+    estimatedReplacementDate: string | null;
+  };
+  byTime?: {
+    percent: number;
+    days: number;
+    lifeDays: number;
+    lifeMonths: number;
+    estimatedReplacementDate: string | null;
+  };
+  estimatedReplacementDate?: string | null;
+};
+
 export type PartInstanceItem = {
   id: string;
   tamboId: string;
   bajadaNumber: number | null;
   brandModel: string | null;
   installedAt: string;
+  installedAtApprox?: boolean;
   photoUrl: string | null;
   notes: string | null;
   partType: { id: string; code: string; name: string; pattern: string };
+  life?: PartLife;
+  effectiveUsageThreshold?: number | null;
+  effectiveLifeMonths?: number | null;
   coldDetail: {
     brand: string;
     model: string;
@@ -832,6 +860,7 @@ type PartInstancePayload = {
   partTypeId: string;
   bajadaNumber?: number | null;
   installedAt: string;
+  installedAtApprox?: boolean;
   brandModel?: string | null;
   photoUrl?: string | null;
   notes?: string | null;
@@ -841,6 +870,23 @@ type PartInstancePayload = {
 export function createPartInstance(token: string, payload: PartInstancePayload) {
   return request<{ item: PartInstanceItem }>("/part-instances", {
     method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export function patchPartInstance(
+  token: string,
+  partInstanceId: string,
+  payload: {
+    installedAt?: string;
+    installedAtApprox?: boolean;
+    brandModel?: string | null;
+    notes?: string | null;
+  },
+) {
+  return request<{ item: PartInstanceItem }>(`/part-instances/${partInstanceId}`, {
+    method: "PATCH",
     token,
     body: JSON.stringify(payload),
   });

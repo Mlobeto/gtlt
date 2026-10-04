@@ -120,6 +120,52 @@ export type InstallingTambo = {
 
 export type DeviceKind = 'VACUUM_PUMP_SENSOR' | 'FLOW_METER' | 'RFID_READER'
 
+export type PartLifeStatus = 'OK' | 'SOON' | 'OVERDUE'
+
+export type PartLife = {
+  kind: 'NONE' | 'USAGE_BASED'
+  status?: PartLifeStatus
+  percent?: number
+  byUsage?: { percent: number; milkings: number; threshold: number; usageSource: 'COUNTED' | 'ESTIMATED' }
+  byTime?: { percent: number; days: number; lifeDays: number; lifeMonths: number }
+  estimatedReplacementDate?: string | null
+}
+
+export type PartInstanceItem = {
+  id: string
+  bajadaNumber: number | null
+  installedAt: string
+  installedAtApprox?: boolean
+  partType: { id: string; name: string; pattern: string }
+  life?: PartLife
+}
+
+export type PartTypeConfigItem = {
+  partTypeId: string
+  code: string
+  name: string
+  defaultUsageThreshold: number | null
+  defaultLifeMonths: number | null
+  tenantUsageThreshold: number | null
+  tenantLifeMonths: number | null
+  effectiveUsageThreshold: number | null
+  effectiveLifeMonths: number | null
+}
+
+export type AdminPartType = {
+  id: string
+  code: string
+  name: string
+  description: string | null
+  pattern: 'REACTIVE' | 'USAGE_BASED' | 'BRANDED'
+  appliesPerBajada: boolean
+  defaultUsageThreshold: number | null
+  defaultLifeMonths: number | null
+  sortOrder: number
+  active: boolean
+  installedCount: number
+}
+
 export type DeviceItem = {
   id: string
   tamboId: string
@@ -909,6 +955,106 @@ export const api = {
     })
     if (!res.ok) throw await toApiError(res, 'No se pudo retirar el dispositivo')
     return res.json() as Promise<{ item: DeviceItem }>
+  },
+
+  async getPartInstances(token: string, tamboId: string) {
+    const res = await fetch(`${API_URL}/part-instances?tamboId=${encodeURIComponent(tamboId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudieron cargar las piezas')
+    return res.json() as Promise<{ items: PartInstanceItem[] }>
+  },
+
+  async getPartTypeConfig(token: string) {
+    const res = await fetch(`${API_URL}/part-type-config`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo cargar la vida útil')
+    return res.json() as Promise<{ items: PartTypeConfigItem[] }>
+  },
+
+  async putPartTypeConfig(
+    token: string,
+    partTypeId: string,
+    data: { usageThreshold?: number | null; lifeMonths?: number | null },
+  ) {
+    const res = await fetch(`${API_URL}/part-type-config/${partTypeId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo guardar el umbral')
+    return res.json()
+  },
+
+  async deletePartTypeConfig(token: string, partTypeId: string) {
+    const res = await fetch(`${API_URL}/part-type-config/${partTypeId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo volver al valor por defecto')
+    return res.json()
+  },
+
+  async getAdminPartTypes(token: string) {
+    const res = await fetch(`${API_URL}/admin/part-types`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo cargar el catálogo')
+    return res.json() as Promise<{ items: AdminPartType[] }>
+  },
+
+  async createAdminPartType(
+    token: string,
+    data: {
+      name: string
+      description?: string
+      appliesPerBajada: boolean
+      pattern: 'REACTIVE' | 'USAGE_BASED'
+      defaultUsageThreshold?: number | null
+      defaultLifeMonths?: number | null
+      sortOrder?: number
+    },
+  ) {
+    const res = await fetch(`${API_URL}/admin/part-types`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo crear la pieza')
+    return res.json()
+  },
+
+  async updateAdminPartType(
+    token: string,
+    id: string,
+    data: Partial<{
+      name: string
+      description: string | null
+      appliesPerBajada: boolean
+      pattern: 'REACTIVE' | 'USAGE_BASED'
+      defaultUsageThreshold: number | null
+      defaultLifeMonths: number | null
+      sortOrder: number
+      active: boolean
+    }>,
+  ) {
+    const res = await fetch(`${API_URL}/admin/part-types/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo actualizar la pieza')
+    return res.json()
   },
 
   async reviewPhoto(token: string, animalId: string, photoId: string) {

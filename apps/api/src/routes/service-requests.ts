@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { HttpError } from "../lib/http-error.js";
 import { notifyOwners, createNotification } from "../lib/notifications.js";
+import { withPartLife } from "../lib/part-life-attach.js";
 import { requireTamboInTenant } from "../lib/tambo-scope.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
@@ -266,7 +267,7 @@ serviceRequestsRouter.get(
             longitude: tambo.longitude == null ? null : Number(tambo.longitude),
           }
         : null,
-      partInstances: parts,
+      partInstances: await withPartLife(auth.tenantId, parts),
       serviceRequests: requests,
     });
   },

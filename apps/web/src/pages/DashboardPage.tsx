@@ -3,6 +3,7 @@ import { TicketsTab } from '../components/TicketsTab'
 import { PrototypeTab } from '../components/PrototypeTab'
 import { AccountsTab } from '../components/AccountsTab'
 import { TamboRequestsAdminTab } from '../components/TamboRequestsAdminTab'
+import { PartTypesAdminTab } from '../components/PartTypesAdminTab'
 import { PlansTab } from '../components/PlansTab'
 import { TodayTab } from '../components/TodayTab'
 import { AnimalsTab } from '../components/AnimalsTab'
@@ -18,7 +19,7 @@ interface DashboardPageProps {
   onLogout: () => void
 }
 
-type Tab = 'today' | 'tickets' | 'prototype' | 'accounts' | 'tambo-requests' | 'plans' | 'animals' | 'team' | 'settings'
+type Tab = 'today' | 'tickets' | 'prototype' | 'accounts' | 'tambo-requests' | 'part-types' | 'plans' | 'animals' | 'team' | 'settings'
 
 export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
   const isOwner = auth.roles.includes('DUENIO')
@@ -35,6 +36,7 @@ export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
         { id: 'prototype', label: 'Configuración del Prototipo' },
         { id: 'accounts', label: 'Cuentas' },
         { id: 'tambo-requests', label: 'Pedidos de tambo' },
+        { id: 'part-types', label: 'Catálogo de piezas' },
         { id: 'plans', label: 'Planes' },
       ]
 
@@ -98,6 +100,7 @@ export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
           {activeTab === 'prototype' && isDeveloper && <PrototypeTab auth={auth} />}
           {activeTab === 'accounts' && isDeveloper && <AccountsTab auth={auth} />}
           {activeTab === 'tambo-requests' && isDeveloper && <TamboRequestsAdminTab auth={auth} />}
+          {activeTab === 'part-types' && isDeveloper && <PartTypesAdminTab auth={auth} />}
           {activeTab === 'plans' && isDeveloper && <PlansTab auth={auth} />}
           {activeTab === 'animals' && isOwner && <AnimalsTab auth={auth} />}
           {activeTab === 'team' && isOwner && <TeamTab auth={auth} />}

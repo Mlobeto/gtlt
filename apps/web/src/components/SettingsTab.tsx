@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import type { AuthToken } from '../types/auth'
+import { PartLifeSettings } from './PartLifeSettings'
 import { TambosSection } from './TambosSection'
 import { Card, ErrorBanner, inputClass } from './ui'
 
@@ -64,6 +65,7 @@ export function SettingsTab({ auth }: SettingsTabProps) {
   return (
     <div className="space-y-6 max-w-2xl">
     <TambosSection token={auth.token} />
+    <PartLifeSettings token={auth.token} />
     <Card title="Configuración del tambo">
       <div className="space-y-4">
         <p className="text-sm text-ink-muted">

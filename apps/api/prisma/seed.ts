@@ -35,59 +35,106 @@ type PartTypeSeed = {
   name: string;
   pattern: PartReplacementPattern;
   defaultUsageThreshold: number | null;
+  defaultLifeMonths: number | null;
   appliesPerBajada: boolean;
+  active: boolean;
+  sortOrder: number;
   description: string;
 };
 
 /**
- * Catálogo global Fase 1 — alineado a docs/arquitectura.md y al prompt de PartType.
- * Idempotente: upsert por `code`.
+ * Catálogo global — alineado a docs/reglas-negocio-app.md.
+ * Idempotente: upsert por `code`. No correr el seed en producción.
  */
 const PART_TYPES: PartTypeSeed[] = [
-  // Grupo de ordeñe por bajada — USAGE_BASED
+  {
+    code: "PULSE_SHORT_TUBE",
+    name: "Tubos cortos de pulsado",
+    pattern: "USAGE_BASED",
+    defaultUsageThreshold: 2500,
+    defaultLifeMonths: null,
+    appliesPerBajada: true,
+    active: true,
+    sortOrder: 10,
+    description: "Incluye las pezoneras. Se cambian juntas.",
+  },
+  {
+    code: "MILK_TUBE",
+    name: "Tubos de leche",
+    pattern: "USAGE_BASED",
+    defaultUsageThreshold: null,
+    defaultLifeMonths: 6,
+    appliesPerBajada: true,
+    active: true,
+    sortOrder: 20,
+    description: "Tubos de leche por bajada. Vida útil por tiempo (6 meses).",
+  },
+  {
+    code: "PULSE_TUBE_SINGLE",
+    name: "Tubo de pulsado simple",
+    pattern: "USAGE_BASED",
+    defaultUsageThreshold: null,
+    defaultLifeMonths: 6,
+    appliesPerBajada: true,
+    active: true,
+    sortOrder: 30,
+    description: "Tubo de pulsado simple por bajada. Vida útil por tiempo (6 meses).",
+  },
+  {
+    code: "PULSE_TUBE_DOUBLE",
+    name: "Tubo de pulsado doble",
+    pattern: "USAGE_BASED",
+    defaultUsageThreshold: null,
+    defaultLifeMonths: 6,
+    appliesPerBajada: true,
+    active: true,
+    sortOrder: 40,
+    description: "Tubo de pulsado doble por bajada. Vida útil por tiempo (6 meses).",
+  },
   {
     code: "LINER",
     name: "Pezoneras",
     pattern: "USAGE_BASED",
     defaultUsageThreshold: 2000,
+    defaultLifeMonths: null,
     appliesPerBajada: true,
+    active: false,
+    sortOrder: 90,
     description:
-      "Pezoneras del conjunto de ordeñe. Uso acumulado; umbral default 2000 ordeñes (editable por tenant).",
+      "Incluidas en tubos cortos de pulsado. Queda en catálogo para piezas ya cargadas; no se ofrece en cargas nuevas.",
   },
-  {
-    code: "PULSE_SHORT_TUBE",
-    name: "Tubos cortos de pulsado",
-    pattern: "USAGE_BASED",
-    defaultUsageThreshold: 2000,
-    appliesPerBajada: true,
-    description:
-      "Tubos cortos de pulsado del conjunto de ordeñe. Uso acumulado; umbral default 2000 ordeñes.",
-  },
-  // Grupo de ordeñe por bajada — REACTIVE
   {
     code: "CLAW",
     name: "Centralizador",
     pattern: "REACTIVE",
     defaultUsageThreshold: null,
+    defaultLifeMonths: null,
     appliesPerBajada: true,
+    active: true,
+    sortOrder: 50,
     description:
-      "Centralizador (y su base, frecuentemente acrílica). Revisión en cada service; sin alerta automática por uso.",
+      "Centralizador (y su base, frecuentemente acrílica). Se cambia cuando falla; sin vida útil.",
   },
   {
     code: "SHELL",
     name: "Copas",
     pattern: "REACTIVE",
     defaultUsageThreshold: null,
+    defaultLifeMonths: null,
     appliesPerBajada: true,
-    description: "Copas del conjunto de ordeñe. Revisión en cada service.",
+    active: true,
+    sortOrder: 60,
+    description: "Copas del conjunto de ordeñe. Se cambian cuando fallan.",
   },
-  // Nivel tambo — REACTIVE
   {
     code: "VACUUM_REGULATOR",
     name: "Regulador de vacío",
     pattern: "REACTIVE",
     defaultUsageThreshold: null,
+    defaultLifeMonths: null,
     appliesPerBajada: false,
+    active: true,
+    sortOrder: 100,
     description: "Regulador de vacío a nivel tambo. Revisión en service.",
   },
   {
@@ -95,7 +142,10 @@ const PART_TYPES: PartTypeSeed[] = [
     name: "Trampa de vacío",
     pattern: "REACTIVE",
     defaultUsageThreshold: null,
+    defaultLifeMonths: null,
     appliesPerBajada: false,
+    active: true,
+    sortOrder: 110,
     description: "Trampa de vacío a nivel tambo. Revisión en service.",
   },
   {
@@ -103,7 +153,10 @@ const PART_TYPES: PartTypeSeed[] = [
     name: "Recibidor de leche",
     pattern: "REACTIVE",
     defaultUsageThreshold: null,
+    defaultLifeMonths: null,
     appliesPerBajada: false,
+    active: true,
+    sortOrder: 120,
     description: "Recibidor de leche a nivel tambo. Revisión en service.",
   },
   {
@@ -111,7 +164,10 @@ const PART_TYPES: PartTypeSeed[] = [
     name: "Caños de vacío",
     pattern: "REACTIVE",
     defaultUsageThreshold: null,
+    defaultLifeMonths: null,
     appliesPerBajada: false,
+    active: true,
+    sortOrder: 130,
     description: "Cañería de vacío a nivel tambo. Revisión en service.",
   },
   {
@@ -119,7 +175,10 @@ const PART_TYPES: PartTypeSeed[] = [
     name: "Caños de leche",
     pattern: "REACTIVE",
     defaultUsageThreshold: null,
+    defaultLifeMonths: null,
     appliesPerBajada: false,
+    active: true,
+    sortOrder: 140,
     description: "Cañería de leche a nivel tambo. Revisión en service.",
   },
   {
@@ -127,19 +186,24 @@ const PART_TYPES: PartTypeSeed[] = [
     name: "Sistema de descarga",
     pattern: "REACTIVE",
     defaultUsageThreshold: null,
+    defaultLifeMonths: null,
     appliesPerBajada: false,
+    active: true,
+    sortOrder: 150,
     description:
       "Sistema de descarga (eléctrico o neumático) a nivel tambo. Revisión en service.",
   },
-  // Equipo de frío — BRANDED
   {
     code: "COLD_TANK",
     name: "Equipo de frío",
     pattern: "BRANDED",
     defaultUsageThreshold: null,
+    defaultLifeMonths: null,
     appliesPerBajada: false,
+    active: true,
+    sortOrder: 200,
     description:
-      "Tanque / equipo de frío. Campos propios en ColdEquipmentDetail (marca, modelo, capacidad, controlador EKC).",
+      "Tanque / equipo de frío. Campos propios en ColdEquipmentDetail (marca, modelo, capacidad, controlador EKC). No se crea desde el catálogo.",
   },
 ];
 
@@ -152,7 +216,10 @@ async function seedPartTypes() {
         name: part.name,
         pattern: part.pattern,
         defaultUsageThreshold: part.defaultUsageThreshold,
+        defaultLifeMonths: part.defaultLifeMonths,
         appliesPerBajada: part.appliesPerBajada,
+        active: part.active,
+        sortOrder: part.sortOrder,
         description: part.description,
       },
     });

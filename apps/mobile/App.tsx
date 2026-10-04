@@ -26,6 +26,7 @@ import {
   acceptInviteRegister,
   approveServiceRequest,
   createPartInstance,
+  patchPartInstance,
   createServiceRequest,
   createSire,
   fetchAnimalTimeline,
@@ -256,6 +257,53 @@ function apiFailureStatus(err: unknown, labeled: string, _fallback: string) {
   return `No se pudo conectar con el servidor (${name}: ${message})`;
 }
 
+const INSTALL_CHIPS = [
+  { key: "today", label: "Hoy", days: 0, approx: false },
+  { key: "1w", label: "Hace 1 semana", days: 7, approx: true },
+  { key: "1m", label: "Hace 1 mes", days: 30, approx: true },
+  { key: "2m", label: "Hace 2 meses", days: 61, approx: true },
+  { key: "3m", label: "Hace 3 meses", days: 91, approx: true },
+  { key: "6m", label: "Hace 6 meses", days: 183, approx: true },
+  { key: "1y", label: "Hace 1 año", days: 365, approx: true },
+  { key: "other", label: "Otra fecha", days: null as number | null, approx: false },
+] as const;
+
+function parseYmd(value: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const date = new Date(y, mo - 1, d, 12, 0, 0, 0);
+  if (date.getFullYear() !== y || date.getMonth() !== mo - 1 || date.getDate() !== d) return null;
+  return date;
+}
+
+function resolveInstallDate(chip: string | null, other: string): { date: Date; approx: boolean } | null {
+  if (!chip) return null;
+  if (chip === "other") {
+    const date = parseYmd(other);
+    return date ? { date, approx: false } : null;
+  }
+  const preset = INSTALL_CHIPS.find((c) => c.key === chip);
+  if (!preset || preset.days == null) return null;
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() - preset.days);
+  return { date, approx: preset.approx };
+}
+
+function formatPartDate(iso: string, approx?: boolean) {
+  const label = new Date(iso).toLocaleDateString("es-AR");
+  return approx ? `Instalada aprox.: ${label}` : `Instalada: ${label}`;
+}
+
+function lifeChipLabel(status: string) {
+  if (status === "OVERDUE") return "Para cambiar";
+  if (status === "SOON") return "Cambiar pronto";
+  return "OK";
+}
+
 /** Label en español para items del timeline del servidor (kinds: weight, photo, transfer, control). */
 function timelineItemLabel(kind: string, type: string, summary: string): string {
   if (kind === "health" || kind === "repro") return tipoLegible(type);
@@ -373,18 +421,28 @@ function AppContent() {
   const [supervisionOffline, setSupervisionOffline] = useState(false);
   const [partTypes, setPartTypes] = useState<PartTypeItem[]>([]);
   const [parts, setParts] = useState<PartInstanceItem[]>([]);
-  const [partFormMode, setPartFormMode] = useState<"create" | "replace">("create");
+  const [partFormMode, setPartFormMode] = useState<"create" | "replace" | "correct">("create");
   const [replacingPartId, setReplacingPartId] = useState<string | null>(null);
   const [partTypeId, setPartTypeId] = useState<string | null>(null);
   const [partBajada, setPartBajada] = useState("1");
   const [partBrandModel, setPartBrandModel] = useState("");
   const [partNotes, setPartNotes] = useState("");
   const [partPhotoUri, setPartPhotoUri] = useState<string | null>(null);
+  const [partInstallChip, setPartInstallChip] = useState<string | null>(null);
+  const [partInstallOther, setPartInstallOther] = useState("");
 
   const actionLists = useMemo(
     () => buildActionLists({ animals, repros, withdrawals, now: new Date() }),
     [animals, repros, withdrawals],
   );
+  const dueParts = useMemo(
+    () =>
+      parts.filter(
+        (p) => p.life?.kind === "USAGE_BASED" && (p.life.status === "SOON" || p.life.status === "OVERDUE"),
+      ),
+    [parts],
+  );
+  const installPreview = resolveInstallDate(partInstallChip, partInstallOther);
   const scrollRef = useRef<ScrollView>(null);
   const detailFromTodayRef = useRef(false);
   const pendingTodaySectionRef = useRef<TodaySectionKey | null>(null);
@@ -1478,6 +1536,8 @@ function AppContent() {
     setPartBrandModel("");
     setPartNotes("");
     setPartPhotoUri(null);
+    setPartInstallChip(null);
+    setPartInstallOther("");
     setScreen("partForm");
   }
 
@@ -1489,6 +1549,21 @@ function AppContent() {
     setPartBrandModel(part.brandModel ?? "");
     setPartNotes("");
     setPartPhotoUri(null);
+    setPartInstallChip("today");
+    setPartInstallOther("");
+    setScreen("partForm");
+  }
+
+  function openPartCorrectForm(part: PartInstanceItem) {
+    setPartFormMode("correct");
+    setReplacingPartId(part.id);
+    setPartTypeId(part.partType.id);
+    setPartBajada(part.bajadaNumber != null ? String(part.bajadaNumber) : "1");
+    setPartBrandModel(part.brandModel ?? "");
+    setPartNotes(part.notes ?? "");
+    setPartPhotoUri(null);
+    setPartInstallChip(null);
+    setPartInstallOther("");
     setScreen("partForm");
   }
 
@@ -1518,6 +1593,37 @@ function AppContent() {
       setStatus("Para cargar equipo hace falta señal.");
       return;
     }
+    const installed = resolveInstallDate(partInstallChip, partInstallOther);
+    if (!installed) {
+      setStatus("Elegí cuándo se instaló.");
+      return;
+    }
+
+    if (partFormMode === "correct") {
+      if (!replacingPartId) return;
+      setBusy(true);
+      try {
+        await patchPartInstance(session.token, replacingPartId, {
+          installedAt: installed.date.toISOString(),
+          installedAtApprox: installed.approx,
+        });
+        setStatus("Fecha corregida.");
+        await loadParts();
+        setScreen("parts");
+      } catch (err) {
+        setStatus(
+          apiFailureStatus(
+            err,
+            "No se pudo guardar la pieza",
+            "No se pudo guardar la pieza. Revisá la señal.",
+          ),
+        );
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     const partType = selectedPartType();
     if (!partType) {
       setStatus("Elegí qué pieza es.");
@@ -1551,7 +1657,8 @@ function AppContent() {
       const payload = {
         partTypeId: partType.id,
         bajadaNumber,
-        installedAt: new Date().toISOString(),
+        installedAt: installed.date.toISOString(),
+        installedAtApprox: installed.approx,
         brandModel: partBrandModel.trim() || null,
         photoUrl,
         notes: partNotes.trim() || null,
@@ -1986,16 +2093,67 @@ function AppContent() {
                     </Text>
                     <Text style={styles.todayRowArrow}>›</Text>
                   </Pressable>
+                  {online && dueParts.length > 0 ? (
+                    <Pressable
+                      style={styles.todayRow}
+                      onPress={() => {
+                        setStatus("");
+                        openPartsScreen();
+                      }}
+                    >
+                      <View style={styles.todayItemText}>
+                        <Text style={styles.todayRowLabel}>
+                          Piezas por cambiar · {dueParts.length}
+                        </Text>
+                        {dueParts.slice(0, 3).map((p) => (
+                          <Text key={p.id} style={styles.meta}>
+                            {p.partType.name}
+                            {p.bajadaNumber != null ? ` · bajada ${p.bajadaNumber}` : ""}
+                            {p.life?.percent != null
+                              ? ` · ${Math.round(Math.min(p.life.percent, 1) * 100)}%`
+                              : ""}
+                          </Text>
+                        ))}
+                      </View>
+                      <Text style={styles.todayRowArrow}>›</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               ) : null}
 
               {screen === "home" && !ownerOnly(session.roles ?? []) ? (
                 <View style={styles.card}>
                   <Text style={styles.cardTitle}>Hoy</Text>
-                  {TODAY_SECTIONS.every((s) => actionLists[s.key].length === 0) ? (
+                  {TODAY_SECTIONS.every((s) => actionLists[s.key].length === 0) && dueParts.length === 0 ? (
                     <Text style={styles.help}>Hoy no hay nada pendiente.</Text>
                   ) : (
-                    TODAY_SECTIONS.filter((s) => actionLists[s.key].length > 0).map((s) => (
+                    <>
+                    {online && dueParts.length > 0 ? (
+                      <Pressable
+                        style={styles.todayRow}
+                        onPress={() => {
+                          setStatus("");
+                          openPartsScreen();
+                        }}
+                      >
+                        <View style={styles.todayItemText}>
+                          <Text style={styles.todayRowLabel}>
+                            Piezas por cambiar · {dueParts.length}
+                          </Text>
+                          {dueParts.slice(0, 3).map((p) => (
+                            <Text key={p.id} style={styles.meta}>
+                              {p.partType.name}
+                              {p.bajadaNumber != null ? ` · bajada ${p.bajadaNumber}` : ""}
+                              {p.life?.percent != null
+                                ? ` · ${Math.round(Math.min(p.life.percent, 1) * 100)}%`
+                                : ""}
+                            </Text>
+                          ))}
+                        </View>
+                        <Text style={styles.todayRowArrow}>›</Text>
+                      </Pressable>
+                    ) : null}
+                    {TODAY_SECTIONS.filter((s) => actionLists[s.key].length > 0).map((s) => (
                       <Pressable
                         key={s.key}
                         style={styles.todayRow}
@@ -2006,7 +2164,8 @@ function AppContent() {
                         </Text>
                         <Text style={styles.todayRowArrow}>›</Text>
                       </Pressable>
-                    ))
+                    ))}
+                    </>
                   )}
                 </View>
               ) : null}
@@ -3038,11 +3197,72 @@ function AppContent() {
                           <Text style={styles.itemMeta}>{p.brandModel}</Text>
                         ) : null}
                         <Text style={styles.itemMeta}>
-                          Instalada: {new Date(p.installedAt).toLocaleDateString("es-AR")}
+                          {formatPartDate(p.installedAt, p.installedAtApprox)}
                         </Text>
+                        {p.life?.kind === "USAGE_BASED" ? (
+                          <>
+                            <View style={styles.progressTrack}>
+                              <View
+                                style={[
+                                  styles.progressFill,
+                                  {
+                                    width: `${Math.min(100, Math.round((p.life.percent ?? 0) * 100))}%`,
+                                    backgroundColor:
+                                      p.life.status === "OVERDUE"
+                                        ? colors.danger
+                                        : p.life.status === "SOON"
+                                          ? colors.accent
+                                          : colors.primary,
+                                  },
+                                ]}
+                              />
+                            </View>
+                            {p.life.byUsage ? (
+                              <Text style={styles.itemMeta}>
+                                ≈ {Math.round(p.life.byUsage.milkings).toLocaleString("es-AR")} de{" "}
+                                {p.life.byUsage.threshold.toLocaleString("es-AR")} ordeñes (
+                                {p.life.byUsage.usageSource === "COUNTED" ? "contado" : "estimado"})
+                              </Text>
+                            ) : null}
+                            {p.life.byTime ? (
+                              <Text style={styles.itemMeta}>
+                                {Math.max(0, Math.round(p.life.byTime.days / 30.44))} de{" "}
+                                {p.life.byTime.lifeMonths} meses
+                              </Text>
+                            ) : null}
+                            <Text
+                              style={[
+                                styles.lifeChip,
+                                p.life.status === "OVERDUE"
+                                  ? styles.lifeChipOverdue
+                                  : p.life.status === "SOON"
+                                    ? styles.lifeChipSoon
+                                    : styles.lifeChipOk,
+                              ]}
+                            >
+                              {lifeChipLabel(p.life.status ?? "OK")}
+                            </Text>
+                            {p.life.estimatedReplacementDate ? (
+                              <Text style={styles.itemMeta}>
+                                Cambio estimado:{" "}
+                                {new Date(p.life.estimatedReplacementDate).toLocaleDateString("es-AR", {
+                                  month: "long",
+                                  year: "numeric",
+                                })}
+                              </Text>
+                            ) : null}
+                          </>
+                        ) : null}
                         {p.photoUrl ? (
                           <Image source={{ uri: p.photoUrl }} style={styles.animalPhoto} />
                         ) : null}
+                        <Pressable
+                          style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                          onPress={() => openPartCorrectForm(p)}
+                          disabled={busy}
+                        >
+                          <Text style={styles.buttonSecondaryText}>Corregir fecha</Text>
+                        </Pressable>
                         <Pressable
                           style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
                           onPress={() => openPartReplaceForm(p)}
@@ -3059,8 +3279,14 @@ function AppContent() {
               {screen === "partForm" ? (
                 <View style={styles.card}>
                   <Text style={styles.cardTitle}>
-                    {partFormMode === "create" ? "Nueva pieza" : "Reemplazar pieza"}
+                    {partFormMode === "create"
+                      ? "Nueva pieza"
+                      : partFormMode === "correct"
+                        ? "Corregir fecha"
+                        : "Reemplazar pieza"}
                   </Text>
+                  {partFormMode !== "correct" ? (
+                    <>
                   <Text style={styles.label}>Qué pieza es</Text>
                   <View style={styles.wrapRow}>
                     {partTypes.map((t) => (
@@ -3120,6 +3346,43 @@ function AppContent() {
                   >
                     <Text style={styles.buttonSecondaryText}>Sacar foto</Text>
                   </Pressable>
+                    </>
+                  ) : null}
+                  <Text style={styles.label}>¿Cuándo se instaló?</Text>
+                  <View style={styles.wrapRow}>
+                    {INSTALL_CHIPS.map((c) => (
+                      <Pressable
+                        key={c.key}
+                        style={[styles.choiceSmall, partInstallChip === c.key && styles.choiceOn]}
+                        onPress={() => setPartInstallChip(c.key)}
+                      >
+                        <Text
+                          style={[
+                            styles.choiceText,
+                            partInstallChip === c.key && styles.choiceTextOn,
+                          ]}
+                        >
+                          {c.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  {partInstallChip === "other" ? (
+                    <TextInput
+                      style={styles.input}
+                      value={partInstallOther}
+                      onChangeText={setPartInstallOther}
+                      placeholder="AAAA-MM-DD"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                  ) : null}
+                  {installPreview ? (
+                    <Text style={styles.help}>
+                      {installPreview.approx
+                        ? `Instalada aprox. el ${installPreview.date.toLocaleDateString("es-AR")}`
+                        : `Instalada el ${installPreview.date.toLocaleDateString("es-AR")}`}
+                    </Text>
+                  ) : null}
                   {status ? (
                     <View style={styles.feedback}>
                       <Text style={styles.feedbackText}>{status}</Text>
@@ -3864,6 +4127,38 @@ const styles = StyleSheet.create({
   },
   itemTitle: { fontWeight: "700", color: colors.text, fontSize: 17 },
   itemMeta: { color: colors.textMuted, fontSize: 15 },
+  progressTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.border,
+    overflow: "hidden",
+    marginTop: space.xs,
+  },
+  progressFill: {
+    height: 8,
+    borderRadius: 4,
+  },
+  lifeChip: {
+    alignSelf: "flex-start",
+    overflow: "hidden",
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+    borderRadius: radius.sm,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  lifeChipOk: {
+    backgroundColor: colors.primarySoft,
+    color: colors.primaryPressed,
+  },
+  lifeChipSoon: {
+    backgroundColor: colors.accentSoft,
+    color: colors.accentText,
+  },
+  lifeChipOverdue: {
+    backgroundColor: colors.dangerSoft,
+    color: colors.danger,
+  },
   pendingBadge: {
     marginTop: space.sm,
     alignSelf: "flex-start",

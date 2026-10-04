@@ -12,6 +12,8 @@ import { milkDeliveriesRouter } from "./routes/milk-deliveries.js";
 import { controlLecherosRouter } from "./routes/control-lecheros.js";
 import { membershipsRouter } from "./routes/memberships.js";
 import { partInstancesRouter } from "./routes/part-instances.js";
+import { partTypeConfigRouter } from "./routes/part-type-config.js";
+import { adminPartTypesRouter } from "./routes/admin-part-types.js";
 import { serviceRequestsRouter } from "./routes/service-requests.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { supportTicketsRouter } from "./routes/support-tickets.js";
@@ -55,6 +57,7 @@ export function createApp() {
   app.use("/tambo-requests", tamboRequestsRouter);
   app.use("/memberships", membershipsRouter);
   app.use("/part-instances", partInstancesRouter);
+  app.use("/part-type-config", partTypeConfigRouter);
   app.use("/service-requests", serviceRequestsRouter);
   app.use("/notifications", notificationsRouter);
   app.use("/support-tickets", supportTicketsRouter);
@@ -78,6 +81,7 @@ export function createApp() {
   app.use("/admin", adminDevicesRouter);
   app.use("/admin", adminTamboRequestsRouter);
   app.use("/admin", adminTambosRouter);
+  app.use("/admin", adminPartTypesRouter);
   app.use("/uploads", uploadsRouter);
 
   app.use(

@@ -866,10 +866,13 @@ model PartType {
   code                  String                 @unique
   name                  String
   pattern               PartReplacementPattern
-  /// Default 2000 para USAGE_BASED; override por tenant en TenantPartTypeConfig.
+  /// Default para USAGE_BASED; override por tenant en TenantPartTypeConfig.
   defaultUsageThreshold Int?                   @map("default_usage_threshold")
-  /// true = pertenece al grupo de ordeñe por bajada (centralizador, copas, pezoneras, tubos).
+  defaultLifeMonths     Int?                   @map("default_life_months")
+  /// true = pertenece al grupo de ordeñe por bajada (centralizador, copas, tubos).
   appliesPerBajada      Boolean                @map("applies_per_bajada") @default(false)
+  active                Boolean                @default(true)
+  sortOrder             Int                    @default(0) @map("sort_order")
   description           String?
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
@@ -884,7 +887,8 @@ model TenantPartTypeConfig {
   id             String @id @default(uuid()) @db.Uuid
   tenantId       String @map("tenant_id") @db.Uuid
   partTypeId     String @map("part_type_id") @db.Uuid
-  usageThreshold Int    @map("usage_threshold")
+  usageThreshold Int?   @map("usage_threshold")
+  lifeMonths     Int?   @map("life_months")
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id])
   partType PartType @relation(fields: [partTypeId], references: [id])
@@ -920,6 +924,7 @@ model PartInstance {
   /// Validación app: ver comentario del model + docs/reglas-negocio-app.md
   bajadaNumber     Int?      @map("bajada_number")
   installedAt      DateTime  @map("installed_at")
+  installedAtApprox Boolean  @default(false) @map("installed_at_approx")
   /// Texto libre opcional; la mayoría de piezas genéricas no tienen marca identificable.
   brandModel       String?   @map("brand_model")
   /// URL storage externo (TBD). Puede ser el dato principal de identificación visual.

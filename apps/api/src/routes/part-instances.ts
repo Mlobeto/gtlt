@@ -3,6 +3,8 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { HttpError } from "../lib/http-error.js";
+import { parseInstalledAt } from "../lib/part-date.js";
+import { withPartLife } from "../lib/part-life-attach.js";
 import { requireTamboInTenant } from "../lib/tambo-scope.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
@@ -23,6 +25,7 @@ const createSchema = z.object({
   partTypeId: z.string().uuid(),
   bajadaNumber: z.number().int().positive().optional().nullable(),
   installedAt: z.string().min(1),
+  installedAtApprox: z.boolean().optional().default(false),
   brandModel: z.string().max(200).optional().nullable(),
   photoUrl: z.string().max(2000).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
@@ -38,11 +41,27 @@ const createSchema = z.object({
     .optional(),
 });
 
+const patchSchema = z.object({
+  installedAt: z.string().min(1).optional(),
+  installedAtApprox: z.boolean().optional(),
+  brandModel: z.string().max(200).optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+
 function mapPrismaError(err: unknown): never {
   if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
     throw new HttpError(409, "Conflict: duplicate part instance or clientMutationId");
   }
   throw err;
+}
+
+async function assertCreatablePartType(partTypeId: string) {
+  const partType = await prisma.partType.findUnique({ where: { id: partTypeId } });
+  if (!partType) throw new HttpError(404, "Part type not found");
+  if (!partType.active) {
+    throw new HttpError(400, "Este tipo de pieza ya no se ofrece para cargas nuevas.");
+  }
+  return partType;
 }
 
 /** Listado de equipo del tambo (vigentes por defecto). Acceso: farm + TECNICO. */
@@ -74,7 +93,7 @@ partInstancesRouter.get(
       orderBy: [{ bajadaNumber: "asc" }, { installedAt: "desc" }],
     });
 
-    res.json({ items });
+    res.json({ items: await withPartLife(auth.tenantId, items) });
   },
 );
 
@@ -92,11 +111,8 @@ partInstancesRouter.post(
     const auth = req.auth!;
     const data = parsed.data;
     const tambo = await requireTamboInTenant(auth, data.tamboId);
-
-    const partType = await prisma.partType.findUnique({
-      where: { id: data.partTypeId },
-    });
-    if (!partType) throw new HttpError(404, "Part type not found");
+    const partType = await assertCreatablePartType(data.partTypeId);
+    const installedAt = parseInstalledAt(data.installedAt);
 
     if (partType.appliesPerBajada) {
       if (data.bajadaNumber == null) {
@@ -117,7 +133,8 @@ partInstancesRouter.post(
           tamboId: data.tamboId,
           partTypeId: data.partTypeId,
           bajadaNumber: data.bajadaNumber ?? null,
-          installedAt: new Date(data.installedAt),
+          installedAt,
+          installedAtApprox: data.installedAtApprox ?? false,
           brandModel: data.brandModel ?? null,
           photoUrl: data.photoUrl ?? null,
           notes: data.notes ?? null,
@@ -139,7 +156,8 @@ partInstancesRouter.post(
         },
         include: { partType: true, coldDetail: true },
       });
-      res.status(201).json({ item });
+      const [enriched] = await withPartLife(auth.tenantId, [item]);
+      res.status(201).json({ item: enriched });
     } catch (err) {
       mapPrismaError(err);
     }
@@ -169,6 +187,8 @@ partInstancesRouter.post(
     });
     if (!previous) throw new HttpError(404, "Active part instance not found");
     await requireTamboInTenant(auth, previous.tamboId);
+    await assertCreatablePartType(body.data.partTypeId);
+    const installedAt = parseInstalledAt(body.data.installedAt);
 
     const data = body.data;
     try {
@@ -184,7 +204,8 @@ partInstancesRouter.post(
             tamboId: previous.tamboId,
             partTypeId: data.partTypeId,
             bajadaNumber: data.bajadaNumber ?? previous.bajadaNumber,
-            installedAt: new Date(data.installedAt),
+            installedAt,
+            installedAtApprox: data.installedAtApprox ?? false,
             brandModel: data.brandModel ?? null,
             photoUrl: data.photoUrl ?? null,
             notes: data.notes ?? null,
@@ -208,9 +229,51 @@ partInstancesRouter.post(
         });
         return { previous: voided, item: created };
       });
-      res.status(201).json(result);
+      const [item] = await withPartLife(auth.tenantId, [result.item]);
+      res.status(201).json({ previous: result.previous, item });
     } catch (err) {
       mapPrismaError(err);
     }
+  },
+);
+
+partInstancesRouter.patch(
+  "/:id",
+  authenticate,
+  requireRoles("TAMBERO", "DUENIO", "ADMIN"),
+  async (req, res) => {
+    const parsed = patchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid body", details: parsed.error.flatten() });
+      return;
+    }
+
+    const auth = req.auth!;
+    const existing = await prisma.partInstance.findFirst({
+      where: {
+        id: String(req.params.id),
+        tenantId: auth.tenantId,
+        replacedAt: null,
+      },
+    });
+    if (!existing) throw new HttpError(404, "Active part instance not found");
+    await requireTamboInTenant(auth, existing.tamboId);
+
+    const item = await prisma.partInstance.update({
+      where: { id: existing.id },
+      data: {
+        ...(parsed.data.installedAt != null
+          ? { installedAt: parseInstalledAt(parsed.data.installedAt) }
+          : {}),
+        ...(parsed.data.installedAtApprox != null
+          ? { installedAtApprox: parsed.data.installedAtApprox }
+          : {}),
+        ...(parsed.data.brandModel !== undefined ? { brandModel: parsed.data.brandModel } : {}),
+        ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes } : {}),
+      },
+      include: { partType: true, coldDetail: true },
+    });
+    const [enriched] = await withPartLife(auth.tenantId, [item]);
+    res.json({ item: enriched });
   },
 );
