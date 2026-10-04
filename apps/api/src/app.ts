@@ -22,6 +22,11 @@ import { pumpStatusDeviceRouter } from "./routes/pump-status-device.js";
 import { adminRouter } from "./routes/admin-tenants.js";
 import { adminSupportTicketsRouter } from "./routes/admin-support-tickets.js";
 import { adminServiceProvidersRouter } from "./routes/admin-service-providers.js";
+import { adminDevicesRouter } from "./routes/admin-devices.js";
+import { adminTamboRequestsRouter } from "./routes/admin-tambo-requests.js";
+import { adminTambosRouter } from "./routes/admin-tambos.js";
+import { tamboRequestsRouter } from "./routes/tambo-requests.js";
+import { devicesRouter } from "./routes/devices.js";
 import { weightEventsRouter } from "./routes/weight-events.js";
 import { animalPhotosRouter } from "./routes/animal-photos.js";
 import { siresRouter } from "./routes/sires.js";
@@ -47,6 +52,7 @@ export function createApp() {
   app.use("/my", myRouter);
   app.use("/part-types", partTypesRouter);
   app.use("/tambos", tambosRouter);
+  app.use("/tambo-requests", tamboRequestsRouter);
   app.use("/memberships", membershipsRouter);
   app.use("/part-instances", partInstancesRouter);
   app.use("/service-requests", serviceRequestsRouter);
@@ -62,17 +68,21 @@ export function createApp() {
   app.use("/control-lecheros", controlLecherosRouter);
   app.use("/weight-events", weightEventsRouter);
   app.use("/sires", siresRouter);
+  app.use("/devices", devicesRouter);
   app.use("/device", flowSessionsDeviceRouter);
   app.use("/device", pumpStatusDeviceRouter);
   app.use("/flow-sessions", flowSessionsRouter);
   app.use("/admin", adminRouter);
   app.use("/admin", adminSupportTicketsRouter);
   app.use("/admin", adminServiceProvidersRouter);
+  app.use("/admin", adminDevicesRouter);
+  app.use("/admin", adminTamboRequestsRouter);
+  app.use("/admin", adminTambosRouter);
   app.use("/uploads", uploadsRouter);
 
   app.use(
     (
-      err: Error & { status?: number },
+      err: Error & { status?: number; code?: string; extra?: Record<string, unknown> },
       _req: express.Request,
       res: express.Response,
       _next: express.NextFunction,
@@ -81,7 +91,11 @@ export function createApp() {
       if (status >= 500) {
         console.error(err);
       }
-      res.status(status).json({ error: err.message || "Internal error" });
+      res.status(status).json({
+        error: err.message || "Internal error",
+        ...(err.code ? { code: err.code } : {}),
+        ...(err.extra ?? {}),
+      });
     },
   );
 

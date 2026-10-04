@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { TamboPicker } from '../components/TamboPicker'
 import { AppShell, type NavItem } from '../components/AppShell'
+import { DevicesSection } from '../components/DevicesSection'
 import { Badge, Button, Card, EmptyState, ErrorBanner, type BadgeTone } from '../components/ui'
 import type { AuthToken } from '../types/auth'
 
@@ -414,6 +415,8 @@ export function TechnicianDashboardPage({
                 </ul>
               )}
             </Card>
+
+            <DevicesSection token={auth.token} tamboId={tamboId} />
 
             <Card title="Equipo del tambo">
               {loading ? (

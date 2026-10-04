@@ -13,6 +13,7 @@ import {
   type PartInstanceItem,
   type ServiceRequestItem,
 } from "./api";
+import { DevicesSection } from "./DevicesSection";
 import type { Session } from "./session";
 import { colors, font, radius, space, touch } from "./theme";
 
@@ -189,6 +190,13 @@ export function TechnicianHome({ session, online, onLogout, onStatus }: Props) {
               Ver equipo ({parts.length})
             </Text>
           </Pressable>
+
+          <DevicesSection
+            token={session.token}
+            tamboId={session.tamboId}
+            online={online}
+            onStatus={onStatus}
+          />
 
           <Text style={styles.section}>Pedidos abiertos</Text>
           {busy && openRequests.length === 0 ? (

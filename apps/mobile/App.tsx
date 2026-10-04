@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   AppState,
   Image,
   KeyboardAvoidingView,
@@ -9,6 +10,7 @@ import {
   ScrollView,
   Share,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -32,8 +34,14 @@ import {
   fetchPartTypes,
   fetchServiceRequests,
   fetchSires,
+  fetchPendingPhotos,
+  fetchPumpStatus,
   fetchTambos,
   inviteTechnician,
+  reviewPhoto,
+  updateMyTamberoRole,
+  type PendingConsultPhoto,
+  type TamboItem,
   isOwnerOrAdmin,
   isTechnicianOnly,
   login as apiLogin,
@@ -50,6 +58,8 @@ import {
   type PartTypeItem,
   type ServiceRequestItem,
 } from "./src/api";
+import { ownerOnly } from "./src/roles";
+import { TambosScreen } from "./src/TambosScreen";
 import { TechnicianHome } from "./src/TechnicianHome";
 import { buildActionLists, type ActionLists } from "./src/animals/actionLists";
 import {
@@ -76,6 +86,7 @@ import {
 import {
   clearSession,
   loadSession,
+  peekLastTamboId,
   saveSession,
   type Session,
 } from "./src/session";
@@ -119,7 +130,11 @@ type Screen =
   | "partForm"
   | "service"
   | "notifications"
-  | "today";
+  | "today"
+  | "tambos"
+  | "switchTambo"
+  | "account"
+  | "photosReview";
 
 type TodaySectionKey = keyof ActionLists;
 
@@ -162,8 +177,8 @@ const MENU = [
   {
     key: "parts" as const,
     emoji: "⚙️",
-    label: "Equipo",
-    hint: "Piezas de ordeñe y frío",
+    label: "Máquinas",
+    hint: "Ordeñadora y equipo de frío",
   },
   {
     key: "service" as const,
@@ -178,6 +193,27 @@ const MENU = [
     hint: "Pedidos y aprobaciones",
   },
 ];
+
+const OWNER_ONLY_HIDDEN = new Set([
+  "milking",
+  "treatment",
+  "repro",
+  "delivery",
+  "control",
+  "withdrawals",
+]);
+
+const ROLE_LABEL: Record<string, string> = {
+  DUENIO: "Dueño",
+  ADMIN: "Admin",
+  TAMBERO: "Tambero",
+  VETERINARIO: "Veterinario",
+  TECNICO: "Técnico",
+};
+
+function showOwnerSupervision(roles: string[]) {
+  return ownerOnly(roles) || (isOwnerOrAdmin(roles) && roles.includes("TAMBERO"));
+}
 
 const SERVICE_CATEGORIES: { key: ServiceCategory; label: string }[] = [
   { key: "VACUUM_PUMP", label: "Bomba de vacío" },
@@ -249,6 +285,7 @@ function AppContent() {
   const [controls, setControls] = useState<LocalControlLechero[]>([]);
   const [status, setStatus] = useState<string>("");
   const [busy, setBusy] = useState(false);
+  const [availableTambos, setAvailableTambos] = useState<TamboItem[]>([]);
 
   const [email, setEmail] = useState(__DEV__ ? "admin@gtlt.local" : "");
   const [password, setPassword] = useState(__DEV__ ? "demo1234" : "");
@@ -321,6 +358,10 @@ function AppContent() {
   const [pendingApprovals, setPendingApprovals] = useState<ServiceRequestItem[]>(
     [],
   );
+  const [pumpStatus, setPumpStatus] = useState<"ON" | "OFF" | null>(null);
+  const [pumpChangedAt, setPumpChangedAt] = useState<string | null>(null);
+  const [pendingPhotos, setPendingPhotos] = useState<PendingConsultPhoto[]>([]);
+  const [supervisionOffline, setSupervisionOffline] = useState(false);
   const [partTypes, setPartTypes] = useState<PartTypeItem[]>([]);
   const [parts, setParts] = useState<PartInstanceItem[]>([]);
   const [partFormMode, setPartFormMode] = useState<"create" | "replace">("create");
@@ -421,8 +462,16 @@ function AppContent() {
           await refreshLocal(existing.tamboId);
           try {
             const tambos = await fetchTambos(existing.token);
-            const t = tambos.items.find((x) => x.id === existing.tamboId);
+            setAvailableTambos(tambos.items);
+            const t =
+              tambos.items.find((x) => x.id === existing.tamboId) ?? tambos.items[0];
             if (t) {
+              if (t.id !== existing.tamboId) {
+                const next = { ...existing, tamboId: t.id, tamboName: t.name };
+                await saveSession(next);
+                setSession(next);
+                await refreshLocal(next.tamboId);
+              }
               setRequiresOwnerApproval(Boolean(t.serviceRequiresOwnerApproval));
               setTamboLocation({
                 latitude: t.latitude ?? null,
@@ -435,6 +484,7 @@ function AppContent() {
           }
           if (isOwnerOrAdmin(existing.roles ?? [])) {
             void loadNotifications(existing);
+            void loadSupervision(existing);
             void loadInviteProviders(existing.token, existing.tamboId);
           }
         }
@@ -478,7 +528,10 @@ function AppContent() {
       if (!tambos.items.length) {
         throw new Error("No encontramos un tambo para esta cuenta.");
       }
-      const tambo = tambos.items[0];
+      setAvailableTambos(tambos.items);
+      const lastId = await peekLastTamboId();
+      const tambo =
+        tambos.items.find((item) => item.id === lastId) ?? tambos.items[0];
       const techOnly = isTechnicianOnly(res.roles);
       const next: Session = {
         token: res.accessToken,
@@ -503,6 +556,7 @@ function AppContent() {
       setScreen("home");
       if (isOwnerOrAdmin(res.roles)) {
         void loadNotifications(next);
+        void loadSupervision(next);
         void loadInviteProviders(next.token, next.tamboId);
       }
       setStatus(
@@ -527,6 +581,41 @@ function AppContent() {
       } else {
         setStatus("No se pudo entrar. Revisá usuario, contraseña o la señal.");
       }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function switchTambo(tambo: TamboItem) {
+    if (!session) return;
+    setBusy(true);
+    try {
+      const next: Session = {
+        ...session,
+        tamboId: tambo.id,
+        tamboName: tambo.name,
+      };
+      await saveSession(next);
+      setSession(next);
+      setRequiresOwnerApproval(Boolean(tambo.serviceRequiresOwnerApproval));
+      setTamboLocation({
+        latitude: tambo.latitude ?? null,
+        longitude: tambo.longitude ?? null,
+        address: tambo.address ?? null,
+      });
+      if (!isTechnicianOnly(next.roles)) {
+        await pullServerState(next.token, next.tamboId);
+        await refreshLocal(next.tamboId);
+      }
+      if (isOwnerOrAdmin(next.roles)) {
+        void loadNotifications(next);
+        void loadSupervision(next);
+        void loadInviteProviders(next.token, next.tamboId);
+      }
+      setScreen("home");
+      setStatus(`Listo. Estás en ${tambo.name}.`);
+    } catch {
+      setStatus("No se pudo cambiar de tambo. Revisá la señal.");
     } finally {
       setBusy(false);
     }
@@ -637,6 +726,26 @@ function AppContent() {
       setStatus("No se pudo enviar el pedido. Revisá la señal.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function loadSupervision(s: Session = session!) {
+    if (!s || !showOwnerSupervision(s.roles ?? [])) return;
+    if (!online) {
+      setSupervisionOffline(true);
+      return;
+    }
+    try {
+      const [pump, photos] = await Promise.all([
+        fetchPumpStatus(s.token, s.tamboId),
+        fetchPendingPhotos(s.token, s.tamboId),
+      ]);
+      setSupervisionOffline(false);
+      setPumpStatus(pump.status);
+      setPumpChangedAt(pump.item?.occurredAt ?? null);
+      setPendingPhotos(photos.items ?? []);
+    } catch {
+      setSupervisionOffline(true);
     }
   }
 
@@ -805,6 +914,7 @@ function AppContent() {
     await clearSession();
     setInviteResult(null);
     setSession(null);
+    setAvailableTambos([]);
     setScreen("home");
     setWithdrawals([]);
     setAnimals([]);
@@ -814,6 +924,35 @@ function AppContent() {
     setControls([]);
     setPending(0);
     setStatus("Saliste de la cuenta.");
+  }
+
+  async function handleToggleTamberoRole(enabled: boolean) {
+    if (!session) return;
+    if (!online) {
+      setStatus("Para cambiar esto hace falta señal.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await updateMyTamberoRole(session.token, enabled);
+      const next: Session = {
+        ...session,
+        token: res.accessToken,
+        roles: res.roles,
+      };
+      await saveSession(next);
+      setSession(next);
+      setStatus(
+        enabled
+          ? "Ahora ves las pantallas de ordeñe."
+          : "Quitamos las pantallas de ordeñe.",
+      );
+      if (showOwnerSupervision(next.roles)) void loadSupervision(next);
+    } catch {
+      setStatus("No se pudo guardar. Revisá la señal.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleSync() {
@@ -1596,10 +1735,17 @@ function AppContent() {
               </Text>
             </View>
             {session ? (
-              <Text style={styles.meta}>
-                {session.userName} · {session.tamboName}
-                {isTechnicianOnly(session.roles ?? []) ? " · técnico" : ""}
-              </Text>
+              <View>
+                <Text style={styles.meta}>
+                  {session.userName} · {session.tamboName}
+                  {isTechnicianOnly(session.roles ?? []) ? " · técnico" : ""}
+                </Text>
+                {availableTambos.length > 1 ? (
+                  <Pressable onPress={() => setScreen("switchTambo")}>
+                    <Text style={styles.link}>Cambiar</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             ) : null}
           </View>
 
@@ -1709,12 +1855,30 @@ function AppContent() {
                   <Text style={styles.feedbackText}>{status}</Text>
                 </View>
               ) : null}
-              <TechnicianHome
-                session={session}
-                online={online}
-                onLogout={() => void handleLogout()}
-                onStatus={setStatus}
-              />
+              {screen === "switchTambo" ? (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Cambiar de tambo</Text>
+                  {availableTambos.map((t) => (
+                    <Pressable
+                      key={t.id}
+                      style={styles.menuButton}
+                      onPress={() => void switchTambo(t)}
+                    >
+                      <Text style={styles.menuLabel}>
+                        {t.name}
+                        {t.id === session.tamboId ? " · actual" : ""}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : (
+                <TechnicianHome
+                  session={session}
+                  online={online}
+                  onLogout={() => void handleLogout()}
+                  onStatus={setStatus}
+                />
+              )}
             </>
           ) : (
             <>
@@ -1749,7 +1913,55 @@ function AppContent() {
                 </Pressable>
               ) : null}
 
-              {screen === "home" ? (
+              {screen === "home" && showOwnerSupervision(session.roles ?? []) ? (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Hoy</Text>
+                  <View style={styles.todayRow}>
+                    <View style={styles.todayItemText}>
+                      <Text style={styles.todayRowLabel}>Bomba de vacío</Text>
+                      <Text style={styles.meta}>
+                        {supervisionOffline || !online
+                          ? "Sin conexión"
+                          : pumpStatus === "ON"
+                            ? `Encendida${pumpChangedAt ? ` · ${new Date(pumpChangedAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}` : ""}`
+                            : pumpStatus === "OFF"
+                              ? `Apagada${pumpChangedAt ? ` · ${new Date(pumpChangedAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}` : ""}`
+                              : "Sin datos"}
+                      </Text>
+                    </View>
+                  </View>
+                  <Pressable
+                    style={styles.todayRow}
+                    onPress={() => {
+                      setStatus("");
+                      setScreen("notifications");
+                      void loadNotifications(session);
+                    }}
+                  >
+                    <Text style={styles.todayRowLabel}>
+                      Service por aprobar ·{" "}
+                      {supervisionOffline || !online ? "Sin conexión" : pendingApprovals.length}
+                    </Text>
+                    <Text style={styles.todayRowArrow}>›</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.todayRow}
+                    onPress={() => {
+                      setStatus("");
+                      setScreen("photosReview");
+                      void loadSupervision(session);
+                    }}
+                  >
+                    <Text style={styles.todayRowLabel}>
+                      Fotos por revisar ·{" "}
+                      {supervisionOffline || !online ? "Sin conexión" : pendingPhotos.length}
+                    </Text>
+                    <Text style={styles.todayRowArrow}>›</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+
+              {screen === "home" && !ownerOnly(session.roles ?? []) ? (
                 <View style={styles.card}>
                   <Text style={styles.cardTitle}>Hoy</Text>
                   {TODAY_SECTIONS.every((s) => actionLists[s.key].length === 0) ? (
@@ -1826,7 +2038,29 @@ function AppContent() {
                 <View style={styles.card}>
                   <Text style={styles.cardTitle}>¿Qué querés hacer?</Text>
                   <Text style={styles.help}>Tocá un botón grande.</Text>
-                  {MENU.map((item) => (
+                  {[
+                    ...MENU.filter(
+                      (item) =>
+                        !ownerOnly(session.roles ?? []) ||
+                        !OWNER_ONLY_HIDDEN.has(item.key),
+                    ),
+                    ...(isOwnerOrAdmin(session.roles ?? [])
+                      ? [
+                          {
+                            key: "tambos" as const,
+                            emoji: "🏠",
+                            label: "Mis tambos",
+                            hint: "Crear, archivar y cambiar",
+                          },
+                        ]
+                      : []),
+                    {
+                      key: "account" as const,
+                      emoji: "👤",
+                      label: "Cuenta",
+                      hint: "Tu perfil y cómo usás CAL",
+                    },
+                  ].map((item) => (
                     <Pressable
                       key={item.key}
                       style={styles.menuButton}
@@ -1879,6 +2113,150 @@ function AppContent() {
                   <Pressable onPress={handleLogout}>
                     <Text style={styles.link}>Salir</Text>
                   </Pressable>
+                </View>
+              ) : null}
+
+              {screen === "switchTambo" ? (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Cambiar de tambo</Text>
+                  {availableTambos.map((t) => (
+                    <Pressable
+                      key={t.id}
+                      style={styles.menuButton}
+                      onPress={() => void switchTambo(t)}
+                    >
+                      <Text style={styles.menuLabel}>
+                        {t.name}
+                        {t.id === session.tamboId ? " · actual" : ""}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+
+              {screen === "tambos" ? (
+                <TambosScreen
+                  token={session.token}
+                  currentTamboId={session.tamboId}
+                  online={online}
+                  onSwitch={(t) => void switchTambo(t)}
+                  onCreated={(t) => {
+                    void (async () => {
+                      await switchTambo(t);
+                      setAvailableTambos((prev) =>
+                        prev.some((x) => x.id === t.id) ? prev : [...prev, t],
+                      );
+                      Alert.alert(
+                        "Tambo creado",
+                        "¿Usar tu ubicación actual para este tambo?",
+                        [
+                          { text: "Ahora no", style: "cancel" },
+                          {
+                            text: "Usar ubicación",
+                            onPress: () => void handleUseCurrentLocation(),
+                          },
+                        ],
+                      );
+                    })();
+                  }}
+                  onStatus={setStatus}
+                  onActiveTambos={setAvailableTambos}
+                />
+              ) : null}
+
+              {screen === "account" ? (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Cuenta</Text>
+                  <Text style={styles.help}>{session.userName}</Text>
+                  <Text style={styles.meta}>
+                    {(session.roles ?? [])
+                      .map((role) => ROLE_LABEL[role] ?? role)
+                      .join(" · ")}
+                  </Text>
+                  <Text style={styles.meta}>Tambo: {session.tamboName}</Text>
+                  {isOwnerOrAdmin(session.roles ?? []) ? (
+                    <View style={styles.todayRow}>
+                      <View style={styles.todayItemText}>
+                        <Text style={styles.todayRowLabel}>Yo también ordeño</Text>
+                        <Text style={styles.meta}>
+                          Activalo si ordeñás vos. Vas a ver también las pantallas de ordeñe.
+                        </Text>
+                      </View>
+                      <Switch
+                        value={(session.roles ?? []).includes("TAMBERO")}
+                        onValueChange={(value) => void handleToggleTamberoRole(value)}
+                        disabled={busy || !online}
+                        trackColor={{ false: colors.border, true: colors.primarySoft }}
+                        thumbColor={
+                          (session.roles ?? []).includes("TAMBERO")
+                            ? colors.primary
+                            : colors.textMuted
+                        }
+                      />
+                    </View>
+                  ) : null}
+                  {status ? (
+                    <View style={styles.feedback}>
+                      <Text style={styles.feedbackText}>{status}</Text>
+                    </View>
+                  ) : null}
+                  <Pressable onPress={handleLogout}>
+                    <Text style={styles.link}>Salir</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+
+              {screen === "photosReview" ? (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Fotos por revisar</Text>
+                  {!online || supervisionOffline ? (
+                    <Text style={styles.help}>Sin conexión</Text>
+                  ) : pendingPhotos.length === 0 ? (
+                    <Text style={styles.help}>No hay fotos pendientes.</Text>
+                  ) : (
+                    pendingPhotos.map((photo) => {
+                      const animalId = photo.animalId || photo.animal?.id;
+                      return (
+                        <View key={photo.id} style={styles.item}>
+                          {photo.photoUrl ? (
+                            <Image
+                              source={{ uri: photo.photoUrl }}
+                              style={{ width: "100%", height: 160, borderRadius: 8 }}
+                              resizeMode="cover"
+                            />
+                          ) : null}
+                          <Text style={styles.itemTitle}>
+                            Caravana {photo.animal?.earTag ?? "—"}
+                          </Text>
+                          {photo.note ? <Text style={styles.itemMeta}>{photo.note}</Text> : null}
+                          <Text style={styles.itemMeta}>
+                            {new Date(photo.takenAt).toLocaleString("es-AR")}
+                          </Text>
+                          <Pressable
+                            style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                            disabled={busy || !animalId}
+                            onPress={() => {
+                              if (!animalId) return;
+                              void (async () => {
+                                setBusy(true);
+                                try {
+                                  await reviewPhoto(session.token, animalId, photo.id);
+                                  await loadSupervision(session);
+                                  setStatus("Foto marcada como vista.");
+                                } catch {
+                                  setStatus("No se pudo marcar la foto.");
+                                } finally {
+                                  setBusy(false);
+                                }
+                              })();
+                            }}
+                          >
+                            <Text style={styles.buttonSecondaryText}>Marcar como visto</Text>
+                          </Pressable>
+                        </View>
+                      );
+                    })
+                  )}
                 </View>
               ) : null}
 
@@ -2588,7 +2966,7 @@ function AppContent() {
 
               {screen === "parts" ? (
                 <View style={styles.card}>
-                  <Text style={styles.cardTitle}>⚙️ Equipo de ordeñe y frío</Text>
+                  <Text style={styles.cardTitle}>⚙️ Máquinas de ordeñe y frío</Text>
                   <Text style={styles.help}>Piezas vigentes de este tambo.</Text>
                   <Text style={styles.sectionInCard}>Ubicación del tambo</Text>
                   {tamboLocation?.address ? (

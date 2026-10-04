@@ -16,10 +16,27 @@ export async function authenticateDevice(
 
   const device = await prisma.device.findUnique({
     where: { deviceToken: token },
+    include: { tambo: { select: { active: true } } },
   });
 
   if (!device) {
     res.status(401).json({ error: "Invalid device token" });
+    return;
+  }
+
+  if (device.retiredAt) {
+    res.status(403).json({
+      error: "Este dispositivo fue retirado.",
+      code: "DEVICE_RETIRED",
+    });
+    return;
+  }
+
+  if (!device.tambo.active) {
+    res.status(403).json({
+      error: "El tambo de este dispositivo está archivado.",
+      code: "TAMBO_ARCHIVED",
+    });
     return;
   }
 

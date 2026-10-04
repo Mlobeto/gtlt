@@ -266,6 +266,7 @@ async function seedDevTenant(defaultProvider: { id: string }) {
         name: "Tambo Demo",
         bajadaCount: 8,
         defaultServiceProviderId: defaultProvider.id,
+        activatedAt: new Date(),
       },
     });
   } else if (!tambo.defaultServiceProviderId) {
@@ -454,6 +455,7 @@ async function seedDevTenant(defaultProvider: { id: string }) {
         name: "Tambo Norte",
         bajadaCount: 8,
         defaultServiceProviderId: defaultProvider.id,
+        activatedAt: new Date(),
       },
     });
   } else if (!tamboNorte.defaultServiceProviderId) {
@@ -598,6 +600,7 @@ async function seedProdTenant(defaultProvider: { id: string }) {
         name: TAMBO_NAME,
         bajadaCount: 8,
         defaultServiceProviderId: defaultProvider.id,
+        activatedAt: new Date(),
       },
     });
   } else if (!tambo.defaultServiceProviderId) {

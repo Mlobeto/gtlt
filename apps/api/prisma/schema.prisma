@@ -180,6 +180,16 @@ enum PaymentProvider {
   MANUAL
 }
 
+enum TamboRequestStatus {
+  SENT
+  QUOTED
+  ACCEPTED
+  DECLINED
+  REJECTED
+  CANCELLED
+  CONVERTED
+}
+
 // -----------------------------------------------------------------------------
 // Identidad / multitenancy
 // -----------------------------------------------------------------------------
@@ -215,6 +225,7 @@ model Tenant {
   sires                Sire[]
   animalPhotos         AnimalPhoto[]
   weightEvents         WeightEvent[]
+  tamboRequests        TamboRequest[]
 
   @@map("tenants")
 }
@@ -233,6 +244,8 @@ model Tambo {
   longitude Decimal? @db.Decimal(9, 6)
   address   String?
   active      Boolean  @default(true)
+  /// Nulo = en instalación (usable, no se factura). Se setea al activar.
+  activatedAt DateTime? @map("activated_at")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -258,10 +271,46 @@ model Tambo {
   transfersTo   AnimalTransferEvent[] @relation("TransferToTambo")
   animalPhotos  AnimalPhoto[]
   weightEvents  WeightEvent[]
+  tamboRequest  TamboRequest?
 
   @@index([tenantId])
   @@index([tenantId, name])
   @@map("tambos")
+}
+
+model TamboRequest {
+  id                String             @id @default(uuid()) @db.Uuid
+  tenantId          String             @map("tenant_id") @db.Uuid
+  requestedById     String             @map("requested_by_id") @db.Uuid
+  name              String
+  address           String?
+  bajadaCount       Int                @map("bajada_count")
+  hardware          Json
+  equipmentList     Json               @map("equipment_list")
+  serviceProviderId String?            @map("service_provider_id") @db.Uuid
+  notes             String?
+  status            TamboRequestStatus @default(SENT)
+  quoteItems        Json?              @map("quote_items")
+  quoteTotal        Decimal?           @map("quote_total") @db.Decimal(12, 2)
+  quoteCurrency     String?            @map("quote_currency")
+  quoteValidUntil   DateTime?          @map("quote_valid_until")
+  quoteNotes        String?            @map("quote_notes")
+  quotedById        String?            @map("quoted_by_id") @db.Uuid
+  quotedAt          DateTime?          @map("quoted_at")
+  rejectionReason   String?            @map("rejection_reason")
+  tamboId           String?            @unique @map("tambo_id") @db.Uuid
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  requestedBy     User             @relation("TamboRequestRequestedBy", fields: [requestedById], references: [id])
+  quotedBy        User?            @relation("TamboRequestQuotedBy", fields: [quotedById], references: [id])
+  serviceProvider ServiceProvider? @relation(fields: [serviceProviderId], references: [id])
+  tambo           Tambo?           @relation(fields: [tamboId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([serviceProviderId, status])
+  @@map("tambo_requests")
 }
 
 model User {
@@ -291,6 +340,9 @@ model User {
   photosCreated           AnimalPhoto[]     @relation("PhotoCreatedBy")
   photosReviewed          AnimalPhoto[]     @relation("PhotoReviewedBy")
   weightEventsCreated     WeightEvent[]     @relation("WeightCreatedBy")
+  devicesCreated          Device[]          @relation("DeviceCreatedBy")
+  tamboRequestsRequested  TamboRequest[]    @relation("TamboRequestRequestedBy")
+  tamboRequestsQuoted     TamboRequest[]    @relation("TamboRequestQuotedBy")
 
   @@map("users")
 }
@@ -309,6 +361,8 @@ model Membership {
   companyName String?          @map("company_name")
   /// Proveedor formal del técnico. Null = independiente (ve todo el tambo).
   serviceProviderId String? @map("service_provider_id") @db.Uuid
+  /// Permiso de instalador. Solo la desarrolladora lo otorga; no alcanza con serviceProviderId.
+  canInstallDevices Boolean @default(false) @map("can_install_devices")
   /// Token de invitación random, de un solo uso (se limpia al aceptar). Ver reglas-negocio-app.md.
   inviteToken          String?   @unique @map("invite_token")
   inviteTokenExpiresAt DateTime? @map("invite_token_expires_at")
@@ -456,10 +510,13 @@ model Device {
   deviceToken  String     @unique @map("device_token")
   label        String?
   lastSeenAt   DateTime?  @map("last_seen_at")
+  retiredAt    DateTime?  @map("retired_at")
+  createdById  String?    @map("created_by_id") @db.Uuid
   createdAt    DateTime   @default(now())
 
   tenant           Tenant           @relation(fields: [tenantId], references: [id])
   tambo            Tambo            @relation(fields: [tamboId], references: [id])
+  createdBy        User?            @relation("DeviceCreatedBy", fields: [createdById], references: [id])
   flowSessions     FlowSession[]
   pumpStatusEvents PumpStatusEvent[]
 
@@ -906,6 +963,7 @@ model ServiceProvider {
   tambos          Tambo[]
   serviceRequests ServiceRequest[]
   memberships     Membership[]
+  tamboRequests   TamboRequest[]
 
   @@map("service_providers")
 }

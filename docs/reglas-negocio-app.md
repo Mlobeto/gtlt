@@ -1,6 +1,6 @@
 # Reglas de negocio — capa aplicación / API
 
-**Última actualización:** 2026-08-30
+**Última actualización:** 2026-10-04
 
 Validaciones que **no** se expresan como constraint de PostgreSQL (dependen de otra tabla o de lógica de dominio). Implementar en servicios antes de dar por cerrado el CRUD/sync.
 
@@ -47,6 +47,36 @@ Aplica a `MilkingSession`, `ControlLechero` (header) y `MilkDelivery`:
 - `TECNICO` **nunca** acceso automático a todos los tambos; es actor externo (puede ser de distintos fabricantes; `companyName` texto libre en Membership).
 - `Membership.status`: `PENDING` (invitación) | `ACTIVE`. Login solo con `ACTIVE`.
 - API: sesión solo-`TECNICO` tiene **lista blanca** de recursos (`part-types`, `part-instances`, `service-requests`, `tambos`, `auth`). Animales/producción/sanidad/repro denegados a nivel guard global.
+
+### Roles compuestos (celular)
+
+- No existe un rol "dueño-tambero". `Membership.roles` es una lista: "dueño que también ordeña" es `DUENIO` + `TAMBERO`.
+- El menú se arma por módulos. Con dos roles se ve la suma. Un dueño/admin **sin** `TAMBERO` ni `VETERINARIO` no ve Ordeñe, Sanidad, Repro, Entrega, Control lechero ni Retiros; ve supervisión (bomba, service por aprobar, fotos) más Vacas, Máquinas, Service, Avisos, Cuenta y Mis tambos.
+- `DUENIO`/`ADMIN` + `TAMBERO`: supervisión **y** las listas de acción de "Hoy", más el menú operativo.
+- Tambero o veterinario solos: el menú operativo como hasta ahora (el veterinario no se cambia). Técnico: sin cambios.
+- Interruptor **Yo también ordeño** (`PATCH /memberships/me/tambero-role`): solo dueño/admin, sobre la membresía propia. Agrega o quita `TAMBERO` y reemite el JWT. No toca `DUENIO`/`ADMIN` ni otros roles.
+
+### Tambos (pedido / cotización / instalación / activación)
+
+- El dueño **no crea tambos**. Pide uno (`POST /tambo-requests`): nombre, dirección opcional, bajadas (1–60), hardware (sensor de bomba, caudalímetros, lectores) y, si hay hardware, un proveedor del catálogo. La API calcula `equipmentList` (1 sensor de bomba; 1 caudalímetro y 1 lector por bajada si se piden). Solo software: `serviceProviderId` nulo. Estado inicial `SENT`.
+- Cotización: hoy la carga la **desarrolladora en nombre del proveedor** (`PATCH /admin/tambo-requests/:id/quote`, validación en `validateTamboQuote` — reutilizable cuando exista el panel de proveedor). Pasa a `QUOTED`. El dueño ve la cotización y `POST /tambo-requests/:id/accept` o `/decline` (solo `QUOTED`). Puede `cancel` si está `SENT` o `QUOTED`.
+- Creación: **solo la desarrolladora** (`POST /admin/tambos` `{ requestId }`). Desde un pedido `ACCEPTED`, o `SENT` si es solo software. Nace **en instalación** (`active = true`, `activatedAt` nulo): usable (un técnico autorizado puede registrar dispositivos) y **no se factura**. El pedido queda `CONVERTED` con `tamboId`. No se convierte dos veces (`409`).
+- Activación: **solo la desarrolladora** (`POST /admin/tambos/:id/activate`) setea `activatedAt`. Desde ahí cuenta para la suscripción. `409` si ya está activo o está archivado. Todos los pedidos pasan por este paso, también los solo-software.
+- Estados derivados: archivado (`active = false`), en instalación (`active` y `activatedAt` nulo), activo (`active` y `activatedAt` no nulo). `GET /tambos` incluye `state`. Los tambos en instalación aparecen en listas y selectores como cualquier otro.
+- Restaurar (`PATCH /tambos/:id/active` `{ active: true }`): solo `DUENIO`/`ADMIN`, suscripción `ACTIVE`.
+- `GET /tambos` lista solo `active`; `?includeArchived=1` incluye archivados. Login, `TamboPicker` y mobile usan la lista activa (incluye en instalación).
+- Editar nombre (2–80) y `bajadaCount` (1–60). Subir bajadas es libre. **Bajarlas** se rechaza (`409` `BAJADAS_EN_USO`) si hay `PartInstance` vigente o `Device` no retirado con `bajadaNumber` mayor al valor nuevo; el error lista tipo y bajada.
+- Archivar (`active = false`) no borra datos. No se puede archivar el último tambo activo (`409`). Si hay dispositivos no retirados: `409` `TAMBO_HAS_DEVICES` (cantidad y tipos). El dueño pide el retiro con `POST /tambos/:id/request-device-removal` (pedido `OTHER` / `NORMAL`, texto fijo; si ya hay uno abierto se reusa).
+- `GET /tambos/billing-summary` cuenta solo tambos activos facturables y agrega `installingTambos`. `GET /admin/tenants` devuelve `activeTambos` e `installingTambos`. Cortesía (`LIFETIME` o precio 0) devuelve montos en 0.
+
+### Dispositivos
+
+- Cada tambo puede tener periféricos (`DeviceKind`: `VACUUM_PUMP_SENSOR`, `FLOW_METER`, `RFID_READER`). Los endpoints `/device/*` autentican con `X-Device-Token` contra `Device.deviceToken`.
+- **El dueño no da de alta hardware.** Lo hacen la desarrolladora (`/admin/devices`) o un **técnico autorizado como instalador** (`Membership.canInstallDevices = true`) en los tambos de su alcance (`MembershipTambo`). Ese permiso **solo lo otorga la desarrolladora** (`PATCH /admin/memberships/:id/installer`), y solo si el técnico tiene proveedor formal (`serviceProviderId`); un independiente no se autoriza (`409`). Tener proveedor no alcanza: lo elige el dueño al invitar. El permiso se consulta en la base en cada llamada (revocar vale al toque). Un técnico sin el permiso, el dueño, el tambero y el veterinario solo ven.
+- Los dispositivos **no se borran: se retiran** (`retiredAt`). Retirado, o tambo archivado (`Tambo.active = false`), deja de ser aceptado (`403` `DEVICE_RETIRED` / `TAMBO_ARCHIVED`) y no se toca `lastSeenAt`.
+- El alta crea el registro y entrega la clave una sola vez (también al rotar). `connected` = reportó en los últimos 5 minutos (`lastSeenAt`).
+- `bajadaNumber` obligatorio (1…`Tambo.bajadaCount`) para `FLOW_METER` y `RFID_READER`; nulo para `VACUUM_PUMP_SENSOR`. Un solo sensor de bomba no retirado por tambo, y un solo dispositivo no retirado por `(tambo, kind, bajadaNumber)` (`409`).
+
 ### Invitaciones
 
 - Endpoints: `POST /memberships/invite-technician` (dueño/tambero/admin invita `TECNICO`) y `POST /memberships/invite` (dueño/admin invita `TAMBERO` o `VETERINARIO`). Crean un `User` stub si no existe, la `Membership` en `PENDING` y el `MembershipTambo`.

@@ -7,11 +7,16 @@ import type { AuthContext } from "../types/express.js";
 export async function requireTamboInTenant(
   auth: AuthContext,
   tamboId: string,
+  options?: { includeInactive?: boolean },
 ) {
   assertTamboAccess(auth.tamboIds, tamboId);
 
   const tambo = await prisma.tambo.findFirst({
-    where: { id: tamboId, tenantId: auth.tenantId, active: true },
+    where: {
+      id: tamboId,
+      tenantId: auth.tenantId,
+      ...(options?.includeInactive ? {} : { active: true }),
+    },
   });
 
   if (!tambo) {

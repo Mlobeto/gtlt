@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api } from '../lib/api'
+import { api, type AdminInstaller } from '../lib/api'
 import type { AuthToken } from '../types/auth'
 import type { AdminTenant } from '../types/dashboard'
 import { Badge, Button, Card, EmptyState, ErrorBanner, Field, SelectField, inputClass, type BadgeTone } from './ui'
@@ -170,6 +170,12 @@ export function AccountsTab({ auth }: AccountsTabProps) {
                   <h3 className="font-semibold text-ink">{tenant.name}</h3>
                   <p className="text-sm text-ink-muted break-all">
                     {tenant.owner ? `${tenant.owner.name} · ${tenant.owner.email}` : 'Sin dueño asignado'}
+                    {typeof tenant.activeTambos === 'number'
+                      ? ` · ${tenant.activeTambos} tambo${tenant.activeTambos === 1 ? '' : 's'} activo${tenant.activeTambos === 1 ? '' : 's'}`
+                      : ''}
+                    {typeof tenant.installingTambos === 'number' && tenant.installingTambos > 0
+                      ? ` · ${tenant.installingTambos} en instalación`
+                      : ''}
                   </p>
                 </div>
                 {tenant.subscription && (
@@ -218,9 +224,95 @@ export function AccountsTab({ auth }: AccountsTabProps) {
                   )}
                 </div>
               )}
+
+              <TenantInstallers token={auth.token} tenantId={tenant.id} />
             </Card>
           ))}
         </div>
+      )}
+    </div>
+  )
+}
+
+function TenantInstallers({ token, tenantId }: { token: string; tenantId: string }) {
+  const [items, setItems] = useState<AdminInstaller[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        setLoading(true)
+        setError('')
+        const result = await api.getAdminInstallers(token, tenantId)
+        if (!cancelled) setItems(result.items || [])
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'No se pudieron cargar los técnicos')
+          setItems([])
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [token, tenantId])
+
+  const toggle = async (membershipId: string, enabled: boolean) => {
+    try {
+      setBusyId(membershipId)
+      setError('')
+      const result = await api.updateAdminInstaller(token, membershipId, enabled)
+      setItems((prev) => prev.map((item) => (item.id === membershipId ? result.item : item)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo actualizar el permiso')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <div className="mt-4 pt-4 border-t border-line space-y-2">
+      <p className="text-sm font-semibold text-ink">Técnicos</p>
+      {error ? <ErrorBanner>{error}</ErrorBanner> : null}
+      {loading ? (
+        <p className="text-sm text-ink-muted">Cargando técnicos...</p>
+      ) : items.length === 0 ? (
+        <p className="text-sm text-ink-muted">Esta cuenta no tiene técnicos.</p>
+      ) : (
+        <ul className="space-y-2">
+          {items.map((item) => {
+            const independent = !item.serviceProvider
+            return (
+              <li
+                key={item.id}
+                className="flex flex-wrap items-center justify-between gap-2 text-sm"
+              >
+                <div className="min-w-0">
+                  <p className="font-semibold text-ink">{item.user.name}</p>
+                  <p className="text-ink-muted">
+                    {item.user.email ?? 'Sin email'}
+                    {item.serviceProvider ? ` · ${item.serviceProvider.name}` : ' · independiente'}
+                  </p>
+                </div>
+                <label className="inline-flex items-center gap-2 text-ink">
+                  <input
+                    type="checkbox"
+                    checked={item.canInstallDevices}
+                    disabled={independent || busyId === item.id}
+                    onChange={(e) => void toggle(item.id, e.target.checked)}
+                  />
+                  <span>Autorizado a instalar hardware</span>
+                </label>
+              </li>
+            )
+          })}
+        </ul>
       )}
     </div>
   )

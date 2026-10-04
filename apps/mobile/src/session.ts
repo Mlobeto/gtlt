@@ -69,6 +69,10 @@ export async function loadSession(): Promise<Session | null> {
   };
 }
 
+export async function peekLastTamboId(): Promise<string | null> {
+  return metaGet("tamboId");
+}
+
 export async function clearSession(): Promise<void> {
   await deleteToken();
 }

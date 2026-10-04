@@ -46,6 +46,8 @@ export interface AdminTenant {
   id: string
   name: string
   createdAt: string
+  activeTambos?: number
+  installingTambos?: number
   owner: { id: string; name: string; email: string | null } | null
   subscription: {
     id: string

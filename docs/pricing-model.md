@@ -1,7 +1,7 @@
 # GTLT — Modelo de suscripción y planes
 
-**Última actualización:** 2026-08-30
-**Estado:** modelo de datos implementado (`Plan`/`Subscription`/`Payment`); venta y checkout todavía manuales.
+**Última actualización:** 2026-10-04
+**Estado:** modelo de datos implementado (`Plan`/`Subscription`/`Payment`); venta y checkout todavía manuales. El precio se **calcula y muestra** por tambo activo; el cobro automático (Mercado Pago) sigue pendiente.
 
 Complementa [arquitectura.md §6.1](./arquitectura.md) y [reglas-negocio-app.md](./reglas-negocio-app.md).
 
@@ -15,6 +15,8 @@ Complementa [arquitectura.md §6.1](./arquitectura.md) y [reglas-negocio-app.md]
 | Lifetime | `LIFETIME` | $0 | Sin recurrencia | Solo la desarrolladora, a mano, para tenants elegidos (cortesía) |
 
 Un tenant tiene **una sola suscripción** activa a la vez (`Subscription.tenantId` único).
+
+El precio de CAL es **por tambo activo y facturable**: `monthlyTotalArs = count(Tambo.active = true AND Tambo.activatedAt IS NOT NULL) × Plan.priceArs`. Un tambo nace **en instalación** (`active = true`, `activatedAt` nulo): se usa con normalidad, pero **no se factura** hasta que la desarrolladora lo activa (`activatedAt`). Archivar (`active = false`) deja de facturarlo y no borra datos. Restaurar un tambo ya activado vuelve a sumar. El dueño **no crea tambos**: pide uno; la desarrolladora lo crea a partir del pedido. El plan `LIFETIME` (cortesía) o un `priceArs` de 0 no suma costo (`courtesy: true`). `GET /tambos/billing-summary` también devuelve `installingTambos`. Mercado Pago todavía no cobra: la API y las pantallas solo muestran el resumen.
 
 ## 2. Flujo comercial actual (hoy — manual)
 

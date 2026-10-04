@@ -47,6 +47,7 @@ adminRouter.get(
           take: 1,
         },
         subscription: { include: { plan: true } },
+        tambos: { select: { active: true, activatedAt: true } },
       },
     });
 
@@ -55,6 +56,8 @@ adminRouter.get(
         id: t.id,
         name: t.name,
         createdAt: t.createdAt,
+        activeTambos: t.tambos.filter((x) => x.active && x.activatedAt != null).length,
+        installingTambos: t.tambos.filter((x) => x.active && x.activatedAt == null).length,
         owner: t.memberships[0]?.user ?? null,
         subscription: t.subscription
           ? {

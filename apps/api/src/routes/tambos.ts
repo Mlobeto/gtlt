@@ -3,6 +3,11 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { HttpError } from "../lib/http-error.js";
 import { requireTamboInTenant } from "../lib/tambo-scope.js";
+import {
+  assertSubscriptionActive,
+  getBillingSummary,
+} from "../lib/tambo-billing.js";
+import { tamboLifecycleState } from "../lib/tambo-state.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
 
@@ -23,13 +28,24 @@ function locationFields(t: {
  * Tambos visibles para el JWT actual (scope tenant + MembershipTambo).
  * Ejemplo de query siempre filtrada por tenantId del token.
  */
+const DEVICE_KIND_LABEL: Record<string, string> = {
+  VACUUM_PUMP_SENSOR: "Sensor de bomba de vacío",
+  FLOW_METER: "Caudalímetro",
+  RFID_READER: "Lector de caravanas",
+};
+
+const DEVICE_REMOVAL_DESCRIPTION =
+  "Retirar los dispositivos instalados para dar de baja el tambo";
+
 tambosRouter.get("/", authenticate, async (req, res) => {
   const auth = req.auth!;
+  const includeArchived =
+    req.query.includeArchived === "1" || req.query.includeArchived === "true";
 
   const tambos = await prisma.tambo.findMany({
     where: {
       tenantId: auth.tenantId,
-      active: true,
+      ...(includeArchived ? {} : { active: true }),
       ...(auth.tamboIds === null ? {} : { id: { in: auth.tamboIds } }),
     },
     select: {
@@ -37,6 +53,7 @@ tambosRouter.get("/", authenticate, async (req, res) => {
       name: true,
       bajadaCount: true,
       active: true,
+      activatedAt: true,
       serviceRequiresOwnerApproval: true,
       latitude: true,
       longitude: true,
@@ -49,9 +66,20 @@ tambosRouter.get("/", authenticate, async (req, res) => {
     items: tambos.map((t) => ({
       ...t,
       ...locationFields(t),
+      state: tamboLifecycleState(t),
     })),
   });
 });
+
+tambosRouter.get(
+  "/billing-summary",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN"),
+  async (req, res) => {
+    const billing = await getBillingSummary(req.auth!.tenantId);
+    res.json(billing);
+  },
+);
 
 const historyQuerySchema = z.object({
   from: z.string().datetime().optional(),
@@ -329,6 +357,126 @@ tambosRouter.patch(
 );
 
 tambosRouter.patch(
+  "/:tamboId/active",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN"),
+  async (req, res) => {
+    const tamboId = String(req.params.tamboId);
+    const idParsed = z.string().uuid().safeParse(tamboId);
+    const body = z.object({ active: z.boolean() }).safeParse(req.body);
+    if (!idParsed.success || !body.success) {
+      res.status(400).json({ error: "Invalid body" });
+      return;
+    }
+
+    const auth = req.auth!;
+    const existing = await requireTamboInTenant(auth, tamboId, { includeInactive: true });
+
+    if (body.data.active === existing.active) {
+      res.json({
+        item: {
+          id: existing.id,
+          name: existing.name,
+          bajadaCount: existing.bajadaCount,
+          active: existing.active,
+        },
+        billing: await getBillingSummary(auth.tenantId),
+      });
+      return;
+    }
+
+    if (body.data.active) {
+      await assertSubscriptionActive(auth.tenantId);
+    } else {
+      const activeCount = await prisma.tambo.count({
+        where: { tenantId: auth.tenantId, active: true },
+      });
+      if (activeCount <= 1) {
+        throw new HttpError(409, "No se puede archivar el último tambo activo.");
+      }
+
+      const devices = await prisma.device.findMany({
+        where: { tamboId: existing.id, retiredAt: null },
+        select: { kind: true },
+      });
+      if (devices.length > 0) {
+        throw new HttpError(
+          409,
+          `Este tambo tiene ${devices.length} dispositivo${devices.length === 1 ? "" : "s"} instalado${devices.length === 1 ? "" : "s"}. Para darlo de baja hay que retirarlos.`,
+          "TAMBO_HAS_DEVICES",
+          {
+            count: devices.length,
+            kinds: devices.map((d) => d.kind),
+          },
+        );
+      }
+    }
+
+    const item = await prisma.tambo.update({
+      where: { id: existing.id },
+      data: { active: body.data.active },
+      select: {
+        id: true,
+        name: true,
+        bajadaCount: true,
+        active: true,
+      },
+    });
+
+    res.json({
+      item,
+      billing: await getBillingSummary(auth.tenantId),
+    });
+  },
+);
+
+tambosRouter.post(
+  "/:tamboId/request-device-removal",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN"),
+  async (req, res) => {
+    const tamboId = String(req.params.tamboId);
+    const parsed = z.string().uuid().safeParse(tamboId);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid tamboId" });
+      return;
+    }
+
+    const auth = req.auth!;
+    const tambo = await requireTamboInTenant(auth, tamboId, { includeInactive: true });
+
+    const existing = await prisma.serviceRequest.findFirst({
+      where: {
+        tenantId: auth.tenantId,
+        tamboId: tambo.id,
+        description: DEVICE_REMOVAL_DESCRIPTION,
+        status: { notIn: ["RESOLVED", "CANCELLED"] },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (existing) {
+      res.json({ item: existing });
+      return;
+    }
+
+    const item = await prisma.serviceRequest.create({
+      data: {
+        tenantId: auth.tenantId,
+        tamboId: tambo.id,
+        category: "OTHER",
+        description: DEVICE_REMOVAL_DESCRIPTION,
+        urgency: "NORMAL",
+        serviceProviderId: tambo.defaultServiceProviderId,
+        createdById: auth.userId,
+        status: "OPEN",
+      },
+    });
+
+    res.status(201).json({ item });
+  },
+);
+
+tambosRouter.patch(
   "/:id",
   authenticate,
   requireRoles("DUENIO", "ADMIN"),
@@ -336,7 +484,8 @@ tambosRouter.patch(
     const parsed = z
       .object({
         serviceRequiresOwnerApproval: z.boolean().optional(),
-        name: z.string().trim().min(1).max(200).optional(),
+        name: z.string().trim().min(2).max(80).optional(),
+        bajadaCount: z.number().int().min(1).max(60).optional(),
       })
       .safeParse(req.body);
     if (!parsed.success) {
@@ -346,12 +495,53 @@ tambosRouter.patch(
 
     const auth = req.auth!;
     const id = String(req.params.id);
-    await requireTamboInTenant(auth, id);
+    const existing = await requireTamboInTenant(auth, id, { includeInactive: true });
 
-    const existing = await prisma.tambo.findFirst({
-      where: { id, tenantId: auth.tenantId },
-    });
-    if (!existing) throw new HttpError(404, "Tambo not found");
+    if (parsed.data.bajadaCount != null && parsed.data.bajadaCount < existing.bajadaCount) {
+      const [parts, devices] = await Promise.all([
+        prisma.partInstance.findMany({
+          where: {
+            tamboId: existing.id,
+            replacedAt: null,
+            bajadaNumber: { gt: parsed.data.bajadaCount },
+          },
+          include: { partType: { select: { name: true } } },
+        }),
+        prisma.device.findMany({
+          where: {
+            tamboId: existing.id,
+            retiredAt: null,
+            bajadaNumber: { gt: parsed.data.bajadaCount },
+          },
+          select: { kind: true, bajadaNumber: true },
+        }),
+      ]);
+
+      const blockers = [
+        ...parts.map((p) => ({
+          kind: "part" as const,
+          type: p.partType.name,
+          bajadaNumber: p.bajadaNumber,
+        })),
+        ...devices.map((d) => ({
+          kind: "device" as const,
+          type: DEVICE_KIND_LABEL[d.kind] ?? d.kind,
+          bajadaNumber: d.bajadaNumber,
+        })),
+      ];
+
+      if (blockers.length > 0) {
+        const detail = blockers
+          .map((b) => `${b.type} (bajada ${b.bajadaNumber})`)
+          .join(", ");
+        throw new HttpError(
+          409,
+          `No se pueden bajar las bajadas: hay piezas o dispositivos en uso. ${detail}`,
+          "BAJADAS_EN_USO",
+          { blockers },
+        );
+      }
+    }
 
     const item = await prisma.tambo.update({
       where: { id: existing.id },
@@ -363,6 +553,9 @@ tambosRouter.patch(
             }
           : {}),
         ...(parsed.data.name != null ? { name: parsed.data.name } : {}),
+        ...(parsed.data.bajadaCount != null
+          ? { bajadaCount: parsed.data.bajadaCount }
+          : {}),
       },
       select: {
         id: true,

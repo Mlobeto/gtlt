@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import type { AuthToken } from '../types/auth'
+import { TambosSection } from './TambosSection'
 import { Card, ErrorBanner, inputClass } from './ui'
 
 interface SettingsTabProps {
@@ -61,7 +62,9 @@ export function SettingsTab({ auth }: SettingsTabProps) {
   }
 
   return (
-    <Card title="Configuración del tambo" className="max-w-2xl">
+    <div className="space-y-6 max-w-2xl">
+    <TambosSection token={auth.token} />
+    <Card title="Configuración del tambo">
       <div className="space-y-4">
         <p className="text-sm text-ink-muted">
           Elegí el proveedor de service por defecto. No se puede dar de alta uno nuevo desde acá.
@@ -100,5 +103,6 @@ export function SettingsTab({ auth }: SettingsTabProps) {
         </select>
       </div>
     </Card>
+    </div>
   )
 }

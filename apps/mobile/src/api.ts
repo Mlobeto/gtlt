@@ -53,18 +53,176 @@ export function login(email: string, password: string, tenantId?: string) {
   });
 }
 
-export function fetchTambos(token: string) {
+export type BillingSummary = {
+  activeTambos: number;
+  installingTambos: number;
+  unitPriceArs: number;
+  monthlyTotalArs: number;
+  nextTotalArs: number;
+  planName: string;
+  courtesy: boolean;
+};
+
+export type TamboLifecycleState = "ACTIVE" | "INSTALLING" | "ARCHIVED";
+
+export type TamboHardware = {
+  pumpSensor: boolean;
+  flowMeters: boolean;
+  rfidReaders: boolean;
+};
+
+export type EquipmentLine = {
+  kind: string;
+  label: string;
+  quantity: number;
+};
+
+export type TamboRequestStatus =
+  | "SENT"
+  | "QUOTED"
+  | "ACCEPTED"
+  | "DECLINED"
+  | "REJECTED"
+  | "CANCELLED"
+  | "CONVERTED";
+
+export type QuoteItem = {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  currency: string;
+};
+
+export type TamboRequestItem = {
+  id: string;
+  name: string;
+  bajadaCount: number;
+  hardware: TamboHardware;
+  equipmentList: EquipmentLine[];
+  serviceProviderId: string | null;
+  notes: string | null;
+  status: TamboRequestStatus;
+  quoteItems: QuoteItem[] | null;
+  quoteTotal: number | null;
+  quoteCurrency: string | null;
+  quoteValidUntil: string | null;
+  quoteNotes: string | null;
+  rejectionReason: string | null;
+  serviceProvider?: { id: string; name: string } | null;
+};
+
+export type TamboItem = {
+  id: string;
+  name: string;
+  bajadaCount: number;
+  active?: boolean;
+  activatedAt?: string | null;
+  state?: TamboLifecycleState;
+  serviceRequiresOwnerApproval?: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
+};
+
+export function fetchTambos(token: string, includeArchived = false) {
+  const q = includeArchived ? "?includeArchived=1" : "";
+  return request<{ items: TamboItem[] }>(`/tambos${q}`, { token });
+}
+
+export function fetchBillingSummary(token: string) {
+  return request<BillingSummary>("/tambos/billing-summary", { token });
+}
+
+export function fetchEquipmentPreview(
+  token: string,
+  query: { bajadaCount: number } & TamboHardware,
+) {
+  const params = new URLSearchParams({
+    bajadaCount: String(query.bajadaCount),
+    pumpSensor: String(query.pumpSensor),
+    flowMeters: String(query.flowMeters),
+    rfidReaders: String(query.rfidReaders),
+  });
+  return request<{ items: EquipmentLine[]; hardware: TamboHardware }>(
+    `/tambo-requests/equipment-preview?${params}`,
+    { token },
+  );
+}
+
+export function fetchTamboRequests(token: string) {
   return request<{
-    items: {
-      id: string;
-      name: string;
-      bajadaCount: number;
-      serviceRequiresOwnerApproval?: boolean;
-      latitude?: number | null;
-      longitude?: number | null;
-      address?: string | null;
-    }[];
-  }>("/tambos", { token });
+    items: TamboRequestItem[];
+    serviceProviders: { id: string; name: string }[];
+  }>("/tambo-requests", { token });
+}
+
+export function createTamboRequest(
+  token: string,
+  payload: {
+    name: string;
+    address?: string;
+    bajadaCount: number;
+    hardware: TamboHardware;
+    serviceProviderId?: string | null;
+    notes?: string;
+  },
+) {
+  return request<{ item: TamboRequestItem }>("/tambo-requests", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export function acceptTamboRequest(token: string, id: string) {
+  return request<{ item: TamboRequestItem }>(`/tambo-requests/${id}/accept`, {
+    method: "POST",
+    token,
+    body: "{}",
+  });
+}
+
+export function declineTamboRequest(token: string, id: string, reason?: string) {
+  return request<{ item: TamboRequestItem }>(`/tambo-requests/${id}/decline`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function cancelTamboRequest(token: string, id: string) {
+  return request<{ item: TamboRequestItem }>(`/tambo-requests/${id}/cancel`, {
+    method: "POST",
+    token,
+    body: "{}",
+  });
+}
+
+export function updateTambo(
+  token: string,
+  tamboId: string,
+  payload: { name?: string; bajadaCount?: number; serviceRequiresOwnerApproval?: boolean },
+) {
+  return request<{ item: TamboItem }>(`/tambos/${tamboId}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export function setTamboActive(token: string, tamboId: string, active: boolean) {
+  return request<{ item: TamboItem; billing: BillingSummary }>(`/tambos/${tamboId}/active`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify({ active }),
+  });
+}
+
+export function requestDeviceRemoval(token: string, tamboId: string) {
+  return request<{ item: ServiceRequestItem }>(
+    `/tambos/${tamboId}/request-device-removal`,
+    { method: "POST", token, body: "{}" },
+  );
 }
 
 export function fetchAnimals(token: string, tamboId: string) {
@@ -730,6 +888,44 @@ export function markAllNotificationsRead(token: string) {
   });
 }
 
+export function updateMyTamberoRole(token: string, enabled: boolean) {
+  return request<{ roles: string[]; accessToken: string }>("/memberships/me/tambero-role", {
+    method: "PATCH",
+    token,
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export function fetchPumpStatus(token: string, tamboId: string) {
+  return request<{
+    status: "ON" | "OFF" | null;
+    item?: { occurredAt: string; status: "ON" | "OFF" };
+  }>(`/tambos/${encodeURIComponent(tamboId)}/pump-status`, { token });
+}
+
+export type PendingConsultPhoto = {
+  id: string;
+  photoUrl: string;
+  note: string | null;
+  takenAt: string;
+  animalId?: string;
+  animal?: { id: string; earTag: string };
+};
+
+export function fetchPendingPhotos(token: string, tamboId: string) {
+  return request<{ items: PendingConsultPhoto[] }>(
+    `/tambos/${encodeURIComponent(tamboId)}/photos/pending-review`,
+    { token },
+  );
+}
+
+export function reviewPhoto(token: string, animalId: string, photoId: string) {
+  return request<{ item?: unknown }>(
+    `/animals/${encodeURIComponent(animalId)}/photos/${encodeURIComponent(photoId)}/review`,
+    { method: "PATCH", token },
+  );
+}
+
 export function updateTamboSettings(
   token: string,
   tamboId: string,
@@ -765,6 +961,58 @@ export function updateTamboLocation(
     method: "PATCH",
     token,
     body: JSON.stringify(payload),
+  });
+}
+
+export type DeviceKind = "VACUUM_PUMP_SENSOR" | "FLOW_METER" | "RFID_READER";
+
+export type DeviceItem = {
+  id: string;
+  tamboId: string;
+  kind: DeviceKind;
+  bajadaNumber: number | null;
+  label: string | null;
+  lastSeenAt: string | null;
+  connected: boolean;
+  createdAt: string;
+};
+
+export function fetchDevices(token: string, tamboId: string) {
+  return request<{
+    items: DeviceItem[];
+    canManage: boolean;
+    tambo: { id: string; bajadaCount: number } | null;
+  }>(`/devices?tamboId=${encodeURIComponent(tamboId)}`, { token });
+}
+
+export function createDevice(
+  token: string,
+  payload: {
+    tamboId: string;
+    kind: DeviceKind;
+    bajadaNumber?: number | null;
+    label?: string | null;
+  },
+) {
+  return request<{ item: DeviceItem; deviceToken: string }>("/devices", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export function rotateDeviceToken(token: string, id: string) {
+  return request<{ item: DeviceItem; deviceToken: string }>(
+    `/devices/${id}/rotate-token`,
+    { method: "POST", token, body: "{}" },
+  );
+}
+
+export function retireDevice(token: string, id: string) {
+  return request<{ item: DeviceItem }>(`/devices/${id}/retire`, {
+    method: "POST",
+    token,
+    body: "{}",
   });
 }
 

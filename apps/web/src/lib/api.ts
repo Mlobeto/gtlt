@@ -28,6 +28,109 @@ export type AcceptedInvite = {
   }
 }
 
+export type AdminInstaller = {
+  id: string
+  canInstallDevices: boolean
+  tenant: { id: string; name: string }
+  user: { id: string; name: string; email: string | null }
+  serviceProvider: { id: string; name: string } | null
+}
+
+export type BillingSummary = {
+  activeTambos: number
+  installingTambos: number
+  unitPriceArs: number
+  monthlyTotalArs: number
+  nextTotalArs: number
+  planName: string
+  courtesy: boolean
+}
+
+export type TamboLifecycleState = 'ACTIVE' | 'INSTALLING' | 'ARCHIVED'
+
+export type TamboHardware = {
+  pumpSensor: boolean
+  flowMeters: boolean
+  rfidReaders: boolean
+}
+
+export type EquipmentLine = {
+  kind: DeviceKind
+  label: string
+  quantity: number
+}
+
+export type TamboRequestStatus =
+  | 'SENT'
+  | 'QUOTED'
+  | 'ACCEPTED'
+  | 'DECLINED'
+  | 'REJECTED'
+  | 'CANCELLED'
+  | 'CONVERTED'
+
+export type QuoteItem = {
+  description: string
+  quantity: number
+  unitPrice: number
+  currency: string
+}
+
+export type TamboRequestItem = {
+  id: string
+  tenantId: string
+  name: string
+  address: string | null
+  bajadaCount: number
+  hardware: TamboHardware
+  equipmentList: EquipmentLine[]
+  serviceProviderId: string | null
+  notes: string | null
+  status: TamboRequestStatus
+  quoteItems: QuoteItem[] | null
+  quoteTotal: number | null
+  quoteCurrency: string | null
+  quoteValidUntil: string | null
+  quoteNotes: string | null
+  quotedAt: string | null
+  rejectionReason: string | null
+  tamboId: string | null
+  createdAt: string
+  serviceProvider?: { id: string; name: string } | null
+  requestedBy?: { id: string; name: string; email: string | null }
+  quotedBy?: { id: string; name: string; email: string | null } | null
+  tambo?: { id: string; name: string; active: boolean; activatedAt: string | null } | null
+  tenant?: { id: string; name: string }
+}
+
+export type InstallingTambo = {
+  id: string
+  tenantId: string
+  tenant: { id: string; name: string }
+  name: string
+  address: string | null
+  bajadaCount: number
+  active: boolean
+  activatedAt: string | null
+  state: TamboLifecycleState
+  activeDevices: number
+  connectedDevices: number
+  devices: { id: string; kind: DeviceKind; label: string | null; lastSeenAt: string | null; connected: boolean }[]
+}
+
+export type DeviceKind = 'VACUUM_PUMP_SENSOR' | 'FLOW_METER' | 'RFID_READER'
+
+export type DeviceItem = {
+  id: string
+  tamboId: string
+  kind: DeviceKind
+  bajadaNumber: number | null
+  label: string | null
+  lastSeenAt: string | null
+  connected: boolean
+  createdAt: string
+}
+
 export const api = {
   async login(email: string, password: string, tenantId?: string) {
     const res = await fetch(`${API_URL}/auth/login`, {
@@ -127,6 +230,28 @@ export const api = {
     return res.json()
   },
 
+  async getAdminInstallers(token: string, tenantId: string) {
+    const res = await fetch(
+      `${API_URL}/admin/installers?tenantId=${encodeURIComponent(tenantId)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los técnicos')
+    return res.json() as Promise<{ items: AdminInstaller[] }>
+  },
+
+  async updateAdminInstaller(token: string, membershipId: string, enabled: boolean) {
+    const res = await fetch(`${API_URL}/admin/memberships/${membershipId}/installer`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ enabled }),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo actualizar el permiso de instalador')
+    return res.json() as Promise<{ item: AdminInstaller }>
+  },
+
   async getAdminTenants(token: string) {
     const res = await fetch(`${API_URL}/admin/tenants`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -185,14 +310,259 @@ export const api = {
     return res.json()
   },
 
-  async getTambos(token: string) {
-    const res = await fetch(`${API_URL}/tambos`, {
+  async getTambos(token: string, includeArchived = false) {
+    const q = includeArchived ? '?includeArchived=1' : ''
+    const res = await fetch(`${API_URL}/tambos${q}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) {
       const body = await res.json().catch(() => null)
       throw new Error(body?.error || 'No se pudieron cargar los tambos')
     }
+    return res.json() as Promise<{
+      items: {
+        id: string
+        name: string
+        bajadaCount: number
+        active: boolean
+        activatedAt?: string | null
+        state?: TamboLifecycleState
+        serviceRequiresOwnerApproval?: boolean
+        latitude?: number | null
+        longitude?: number | null
+        address?: string | null
+      }[]
+    }>
+  },
+
+  async getBillingSummary(token: string) {
+    const res = await fetch(`${API_URL}/tambos/billing-summary`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo cargar el resumen de costo')
+    return res.json() as Promise<BillingSummary>
+  },
+
+  async getEquipmentPreview(
+    token: string,
+    query: { bajadaCount: number } & TamboHardware,
+  ) {
+    const params = new URLSearchParams({
+      bajadaCount: String(query.bajadaCount),
+      pumpSensor: String(query.pumpSensor),
+      flowMeters: String(query.flowMeters),
+      rfidReaders: String(query.rfidReaders),
+    })
+    const res = await fetch(`${API_URL}/tambo-requests/equipment-preview?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo calcular el listado de equipos')
+    return res.json() as Promise<{ items: EquipmentLine[]; hardware: TamboHardware }>
+  },
+
+  async getTamboRequests(token: string) {
+    const res = await fetch(`${API_URL}/tambo-requests`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los pedidos')
+    return res.json() as Promise<{
+      items: TamboRequestItem[]
+      serviceProviders: { id: string; name: string }[]
+    }>
+  },
+
+  async createTamboRequest(
+    token: string,
+    data: {
+      name: string
+      address?: string
+      bajadaCount: number
+      hardware: TamboHardware
+      serviceProviderId?: string | null
+      notes?: string
+    },
+  ) {
+    const res = await fetch(`${API_URL}/tambo-requests`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo enviar el pedido')
+    return res.json() as Promise<{ item: TamboRequestItem }>
+  },
+
+  async acceptTamboRequest(token: string, id: string) {
+    const res = await fetch(`${API_URL}/tambo-requests/${id}/accept`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: '{}',
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo aceptar la cotización')
+    return res.json() as Promise<{ item: TamboRequestItem }>
+  },
+
+  async declineTamboRequest(token: string, id: string, reason?: string) {
+    const res = await fetch(`${API_URL}/tambo-requests/${id}/decline`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ reason }),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo rechazar la cotización')
+    return res.json() as Promise<{ item: TamboRequestItem }>
+  },
+
+  async cancelTamboRequest(token: string, id: string) {
+    const res = await fetch(`${API_URL}/tambo-requests/${id}/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: '{}',
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo cancelar el pedido')
+    return res.json() as Promise<{ item: TamboRequestItem }>
+  },
+
+  async getAdminTamboRequests(token: string, query?: { status?: TamboRequestStatus; tenantId?: string }) {
+    const params = new URLSearchParams()
+    if (query?.status) params.set('status', query.status)
+    if (query?.tenantId) params.set('tenantId', query.tenantId)
+    const q = params.toString() ? `?${params}` : ''
+    const res = await fetch(`${API_URL}/admin/tambo-requests${q}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los pedidos')
+    return res.json() as Promise<{ items: TamboRequestItem[] }>
+  },
+
+  async getAdminTamboRequest(token: string, id: string) {
+    const res = await fetch(`${API_URL}/admin/tambo-requests/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo cargar el pedido')
+    return res.json() as Promise<{ item: TamboRequestItem }>
+  },
+
+  async quoteAdminTamboRequest(
+    token: string,
+    id: string,
+    data: {
+      quoteItems: QuoteItem[]
+      quoteTotal: number
+      quoteCurrency: string
+      quoteValidUntil?: string | null
+      quoteNotes?: string | null
+    },
+  ) {
+    const res = await fetch(`${API_URL}/admin/tambo-requests/${id}/quote`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo cargar la cotización')
+    return res.json() as Promise<{ item: TamboRequestItem }>
+  },
+
+  async rejectAdminTamboRequest(token: string, id: string, reason: string) {
+    const res = await fetch(`${API_URL}/admin/tambo-requests/${id}/reject`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ reason }),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo rechazar el pedido')
+    return res.json() as Promise<{ item: TamboRequestItem }>
+  },
+
+  async createAdminTambo(token: string, requestId: string) {
+    const res = await fetch(`${API_URL}/admin/tambos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ requestId }),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo crear el tambo')
+    return res.json()
+  },
+
+  async activateAdminTambo(token: string, id: string) {
+    const res = await fetch(`${API_URL}/admin/tambos/${id}/activate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: '{}',
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo activar el tambo')
+    return res.json()
+  },
+
+  async getAdminInstallingTambos(token: string) {
+    const res = await fetch(`${API_URL}/admin/tambos?state=installing`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los tambos en instalación')
+    return res.json() as Promise<{ items: InstallingTambo[] }>
+  },
+
+  async updateTambo(
+    token: string,
+    tamboId: string,
+    data: { name?: string; bajadaCount?: number; serviceRequiresOwnerApproval?: boolean },
+  ) {
+    const res = await fetch(`${API_URL}/tambos/${tamboId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo actualizar el tambo')
+    return res.json() as Promise<{ item: { id: string; name: string; bajadaCount: number; active: boolean } }>
+  },
+
+  async setTamboActive(token: string, tamboId: string, active: boolean) {
+    const res = await fetch(`${API_URL}/tambos/${tamboId}/active`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ active }),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo actualizar el estado del tambo')
+    return res.json() as Promise<{ item: { id: string; name: string; active: boolean }; billing: BillingSummary }>
+  },
+
+  async requestDeviceRemoval(token: string, tamboId: string) {
+    const res = await fetch(`${API_URL}/tambos/${tamboId}/request-device-removal`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: '{}',
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo pedir el retiro de dispositivos')
     return res.json()
   },
 
@@ -480,6 +850,65 @@ export const api = {
       throw new Error(body?.error || 'No se pudieron cargar las fotos pendientes')
     }
     return res.json()
+  },
+
+  async getDevices(token: string, tamboId: string) {
+    const res = await fetch(`${API_URL}/devices?tamboId=${encodeURIComponent(tamboId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los dispositivos')
+    return res.json() as Promise<{
+      items: DeviceItem[]
+      canManage: boolean
+      tambo: { id: string; bajadaCount: number } | null
+    }>
+  },
+
+  async createDevice(
+    token: string,
+    data: {
+      tamboId: string
+      kind: DeviceKind
+      bajadaNumber?: number | null
+      label?: string | null
+    },
+  ) {
+    const res = await fetch(`${API_URL}/devices`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo instalar el dispositivo')
+    return res.json() as Promise<{ item: DeviceItem; deviceToken: string }>
+  },
+
+  async rotateDeviceToken(token: string, id: string) {
+    const res = await fetch(`${API_URL}/devices/${id}/rotate-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: '{}',
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo generar la clave nueva')
+    return res.json() as Promise<{ item: DeviceItem; deviceToken: string }>
+  },
+
+  async retireDevice(token: string, id: string) {
+    const res = await fetch(`${API_URL}/devices/${id}/retire`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: '{}',
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo retirar el dispositivo')
+    return res.json() as Promise<{ item: DeviceItem }>
   },
 
   async reviewPhoto(token: string, animalId: string, photoId: string) {

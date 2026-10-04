@@ -201,7 +201,7 @@ Mensajes de feedback **dentro del formulario**, arriba de los botones — nunca 
 - Íconos simples, trazo medio; preferir pocos.
 - Fotos de animales/piezas: ratio claro, esquinas `radius.md`.
 - No depender solo del color (acompañar con texto).
-- **Menú mobile (provisional):** emoji nativo en botones grandes (`🐄` Ordeñe, `💊` Tratamiento, `❌` Retiros = leche que no se mezcla) + texto claro. Se puede cambiar después a vector icons o ilustraciones propias.
+- **Menú mobile (provisional):** emoji nativo en botones grandes (`🐄` Ordeñe, `💊` Tratamiento, `❌` Retiros = leche que no se mezcla) + texto claro. En el celular, las piezas de ordeñe y frío se llaman **Máquinas** (no "Equipo": en el web "Equipo" son las personas). Se puede cambiar después a vector icons o ilustraciones propias.
 
 ---
 

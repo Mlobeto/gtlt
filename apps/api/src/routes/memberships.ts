@@ -3,10 +3,13 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma.js";
 import { HttpError } from "../lib/http-error.js";
+import { authContextFromMembership } from "../lib/access.js";
+import { signAccessToken } from "../lib/auth-tokens.js";
 import { createInvite } from "../lib/invites.js";
 import { requireTamboInTenant } from "../lib/tambo-scope.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
+import type { Role } from "@prisma/client";
 
 export const membershipsRouter = Router();
 
@@ -38,6 +41,47 @@ const inviteMemberSchema = z
 const acceptInviteSchema = z.object({
   inviteToken: z.string().min(32),
 });
+
+const tamberoRoleSchema = z.object({
+  enabled: z.boolean(),
+});
+
+membershipsRouter.patch(
+  "/me/tambero-role",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN"),
+  async (req, res) => {
+    const parsed = tamberoRoleSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid body", details: parsed.error.flatten() });
+      return;
+    }
+
+    const auth = req.auth!;
+    const membership = await prisma.membership.findUnique({
+      where: { tenantId_userId: { tenantId: auth.tenantId, userId: auth.userId } },
+      include: { tambos: { select: { tamboId: true } } },
+    });
+    if (!membership) throw new HttpError(404, "Membership not found");
+
+    let roles: Role[] = [...membership.roles];
+    if (parsed.data.enabled) {
+      if (!roles.includes("TAMBERO")) roles = [...roles, "TAMBERO"];
+    } else {
+      roles = roles.filter((role) => role !== "TAMBERO");
+    }
+
+    const updated = await prisma.membership.update({
+      where: { id: membership.id },
+      data: { roles },
+      include: { tambos: { select: { tamboId: true } } },
+    });
+
+    const ctx = authContextFromMembership(auth.userId, updated);
+    const accessToken = signAccessToken(ctx);
+    res.json({ roles: updated.roles, accessToken });
+  },
+);
 
 /**
  * Dueño/tambero invita técnico a un tambo.
