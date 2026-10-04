@@ -4,10 +4,34 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { HttpError } from "../lib/http-error.js";
 import { parseInstalledAt } from "../lib/part-date.js";
+import { requireValidAttributes, serializePartTypeField, toFieldDef } from "../lib/part-attributes.js";
 import { withPartLife } from "../lib/part-life-attach.js";
 import { requireTamboInTenant } from "../lib/tambo-scope.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
+
+const partTypeWithFields = {
+  include: {
+    fields: { where: { active: true }, orderBy: { sortOrder: "asc" as const } },
+  },
+};
+
+const instanceInclude = {
+  partType: partTypeWithFields,
+  coldDetail: true,
+};
+
+function serializeInstance<T extends { partType: { fields: Parameters<typeof serializePartTypeField>[0][] } }>(
+  item: T,
+) {
+  return {
+    ...item,
+    partType: {
+      ...item.partType,
+      fields: item.partType.fields.map(serializePartTypeField),
+    },
+  };
+}
 
 export const partInstancesRouter = Router();
 
@@ -30,6 +54,7 @@ const createSchema = z.object({
   photoUrl: z.string().max(2000).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
   clientMutationId: z.string().min(1).max(100).optional(),
+  attributes: z.record(z.string(), z.unknown()).optional(),
   coldDetail: z
     .object({
       brand: z.string().min(1).max(120),
@@ -46,6 +71,7 @@ const patchSchema = z.object({
   installedAtApprox: z.boolean().optional(),
   brandModel: z.string().max(200).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
+  attributes: z.record(z.string(), z.unknown()).optional(),
 });
 
 function mapPrismaError(err: unknown): never {
@@ -56,12 +82,22 @@ function mapPrismaError(err: unknown): never {
 }
 
 async function assertCreatablePartType(partTypeId: string) {
-  const partType = await prisma.partType.findUnique({ where: { id: partTypeId } });
+  const partType = await prisma.partType.findUnique({
+    where: { id: partTypeId },
+    include: { fields: { where: { active: true }, orderBy: { sortOrder: "asc" } } },
+  });
   if (!partType) throw new HttpError(404, "Part type not found");
   if (!partType.active) {
     throw new HttpError(400, "Este tipo de pieza ya no se ofrece para cargas nuevas.");
   }
   return partType;
+}
+
+function validatedAttributes(
+  partType: { fields: Parameters<typeof toFieldDef>[0][] },
+  attributes: unknown,
+) {
+  return requireValidAttributes(partType.fields.map(toFieldDef), attributes ?? {});
 }
 
 /** Listado de equipo del tambo (vigentes por defecto). Acceso: farm + TECNICO. */
@@ -86,14 +122,12 @@ partInstancesRouter.get(
         tamboId,
         ...(activeOnly ? { replacedAt: null } : {}),
       },
-      include: {
-        partType: true,
-        coldDetail: true,
-      },
+      include: instanceInclude,
       orderBy: [{ bajadaNumber: "asc" }, { installedAt: "desc" }],
     });
 
-    res.json({ items: await withPartLife(auth.tenantId, items) });
+    const enriched = await withPartLife(auth.tenantId, items);
+    res.json({ items: enriched.map(serializeInstance) });
   },
 );
 
@@ -112,6 +146,7 @@ partInstancesRouter.post(
     const data = parsed.data;
     const tambo = await requireTamboInTenant(auth, data.tamboId);
     const partType = await assertCreatablePartType(data.partTypeId);
+    const attributes = validatedAttributes(partType, data.attributes);
     const installedAt = parseInstalledAt(data.installedAt);
 
     if (partType.appliesPerBajada) {
@@ -138,26 +173,14 @@ partInstancesRouter.post(
           brandModel: data.brandModel ?? null,
           photoUrl: data.photoUrl ?? null,
           notes: data.notes ?? null,
+          attributes,
           clientMutationId: data.clientMutationId,
           createdById: auth.userId,
-          ...(data.coldDetail
-            ? {
-                coldDetail: {
-                  create: {
-                    brand: data.coldDetail.brand,
-                    model: data.coldDetail.model,
-                    capacityLiters: data.coldDetail.capacityLiters,
-                    coolingCapacity: data.coldDetail.coolingCapacity,
-                    controllerModel: data.coldDetail.controllerModel ?? null,
-                  },
-                },
-              }
-            : {}),
         },
-        include: { partType: true, coldDetail: true },
+        include: instanceInclude,
       });
       const [enriched] = await withPartLife(auth.tenantId, [item]);
-      res.status(201).json({ item: enriched });
+      res.status(201).json({ item: serializeInstance(enriched) });
     } catch (err) {
       mapPrismaError(err);
     }
@@ -187,7 +210,8 @@ partInstancesRouter.post(
     });
     if (!previous) throw new HttpError(404, "Active part instance not found");
     await requireTamboInTenant(auth, previous.tamboId);
-    await assertCreatablePartType(body.data.partTypeId);
+    const partType = await assertCreatablePartType(body.data.partTypeId);
+    const attributes = validatedAttributes(partType, body.data.attributes);
     const installedAt = parseInstalledAt(body.data.installedAt);
 
     const data = body.data;
@@ -209,28 +233,16 @@ partInstancesRouter.post(
             brandModel: data.brandModel ?? null,
             photoUrl: data.photoUrl ?? null,
             notes: data.notes ?? null,
+            attributes,
             clientMutationId: data.clientMutationId,
             createdById: auth.userId,
-            ...(data.coldDetail
-              ? {
-                  coldDetail: {
-                    create: {
-                      brand: data.coldDetail.brand,
-                      model: data.coldDetail.model,
-                      capacityLiters: data.coldDetail.capacityLiters,
-                      coolingCapacity: data.coldDetail.coolingCapacity,
-                      controllerModel: data.coldDetail.controllerModel ?? null,
-                    },
-                  },
-                }
-              : {}),
           },
-          include: { partType: true, coldDetail: true },
+          include: instanceInclude,
         });
         return { previous: voided, item: created };
       });
       const [item] = await withPartLife(auth.tenantId, [result.item]);
-      res.status(201).json({ previous: result.previous, item });
+      res.status(201).json({ previous: result.previous, item: serializeInstance(item) });
     } catch (err) {
       mapPrismaError(err);
     }
@@ -255,9 +267,15 @@ partInstancesRouter.patch(
         tenantId: auth.tenantId,
         replacedAt: null,
       },
+      include: { partType: { include: { fields: { where: { active: true } } } } },
     });
     if (!existing) throw new HttpError(404, "Active part instance not found");
     await requireTamboInTenant(auth, existing.tamboId);
+
+    const attributes =
+      parsed.data.attributes !== undefined
+        ? validatedAttributes(existing.partType, parsed.data.attributes)
+        : undefined;
 
     const item = await prisma.partInstance.update({
       where: { id: existing.id },
@@ -270,10 +288,11 @@ partInstancesRouter.patch(
           : {}),
         ...(parsed.data.brandModel !== undefined ? { brandModel: parsed.data.brandModel } : {}),
         ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes } : {}),
+        ...(attributes !== undefined ? { attributes } : {}),
       },
-      include: { partType: true, coldDetail: true },
+      include: instanceInclude,
     });
     const [enriched] = await withPartLife(auth.tenantId, [item]);
-    res.json({ item: enriched });
+    res.json({ item: serializeInstance(enriched) });
   },
 );

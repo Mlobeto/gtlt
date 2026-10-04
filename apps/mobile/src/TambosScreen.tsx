@@ -25,9 +25,11 @@ import {
   type EquipmentLine,
   type TamboHardware,
   type TamboItem,
+  type PowerSupply,
   type TamboRequestItem,
   type TamboRequestStatus,
 } from "./api";
+import { powerSupplyLabel } from "./part-fields";
 import { colors, font, radius, space, touch } from "./theme";
 
 const REQUEST_STATUS: Record<TamboRequestStatus, string> = {
@@ -99,6 +101,8 @@ export function TambosScreen({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editBajadas, setEditBajadas] = useState("");
+  const [editPower, setEditPower] = useState<PowerSupply | null>(null);
+  const [powerSupply, setPowerSupply] = useState<PowerSupply | null>(null);
 
   const load = useCallback(async () => {
     if (!online) return;
@@ -146,6 +150,10 @@ export function TambosScreen({
       onStatus("Nombre (2–80) y bajadas (1–60) son obligatorios.");
       return;
     }
+    if (hasHardware(hardware) && !powerSupply) {
+      onStatus("Si pedís hardware hay que indicar la corriente.");
+      return;
+    }
     if (hasHardware(hardware) && !providerId) {
       onStatus("Si pedís hardware hay que elegir un proveedor.");
       return;
@@ -159,6 +167,7 @@ export function TambosScreen({
         hardware,
         serviceProviderId: hasHardware(hardware) ? providerId : null,
         notes: notes.trim() || undefined,
+        powerSupply,
       });
       setShowForm(false);
       setName("");
@@ -166,6 +175,7 @@ export function TambosScreen({
       setNotes("");
       setHardware({ pumpSensor: false, flowMeters: false, rfidReaders: false });
       setProviderId("");
+      setPowerSupply(null);
       await load();
       onStatus("Pedido enviado.");
     } catch (err) {
@@ -179,7 +189,11 @@ export function TambosScreen({
     const count = Number(editBajadas);
     setBusy(true);
     try {
-      await updateTambo(token, id, { name: editName.trim(), bajadaCount: count });
+      await updateTambo(token, id, {
+        name: editName.trim(),
+        bajadaCount: count,
+        powerSupply: editPower,
+      });
       setEditingId(null);
       await load();
       onStatus("Tambo actualizado.");
@@ -303,6 +317,25 @@ export function TambosScreen({
                 value={editBajadas}
                 onChangeText={setEditBajadas}
               />
+              <Text style={styles.help}>Corriente</Text>
+              <View style={styles.wrapRow}>
+                {(
+                  [
+                    ["MONOPHASE", "Monofásica"],
+                    ["THREEPHASE", "Trifásica"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <Pressable
+                    key={value}
+                    style={[styles.choice, editPower === value && styles.choiceOn]}
+                    onPress={() => setEditPower(value)}
+                  >
+                    <Text style={[styles.choiceText, editPower === value && styles.choiceTextOn]}>
+                      {label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
               <Pressable style={styles.button} onPress={() => void saveEdit(t.id)} disabled={busy}>
                 <Text style={styles.buttonText}>Guardar</Text>
               </Pressable>
@@ -317,7 +350,8 @@ export function TambosScreen({
                 {t.id === currentTamboId ? " · actual" : ""}
               </Text>
               <Text style={styles.itemMeta}>
-                {t.bajadaCount} bajadas · {tamboStateLabel(t)}
+                {t.bajadaCount} bajadas · {tamboStateLabel(t)} · Corriente:{" "}
+                {powerSupplyLabel(t.powerSupply)}
               </Text>
               {t.active !== false && t.id !== currentTamboId ? (
                 <Pressable style={styles.buttonSecondary} onPress={() => onSwitch(t)}>
@@ -329,6 +363,7 @@ export function TambosScreen({
                   setEditingId(t.id);
                   setEditName(t.name);
                   setEditBajadas(String(t.bajadaCount));
+                  setEditPower(t.powerSupply ?? null);
                 }}
               >
                 <Text style={styles.link}>Editar</Text>
@@ -377,6 +412,28 @@ export function TambosScreen({
               </Text>
             </Pressable>
           ))}
+          <Text style={styles.help}>
+            Corriente{hasHardware(hardware) ? " *" : ""} — define qué motores y equipos se pueden
+            instalar
+          </Text>
+          <View style={styles.wrapRow}>
+            {(
+              [
+                ["MONOPHASE", "Monofásica"],
+                ["THREEPHASE", "Trifásica"],
+              ] as const
+            ).map(([value, label]) => (
+              <Pressable
+                key={value}
+                style={[styles.choice, powerSupply === value && styles.choiceOn]}
+                onPress={() => setPowerSupply(value)}
+              >
+                <Text style={[styles.choiceText, powerSupply === value && styles.choiceTextOn]}>
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
           {hasHardware(hardware) ? (
             <View style={styles.form}>
               <Text style={styles.help}>Proveedor</Text>
@@ -426,7 +483,8 @@ export function TambosScreen({
           <Text style={styles.itemTitle}>{r.name}</Text>
           <Text style={styles.itemMeta}>
             {REQUEST_STATUS[r.status]} · {r.bajadaCount} bajadas
-            {r.serviceProvider ? ` · ${r.serviceProvider.name}` : " · solo software"}
+            {r.serviceProvider ? ` · ${r.serviceProvider.name}` : " · solo software"} ·
+            Corriente: {powerSupplyLabel(r.powerSupply)}
           </Text>
           {(r.equipmentList ?? []).map((line) => (
             <Text key={line.kind} style={styles.help}>
@@ -527,6 +585,20 @@ const styles = StyleSheet.create({
   },
   form: { gap: space.sm },
   checkRow: { paddingVertical: space.xs },
+  wrapRow: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
+  choice: {
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    minHeight: touch.min,
+    justifyContent: "center",
+  },
+  choiceOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  choiceText: { fontSize: font.body, color: colors.textMuted, fontWeight: "600" },
+  choiceTextOn: { color: colors.primaryPressed },
   link: {
     color: colors.textMuted,
     textAlign: "center",

@@ -58,6 +58,7 @@ tambosRouter.get("/", authenticate, async (req, res) => {
       latitude: true,
       longitude: true,
       address: true,
+      powerSupply: true,
     },
     orderBy: { name: "asc" },
   });
@@ -486,6 +487,7 @@ tambosRouter.patch(
         serviceRequiresOwnerApproval: z.boolean().optional(),
         name: z.string().trim().min(2).max(80).optional(),
         bajadaCount: z.number().int().min(1).max(60).optional(),
+        powerSupply: z.enum(["MONOPHASE", "THREEPHASE"]).nullable().optional(),
       })
       .safeParse(req.body);
     if (!parsed.success) {
@@ -556,13 +558,18 @@ tambosRouter.patch(
         ...(parsed.data.bajadaCount != null
           ? { bajadaCount: parsed.data.bajadaCount }
           : {}),
+        ...(parsed.data.powerSupply !== undefined
+          ? { powerSupply: parsed.data.powerSupply }
+          : {}),
       },
       select: {
         id: true,
         name: true,
         bajadaCount: true,
         active: true,
+        activatedAt: true,
         serviceRequiresOwnerApproval: true,
+        powerSupply: true,
       },
     });
 

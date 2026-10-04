@@ -94,6 +94,8 @@ export type QuoteItem = {
   currency: string;
 };
 
+export type PowerSupply = "MONOPHASE" | "THREEPHASE";
+
 export type TamboRequestItem = {
   id: string;
   name: string;
@@ -102,6 +104,7 @@ export type TamboRequestItem = {
   equipmentList: EquipmentLine[];
   serviceProviderId: string | null;
   notes: string | null;
+  powerSupply?: PowerSupply | null;
   status: TamboRequestStatus;
   quoteItems: QuoteItem[] | null;
   quoteTotal: number | null;
@@ -123,6 +126,7 @@ export type TamboItem = {
   latitude?: number | null;
   longitude?: number | null;
   address?: string | null;
+  powerSupply?: PowerSupply | null;
 };
 
 export function fetchTambos(token: string, includeArchived = false) {
@@ -166,6 +170,7 @@ export function createTamboRequest(
     hardware: TamboHardware;
     serviceProviderId?: string | null;
     notes?: string;
+    powerSupply?: PowerSupply | null;
   },
 ) {
   return request<{ item: TamboRequestItem }>("/tambo-requests", {
@@ -202,7 +207,12 @@ export function cancelTamboRequest(token: string, id: string) {
 export function updateTambo(
   token: string,
   tamboId: string,
-  payload: { name?: string; bajadaCount?: number; serviceRequiresOwnerApproval?: boolean },
+  payload: {
+    name?: string;
+    bajadaCount?: number;
+    serviceRequiresOwnerApproval?: boolean;
+    powerSupply?: PowerSupply | null;
+  },
 ) {
   return request<{ item: TamboItem }>(`/tambos/${tamboId}`, {
     method: "PATCH",
@@ -677,7 +687,8 @@ export type PartInstanceItem = {
   installedAtApprox?: boolean;
   photoUrl: string | null;
   notes: string | null;
-  partType: { id: string; code: string; name: string; pattern: string };
+  attributes?: Record<string, string | number | boolean>;
+  partType: { id: string; code: string; name: string; pattern: string; fields?: PartTypeField[] };
   life?: PartLife;
   effectiveUsageThreshold?: number | null;
   effectiveLifeMonths?: number | null;
@@ -690,12 +701,30 @@ export type PartInstanceItem = {
   } | null;
 };
 
+export type PartFieldKind = "TEXT" | "NUMBER" | "SELECT" | "BOOLEAN";
+
+export type PartTypeField = {
+  id: string;
+  key: string;
+  label: string;
+  kind: PartFieldKind;
+  unit: string | null;
+  options: string[];
+  required: boolean;
+  min: number | null;
+  max: number | null;
+  helpText: string | null;
+  sortOrder: number;
+  active?: boolean;
+};
+
 export type PartTypeItem = {
   id: string;
   code: string;
   name: string;
   pattern: "USAGE_BASED" | "REACTIVE" | "BRANDED";
   appliesPerBajada: boolean;
+  fields?: PartTypeField[];
 };
 
 export type AppNotification = {
@@ -775,6 +804,7 @@ export function fetchTechnicianWorkspace(token: string, tamboId: string) {
       latitude?: number | null;
       longitude?: number | null;
       address?: string | null;
+      powerSupply?: PowerSupply | null;
     } | null;
     partInstances: PartInstanceItem[];
     serviceRequests: ServiceRequestItem[];
@@ -865,6 +895,7 @@ type PartInstancePayload = {
   photoUrl?: string | null;
   notes?: string | null;
   clientMutationId?: string;
+  attributes?: Record<string, string | number | boolean>;
 };
 
 export function createPartInstance(token: string, payload: PartInstancePayload) {
@@ -883,6 +914,7 @@ export function patchPartInstance(
     installedAtApprox?: boolean;
     brandModel?: string | null;
     notes?: string | null;
+    attributes?: Record<string, string | number | boolean>;
   },
 ) {
   return request<{ item: PartInstanceItem }>(`/part-instances/${partInstanceId}`, {

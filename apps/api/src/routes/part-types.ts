@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
+import { serializePartTypeField } from "../lib/part-attributes.js";
 import { authenticate } from "../middleware/authenticate.js";
 
 export const partTypesRouter = Router();
@@ -12,7 +13,15 @@ partTypesRouter.get("/", authenticate, async (req, res) => {
 
   const items = await prisma.partType.findMany({
     where: includeInactive && isDeveloper ? {} : { active: true },
+    include: {
+      fields: { where: { active: true }, orderBy: { sortOrder: "asc" } },
+    },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
-  res.json({ items });
+  res.json({
+    items: items.map((item) => ({
+      ...item,
+      fields: item.fields.map(serializePartTypeField),
+    })),
+  });
 });

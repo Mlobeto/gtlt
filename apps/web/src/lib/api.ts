@@ -76,6 +76,26 @@ export type QuoteItem = {
   currency: string
 }
 
+export type PowerSupply = 'MONOPHASE' | 'THREEPHASE'
+
+export type PartFieldKind = 'TEXT' | 'NUMBER' | 'SELECT' | 'BOOLEAN'
+
+export type PartTypeField = {
+  id: string
+  partTypeId: string
+  key: string
+  label: string
+  kind: PartFieldKind
+  unit: string | null
+  options: string[]
+  required: boolean
+  min: number | null
+  max: number | null
+  helpText: string | null
+  sortOrder: number
+  active: boolean
+}
+
 export type TamboRequestItem = {
   id: string
   tenantId: string
@@ -86,6 +106,7 @@ export type TamboRequestItem = {
   equipmentList: EquipmentLine[]
   serviceProviderId: string | null
   notes: string | null
+  powerSupply?: PowerSupply | null
   status: TamboRequestStatus
   quoteItems: QuoteItem[] | null
   quoteTotal: number | null
@@ -110,6 +131,7 @@ export type InstallingTambo = {
   name: string
   address: string | null
   bajadaCount: number
+  powerSupply?: PowerSupply | null
   active: boolean
   activatedAt: string | null
   state: TamboLifecycleState
@@ -164,6 +186,7 @@ export type AdminPartType = {
   sortOrder: number
   active: boolean
   installedCount: number
+  fields?: PartTypeField[]
 }
 
 export type DeviceItem = {
@@ -426,6 +449,7 @@ export const api = {
       hardware: TamboHardware
       serviceProviderId?: string | null
       notes?: string
+      powerSupply?: PowerSupply | null
     },
   ) {
     const res = await fetch(`${API_URL}/tambo-requests`, {
@@ -572,7 +596,12 @@ export const api = {
   async updateTambo(
     token: string,
     tamboId: string,
-    data: { name?: string; bajadaCount?: number; serviceRequiresOwnerApproval?: boolean },
+    data: {
+      name?: string
+      bajadaCount?: number
+      serviceRequiresOwnerApproval?: boolean
+      powerSupply?: PowerSupply | null
+    },
   ) {
     const res = await fetch(`${API_URL}/tambos/${tamboId}`, {
       method: 'PATCH',
@@ -1054,6 +1083,75 @@ export const api = {
       body: JSON.stringify(data),
     })
     if (!res.ok) throw await toApiError(res, 'No se pudo actualizar la pieza')
+    return res.json()
+  },
+
+  async createAdminPartTypeField(
+    token: string,
+    partTypeId: string,
+    data: {
+      label: string
+      kind: PartFieldKind
+      unit?: string | null
+      options?: string[]
+      required?: boolean
+      min?: number | null
+      max?: number | null
+      helpText?: string | null
+      sortOrder?: number
+    },
+  ) {
+    const res = await fetch(`${API_URL}/admin/part-types/${partTypeId}/fields`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo crear el campo')
+    return res.json() as Promise<{ item: PartTypeField }>
+  },
+
+  async updateAdminPartTypeField(
+    token: string,
+    partTypeId: string,
+    fieldId: string,
+    data: Partial<{
+      label: string
+      kind: PartFieldKind
+      unit: string | null
+      options: string[]
+      required: boolean
+      min: number | null
+      max: number | null
+      helpText: string | null
+      sortOrder: number
+      active: boolean
+    }>,
+  ) {
+    const res = await fetch(`${API_URL}/admin/part-types/${partTypeId}/fields/${fieldId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo actualizar el campo')
+    return res.json() as Promise<{ item: PartTypeField }>
+  },
+
+  async patchAdminTambo(token: string, id: string, data: { powerSupply: PowerSupply | null }) {
+    const res = await fetch(`${API_URL}/admin/tambos/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo actualizar el tambo')
     return res.json()
   },
 

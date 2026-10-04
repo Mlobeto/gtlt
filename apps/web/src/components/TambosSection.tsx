@@ -8,6 +8,7 @@ import {
   type EquipmentLine,
   type TamboHardware,
   type TamboLifecycleState,
+  type PowerSupply,
   type TamboRequestItem,
   type TamboRequestStatus,
 } from '../lib/api'
@@ -36,6 +37,13 @@ type TamboRow = {
   active: boolean
   activatedAt?: string | null
   state?: TamboLifecycleState
+  powerSupply?: PowerSupply | null
+}
+
+function powerLabel(value: PowerSupply | null | undefined) {
+  if (value === 'MONOPHASE') return 'Monofásica'
+  if (value === 'THREEPHASE') return 'Trifásica'
+  return 'Sin informar'
 }
 
 function money(n: number) {
@@ -104,6 +112,8 @@ export function TambosSection({ token }: { token: string }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editBajadas, setEditBajadas] = useState('')
+  const [editPower, setEditPower] = useState<PowerSupply | ''>('')
+  const [powerSupply, setPowerSupply] = useState<PowerSupply | ''>('')
   const [deviceBlock, setDeviceBlock] = useState<{ tamboId: string; count: number } | null>(null)
   const [bajadaBlock, setBajadaBlock] = useState<string>('')
 
@@ -165,6 +175,10 @@ export function TambosSection({ token }: { token: string }) {
       setError('Nombre (2–80) y bajadas (1–60) son obligatorios.')
       return
     }
+    if (hasHardware(hardware) && !powerSupply) {
+      setError('Si pedís hardware hay que indicar la corriente (monofásica o trifásica).')
+      return
+    }
     if (hasHardware(hardware) && !providerId) {
       setError('Si pedís hardware hay que elegir un proveedor del catálogo.')
       return
@@ -179,6 +193,7 @@ export function TambosSection({ token }: { token: string }) {
         hardware,
         serviceProviderId: hasHardware(hardware) ? providerId : null,
         notes: notes.trim() || undefined,
+        powerSupply: powerSupply || null,
       })
       setShowForm(false)
       setName('')
@@ -186,6 +201,7 @@ export function TambosSection({ token }: { token: string }) {
       setNotes('')
       setHardware({ pumpSensor: false, flowMeters: false, rfidReaders: false })
       setProviderId('')
+      setPowerSupply('')
       setStatus('Pedido enviado.')
       await load()
     } catch (err) {
@@ -204,6 +220,7 @@ export function TambosSection({ token }: { token: string }) {
       await api.updateTambo(token, id, {
         name: editName.trim(),
         bajadaCount: count,
+        powerSupply: editPower || null,
       })
       setEditingId(null)
       setStatus('Tambo actualizado.')
@@ -337,6 +354,15 @@ export function TambosSection({ token }: { token: string }) {
                       value={editBajadas}
                       onChange={(e) => setEditBajadas(e.target.value)}
                     />
+                    <SelectField
+                      label="Corriente"
+                      value={editPower}
+                      onChange={(e) => setEditPower(e.target.value as PowerSupply | '')}
+                    >
+                      <option value="">Sin informar</option>
+                      <option value="MONOPHASE">Monofásica</option>
+                      <option value="THREEPHASE">Trifásica</option>
+                    </SelectField>
                     <div className="flex flex-wrap gap-2">
                       <Button disabled={busy} onClick={() => void saveEdit(t.id)}>
                         Guardar
@@ -352,7 +378,9 @@ export function TambosSection({ token }: { token: string }) {
                       <p className="font-semibold text-ink">{t.name}</p>
                       {stateBadge(tamboState(t))}
                     </div>
-                    <p className="text-sm text-ink-muted">{t.bajadaCount} bajadas</p>
+                    <p className="text-sm text-ink-muted">
+                      {t.bajadaCount} bajadas · Corriente: {powerLabel(t.powerSupply)}
+                    </p>
                   </>
                 )}
 
@@ -379,6 +407,7 @@ export function TambosSection({ token }: { token: string }) {
                         setEditingId(t.id)
                         setEditName(t.name)
                         setEditBajadas(String(t.bajadaCount))
+                        setEditPower(t.powerSupply ?? '')
                         setBajadaBlock('')
                       }}
                     >
@@ -432,6 +461,16 @@ export function TambosSection({ token }: { token: string }) {
                   </label>
                 ))}
               </div>
+              <SelectField
+                label="Corriente eléctrica"
+                hint="Define qué motores y equipos se pueden instalar. Obligatoria si hay hardware."
+                value={powerSupply}
+                onChange={(e) => setPowerSupply(e.target.value as PowerSupply | '')}
+              >
+                <option value="">Sin informar</option>
+                <option value="MONOPHASE">Monofásica</option>
+                <option value="THREEPHASE">Trifásica</option>
+              </SelectField>
               {hasHardware(hardware) ? (
                 <SelectField label="Proveedor" value={providerId} onChange={(e) => setProviderId(e.target.value)}>
                   <option value="">Elegí un proveedor</option>
@@ -488,7 +527,8 @@ export function TambosSection({ token }: { token: string }) {
                 </div>
                 <p className="text-sm text-ink-muted">
                   {r.bajadaCount} bajadas
-                  {r.serviceProvider ? ` · ${r.serviceProvider.name}` : ' · solo software'}
+                  {r.serviceProvider ? ` · ${r.serviceProvider.name}` : ' · solo software'} ·
+                  Corriente: {powerLabel(r.powerSupply)}
                 </p>
                 <ul className="text-sm text-ink-muted space-y-1">
                   {(r.equipmentList ?? []).length === 0 ? (

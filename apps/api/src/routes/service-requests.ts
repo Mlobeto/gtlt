@@ -222,7 +222,12 @@ serviceRequestsRouter.get(
     const [parts, requests, tambo] = await Promise.all([
       prisma.partInstance.findMany({
         where: { tenantId: auth.tenantId, tamboId, replacedAt: null },
-        include: { partType: true, coldDetail: true },
+        include: {
+          partType: {
+            include: { fields: { where: { active: true }, orderBy: { sortOrder: "asc" } } },
+          },
+          coldDetail: true,
+        },
         orderBy: [{ bajadaNumber: "asc" }, { installedAt: "desc" }],
       }),
       prisma.serviceRequest.findMany({
@@ -254,6 +259,7 @@ serviceRequestsRouter.get(
           latitude: true,
           longitude: true,
           address: true,
+          powerSupply: true,
         },
       }),
     ]);

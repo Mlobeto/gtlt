@@ -57,6 +57,7 @@ adminTambosRouter.get(
           name: t.name,
           address: t.address,
           bajadaCount: t.bajadaCount,
+          powerSupply: t.powerSupply,
           active: t.active,
           activatedAt: t.activatedAt,
           state: tamboLifecycleState(t),
@@ -113,6 +114,7 @@ adminTambosRouter.post(
           address: request.address,
           bajadaCount: request.bajadaCount,
           defaultServiceProviderId: request.serviceProviderId,
+          powerSupply: request.powerSupply,
           active: true,
           activatedAt: null,
         },
@@ -160,6 +162,39 @@ adminTambosRouter.post(
     const item = await prisma.tambo.update({
       where: { id: existing.id },
       data: { activatedAt: new Date() },
+    });
+
+    res.json({
+      item: {
+        ...item,
+        state: tamboLifecycleState(item),
+      },
+    });
+  },
+);
+
+adminTambosRouter.patch(
+  "/tambos/:id",
+  authenticate,
+  requireRoles("DESARROLLADORA"),
+  async (req, res) => {
+    const idParsed = z.string().uuid().safeParse(req.params.id);
+    const body = z
+      .object({
+        powerSupply: z.enum(["MONOPHASE", "THREEPHASE"]).nullable(),
+      })
+      .safeParse(req.body);
+    if (!idParsed.success || !body.success) {
+      res.status(400).json({ error: "Invalid body" });
+      return;
+    }
+
+    const existing = await prisma.tambo.findUnique({ where: { id: idParsed.data } });
+    if (!existing) throw new HttpError(404, "Tambo not found");
+
+    const item = await prisma.tambo.update({
+      where: { id: existing.id },
+      data: { powerSupply: body.data.powerSupply },
     });
 
     res.json({

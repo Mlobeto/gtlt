@@ -65,6 +65,7 @@ myRouter.get("/service-requests", authenticate, async (req, res) => {
           latitude: true,
           longitude: true,
           address: true,
+          powerSupply: true,
         },
       },
     },
@@ -87,6 +88,7 @@ myRouter.get("/service-requests", authenticate, async (req, res) => {
         latitude: row.tambo.latitude == null ? null : Number(row.tambo.latitude),
         longitude: row.tambo.longitude == null ? null : Number(row.tambo.longitude),
         address: row.tambo.address,
+        powerSupply: row.tambo.powerSupply,
       },
     })),
   });

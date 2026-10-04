@@ -25,6 +25,7 @@ const createSchema = z.object({
   hardware: hardwareSchema,
   serviceProviderId: z.string().uuid().optional().nullable(),
   notes: z.string().trim().max(2000).optional().nullable(),
+  powerSupply: z.enum(["MONOPHASE", "THREEPHASE"]).optional().nullable(),
 });
 
 function parseBoolQuery(value: unknown): boolean {
@@ -71,6 +72,12 @@ tamboRequestsRouter.post(
     const serviceProviderId = parsed.data.serviceProviderId ?? null;
 
     if (wantsHardware) {
+      if (!parsed.data.powerSupply) {
+        throw new HttpError(
+          400,
+          "Si el pedido incluye hardware hay que indicar la corriente (monofásica o trifásica).",
+        );
+      }
       if (!serviceProviderId) {
         throw new HttpError(
           400,
@@ -96,6 +103,7 @@ tamboRequestsRouter.post(
         equipmentList: calculateEquipmentList(bajadaCount, hardware),
         serviceProviderId: wantsHardware ? serviceProviderId : null,
         notes,
+        powerSupply: parsed.data.powerSupply ?? null,
         status: "SENT",
       },
       include: tamboRequestInclude,

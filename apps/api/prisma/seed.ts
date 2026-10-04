@@ -127,6 +127,17 @@ const PART_TYPES: PartTypeSeed[] = [
     description: "Copas del conjunto de ordeñe. Se cambian cuando fallan.",
   },
   {
+    code: "VACUUM_PUMP",
+    name: "Bomba de vacío",
+    pattern: "REACTIVE",
+    defaultUsageThreshold: null,
+    defaultLifeMonths: null,
+    appliesPerBajada: false,
+    active: true,
+    sortOrder: 95,
+    description: "Bomba de vacío a nivel tambo. Ficha: modelo, caudal nominal, motor.",
+  },
+  {
     code: "VACUUM_REGULATOR",
     name: "Regulador de vacío",
     pattern: "REACTIVE",
@@ -203,7 +214,7 @@ const PART_TYPES: PartTypeSeed[] = [
     active: true,
     sortOrder: 200,
     description:
-      "Tanque / equipo de frío. Campos propios en ColdEquipmentDetail (marca, modelo, capacidad, controlador EKC). No se crea desde el catálogo.",
+      "Tanque / equipo de frío. La ficha (marca, modelo, capacidad, condensadora) se define con campos del tipo.",
   },
 ];
 
@@ -227,6 +238,125 @@ async function seedPartTypes() {
 
   const count = await prisma.partType.count();
   console.log(`PartType seed OK: ${count} tipos en catálogo.`);
+}
+
+type PartFieldSeed = {
+  key: string;
+  label: string;
+  kind: "TEXT" | "NUMBER" | "SELECT" | "BOOLEAN";
+  unit?: string | null;
+  options?: string[];
+  required?: boolean;
+  helpText?: string | null;
+  sortOrder: number;
+};
+
+const VACUUM_PUMP_FIELDS: PartFieldSeed[] = [
+  { key: "model", label: "Modelo", kind: "TEXT", required: true, sortOrder: 10 },
+  {
+    key: "nominal_flow_lpm",
+    label: "Caudal nominal de fábrica",
+    kind: "NUMBER",
+    unit: "L/min",
+    required: true,
+    helpText: "Caudal de aire libre según la ficha del fabricante",
+    sortOrder: 20,
+  },
+  {
+    key: "motor_phase",
+    label: "Motor",
+    kind: "SELECT",
+    options: ["Monofásico", "Trifásico"],
+    required: true,
+    sortOrder: 30,
+  },
+  {
+    key: "motor_power_hp",
+    label: "Potencia del motor",
+    kind: "NUMBER",
+    unit: "HP",
+    sortOrder: 40,
+  },
+];
+
+const COLD_TANK_FIELDS: PartFieldSeed[] = [
+  { key: "brand", label: "Marca", kind: "TEXT", sortOrder: 10 },
+  { key: "model", label: "Modelo", kind: "TEXT", sortOrder: 20 },
+  {
+    key: "tank_capacity_l",
+    label: "Capacidad del tanque",
+    kind: "NUMBER",
+    unit: "L",
+    required: true,
+    sortOrder: 30,
+  },
+  { key: "cooling_capacity", label: "Capacidad de frío", kind: "TEXT", sortOrder: 40 },
+  { key: "controller_model", label: "Controlador", kind: "TEXT", sortOrder: 50 },
+  {
+    key: "condenser_brand",
+    label: "Unidad condensadora: marca",
+    kind: "TEXT",
+    sortOrder: 60,
+  },
+  {
+    key: "condenser_model",
+    label: "Unidad condensadora: modelo",
+    kind: "TEXT",
+    sortOrder: 70,
+  },
+  {
+    key: "condenser_power_hp",
+    label: "Unidad condensadora: potencia",
+    kind: "NUMBER",
+    unit: "HP",
+    sortOrder: 80,
+  },
+  { key: "refrigerant", label: "Gas refrigerante", kind: "TEXT", sortOrder: 90 },
+  { key: "compressor_type", label: "Tipo de compresor", kind: "TEXT", sortOrder: 100 },
+  {
+    key: "condenser_phase",
+    label: "Unidad condensadora: corriente",
+    kind: "SELECT",
+    options: ["Monofásica", "Trifásica"],
+    sortOrder: 110,
+  },
+];
+
+async function seedPartTypeFields() {
+  const catalog: { code: string; fields: PartFieldSeed[] }[] = [
+    { code: "VACUUM_PUMP", fields: VACUUM_PUMP_FIELDS },
+    { code: "COLD_TANK", fields: COLD_TANK_FIELDS },
+  ];
+
+  for (const entry of catalog) {
+    const partType = await prisma.partType.findUnique({ where: { code: entry.code } });
+    if (!partType) continue;
+    for (const field of entry.fields) {
+      await prisma.partTypeField.upsert({
+        where: { partTypeId_key: { partTypeId: partType.id, key: field.key } },
+        create: {
+          partTypeId: partType.id,
+          key: field.key,
+          label: field.label,
+          kind: field.kind,
+          unit: field.unit ?? null,
+          options: field.options ?? [],
+          required: field.required ?? false,
+          helpText: field.helpText ?? null,
+          sortOrder: field.sortOrder,
+        },
+        update: {
+          label: field.label,
+          kind: field.kind,
+          unit: field.unit ?? null,
+          options: field.options ?? [],
+          required: field.required ?? false,
+          helpText: field.helpText ?? null,
+          sortOrder: field.sortOrder,
+        },
+      });
+    }
+  }
 }
 
 async function seedServiceProviders() {
@@ -334,12 +464,18 @@ async function seedDevTenant(defaultProvider: { id: string }) {
         bajadaCount: 8,
         defaultServiceProviderId: defaultProvider.id,
         activatedAt: new Date(),
+        powerSupply: "THREEPHASE",
       },
     });
-  } else if (!tambo.defaultServiceProviderId) {
+  } else {
     tambo = await prisma.tambo.update({
       where: { id: tambo.id },
-      data: { defaultServiceProviderId: defaultProvider.id },
+      data: {
+        ...(!tambo.defaultServiceProviderId
+          ? { defaultServiceProviderId: defaultProvider.id }
+          : {}),
+        ...(!tambo.powerSupply ? { powerSupply: "THREEPHASE" } : {}),
+      },
     });
   }
 
@@ -742,6 +878,7 @@ async function seedProdTenant(defaultProvider: { id: string }) {
 
 async function main() {
   await seedPartTypes();
+  await seedPartTypeFields();
   await seedPlans();
   const defaultProvider = await seedServiceProviders();
 

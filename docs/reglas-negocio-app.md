@@ -36,11 +36,24 @@ Validaciones que **no** se expresan como constraint de PostgreSQL (dependen de o
 5. **Vida útil**
    - `REACTIVE`: se cambia cuando falla; **sin vencimiento**.
    - `USAGE_BASED`: tiene vida útil planificada por **ordeñes** y/o **meses** (el nombre del enum quedó por historia). Vale la regla que se cumpla primero (el mayor porcentaje).
-   - `BRANDED`: ficha propia (equipo de frío). No se crea ni se asigna desde el catálogo de la desarrolladora.
+   - `BRANDED`: se conserva el enum (equipo de frío histórico). **Ya no es especial**: la ficha de cualquier tipo, incluido el frío, se define con campos. Tipos nuevos: `REACTIVE` o `USAGE_BASED`.
    - Estimación de ordeñes: `2 turnos/día × vacas ACTIVE del tambo / bajadaCount` (reparto parejo; las secas no se ordeñan). Días enteros desde `installedAt`. Si `usageCounter` trae valor, **tiene prioridad** y se marca como “contado”.
    - Por tiempo: días / (`lifeMonths` × 30,44). Estado: `OK` &lt; 80 %, `SOON` 80–100 %, `OVERDUE` ≥ 100 %.
    - El catálogo lo administra la desarrolladora (`/admin/part-types`). **No se borran tipos**: solo se desactivan. Las piezas ya cargadas se conservan.
    - Los umbrales efectivos son los de `TenantPartTypeConfig` si existen; si no, los del `PartType`. Las demás piezas no tienen vencimiento.
+
+6. **Campos configurables por tipo (`PartTypeField`)**
+   - Cada tipo tiene una ficha definida por la desarrolladora (`POST/PATCH /admin/part-types/:id/fields`). Tipos de dato: `TEXT` (hasta 200 caracteres), `NUMBER` (finito; `min`/`max` si existen), `SELECT` (valor de `options`), `BOOLEAN`.
+   - `key` se genera de la etiqueta (minúsculas, guiones bajos) y **no se edita**. `kind` no se cambia si alguna pieza ya tiene un valor para ese campo (`409` con la cantidad). Quitar una opción de `SELECT` que alguna pieza usa también es `409`.
+   - No se borran campos: solo `active`. Los valores ya cargados se conservan.
+   - Los valores viven en `PartInstance.attributes` (JSON) y se validan contra los campos **activos**. Claves desconocidas o de campos inactivos: `400`.
+   - Piezas viejas de frío: la migración `part_fields_and_power_supply` copió `cold_equipment_details` a `attributes` (`brand`, `model`, `tank_capacity_l` desde `capacity_liters`, `cooling_capacity`, `controller_model`). La tabla `cold_equipment_details` **sigue**: se lee para piezas viejas; las cargas nuevas no escriben ahí.
+
+### Corriente eléctrica del tambo
+
+- `Tambo.powerSupply` y `TamboRequest.powerSupply`: `MONOPHASE` | `THREEPHASE` | nulo (sin informar). Es un dato del **tambo**, no de una pieza.
+- En un pedido con hardware es **obligatorio**. En solo-software es opcional. Al convertir el pedido en tambo (`POST /admin/tambos`) se copia. Dueño/admin y desarrolladora pueden corregirlo (`PATCH /tambos/:id`, `PATCH /admin/tambos/:id`).
+- El técnico lo ve en `GET /service-requests/workspace` y `GET /my/service-requests`.
 
 ## Correcciones append-only
 

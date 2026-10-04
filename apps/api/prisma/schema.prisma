@@ -128,6 +128,18 @@ enum PartReplacementPattern {
   BRANDED
 }
 
+enum PartFieldKind {
+  TEXT
+  NUMBER
+  SELECT
+  BOOLEAN
+}
+
+enum PowerSupply {
+  MONOPHASE
+  THREEPHASE
+}
+
 enum ControlLecheroSource {
   EXTERNAL_TECHNICIAN
   /// Futuro: caudalímetro u otra medición automática (misma forma header+líneas)
@@ -243,6 +255,7 @@ model Tambo {
   latitude  Decimal? @db.Decimal(9, 6)
   longitude Decimal? @db.Decimal(9, 6)
   address   String?
+  powerSupply PowerSupply? @map("power_supply")
   active      Boolean  @default(true)
   /// Nulo = en instalación (usable, no se factura). Se setea al activar.
   activatedAt DateTime? @map("activated_at")
@@ -289,6 +302,7 @@ model TamboRequest {
   equipmentList     Json               @map("equipment_list")
   serviceProviderId String?            @map("service_provider_id") @db.Uuid
   notes             String?
+  powerSupply       PowerSupply?       @map("power_supply")
   status            TamboRequestStatus @default(SENT)
   quoteItems        Json?              @map("quote_items")
   quoteTotal        Decimal?           @map("quote_total") @db.Decimal(12, 2)
@@ -879,8 +893,31 @@ model PartType {
 
   instances      PartInstance[]
   tenantConfigs  TenantPartTypeConfig[]
+  fields         PartTypeField[]
 
   @@map("part_types")
+}
+
+model PartTypeField {
+  id         String        @id @default(uuid()) @db.Uuid
+  partTypeId String        @map("part_type_id") @db.Uuid
+  key        String
+  label      String
+  kind       PartFieldKind
+  unit       String?
+  options    String[]      @default([])
+  required   Boolean       @default(false)
+  min        Decimal?      @db.Decimal(14, 4)
+  max        Decimal?      @db.Decimal(14, 4)
+  helpText   String?       @map("help_text")
+  sortOrder  Int           @default(0) @map("sort_order")
+  active     Boolean       @default(true)
+
+  partType PartType @relation(fields: [partTypeId], references: [id])
+
+  @@unique([partTypeId, key])
+  @@index([partTypeId, sortOrder])
+  @@map("part_type_fields")
 }
 
 model TenantPartTypeConfig {
@@ -932,6 +969,7 @@ model PartInstance {
   usageCounter     Decimal?  @map("usage_counter") @db.Decimal(14, 2)
   replacedAt       DateTime? @map("replaced_at")
   notes            String?
+  attributes       Json      @default("{}")
   createdById      String?   @map("created_by_id") @db.Uuid
   clientMutationId String?   @map("client_mutation_id")
   createdAt        DateTime  @default(now())

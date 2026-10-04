@@ -59,6 +59,12 @@ import {
   type PartTypeItem,
   type ServiceRequestItem,
 } from "./src/api";
+import {
+  attributesFromSource,
+  collectAttributes,
+  formatAttributeLine,
+  type AttributeDraft,
+} from "./src/part-fields";
 import { ownerOnly } from "./src/roles";
 import { TambosScreen } from "./src/TambosScreen";
 import { TechnicianHome } from "./src/TechnicianHome";
@@ -421,12 +427,13 @@ function AppContent() {
   const [supervisionOffline, setSupervisionOffline] = useState(false);
   const [partTypes, setPartTypes] = useState<PartTypeItem[]>([]);
   const [parts, setParts] = useState<PartInstanceItem[]>([]);
-  const [partFormMode, setPartFormMode] = useState<"create" | "replace" | "correct">("create");
+  const [partFormMode, setPartFormMode] = useState<"create" | "replace" | "correct" | "edit">("create");
   const [replacingPartId, setReplacingPartId] = useState<string | null>(null);
   const [partTypeId, setPartTypeId] = useState<string | null>(null);
   const [partBajada, setPartBajada] = useState("1");
   const [partBrandModel, setPartBrandModel] = useState("");
   const [partNotes, setPartNotes] = useState("");
+  const [partAttributes, setPartAttributes] = useState<AttributeDraft>({});
   const [partPhotoUri, setPartPhotoUri] = useState<string | null>(null);
   const [partInstallChip, setPartInstallChip] = useState<string | null>(null);
   const [partInstallOther, setPartInstallOther] = useState("");
@@ -1535,6 +1542,7 @@ function AppContent() {
     setPartBajada("1");
     setPartBrandModel("");
     setPartNotes("");
+    setPartAttributes({});
     setPartPhotoUri(null);
     setPartInstallChip(null);
     setPartInstallOther("");
@@ -1542,14 +1550,31 @@ function AppContent() {
   }
 
   function openPartReplaceForm(part: PartInstanceItem) {
+    const type = partTypes.find((t) => t.id === part.partType.id) ?? part.partType;
     setPartFormMode("replace");
     setReplacingPartId(part.id);
     setPartTypeId(part.partType.id);
     setPartBajada(part.bajadaNumber != null ? String(part.bajadaNumber) : "1");
     setPartBrandModel(part.brandModel ?? "");
     setPartNotes("");
+    setPartAttributes(attributesFromSource(type.fields, part.attributes, part.coldDetail));
     setPartPhotoUri(null);
     setPartInstallChip("today");
+    setPartInstallOther("");
+    setScreen("partForm");
+  }
+
+  function openPartEditForm(part: PartInstanceItem) {
+    const type = partTypes.find((t) => t.id === part.partType.id) ?? part.partType;
+    setPartFormMode("edit");
+    setReplacingPartId(part.id);
+    setPartTypeId(part.partType.id);
+    setPartBajada(part.bajadaNumber != null ? String(part.bajadaNumber) : "1");
+    setPartBrandModel(part.brandModel ?? "");
+    setPartNotes(part.notes ?? "");
+    setPartAttributes(attributesFromSource(type.fields, part.attributes, part.coldDetail));
+    setPartPhotoUri(null);
+    setPartInstallChip(null);
     setPartInstallOther("");
     setScreen("partForm");
   }
@@ -1593,8 +1618,9 @@ function AppContent() {
       setStatus("Para cargar equipo hace falta señal.");
       return;
     }
-    const installed = resolveInstallDate(partInstallChip, partInstallOther);
-    if (!installed) {
+    const installed =
+      partFormMode === "edit" ? null : resolveInstallDate(partInstallChip, partInstallOther);
+    if (partFormMode !== "edit" && !installed) {
       setStatus("Elegí cuándo se instaló.");
       return;
     }
@@ -1604,10 +1630,42 @@ function AppContent() {
       setBusy(true);
       try {
         await patchPartInstance(session.token, replacingPartId, {
-          installedAt: installed.date.toISOString(),
-          installedAtApprox: installed.approx,
+          installedAt: installed!.date.toISOString(),
+          installedAtApprox: installed!.approx,
         });
         setStatus("Fecha corregida.");
+        await loadParts();
+        setScreen("parts");
+      } catch (err) {
+        setStatus(
+          apiFailureStatus(
+            err,
+            "No se pudo guardar la pieza",
+            "No se pudo guardar la pieza. Revisá la señal.",
+          ),
+        );
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    if (partFormMode === "edit") {
+      if (!replacingPartId) return;
+      const type = selectedPartType();
+      const collected = collectAttributes(type?.fields, partAttributes);
+      if (!collected.ok) {
+        setStatus(collected.error);
+        return;
+      }
+      setBusy(true);
+      try {
+        await patchPartInstance(session.token, replacingPartId, {
+          attributes: collected.value,
+          brandModel: partBrandModel.trim() || null,
+          notes: partNotes.trim() || null,
+        });
+        setStatus("Datos actualizados.");
         await loadParts();
         setScreen("parts");
       } catch (err) {
@@ -1654,14 +1712,21 @@ function AppContent() {
         }
       }
 
+      const collected = collectAttributes(partType.fields, partAttributes);
+      if (!collected.ok) {
+        setStatus(collected.error);
+        return;
+      }
+
       const payload = {
         partTypeId: partType.id,
         bajadaNumber,
-        installedAt: installed.date.toISOString(),
-        installedAtApprox: installed.approx,
+        installedAt: installed!.date.toISOString(),
+        installedAtApprox: installed!.approx,
         brandModel: partBrandModel.trim() || null,
         photoUrl,
         notes: partNotes.trim() || null,
+        attributes: collected.value,
       };
 
       try {
@@ -3196,6 +3261,20 @@ function AppContent() {
                         {p.brandModel ? (
                           <Text style={styles.itemMeta}>{p.brandModel}</Text>
                         ) : null}
+                        {formatAttributeLine(
+                          p.partType.fields ?? partTypes.find((t) => t.id === p.partType.id)?.fields,
+                          p.attributes,
+                          p.coldDetail,
+                        ) ? (
+                          <Text style={styles.itemMeta}>
+                            {formatAttributeLine(
+                              p.partType.fields ??
+                                partTypes.find((t) => t.id === p.partType.id)?.fields,
+                              p.attributes,
+                              p.coldDetail,
+                            )}
+                          </Text>
+                        ) : null}
                         <Text style={styles.itemMeta}>
                           {formatPartDate(p.installedAt, p.installedAtApprox)}
                         </Text>
@@ -3258,6 +3337,13 @@ function AppContent() {
                         ) : null}
                         <Pressable
                           style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                          onPress={() => openPartEditForm(p)}
+                          disabled={busy}
+                        >
+                          <Text style={styles.buttonSecondaryText}>Editar datos</Text>
+                        </Pressable>
+                        <Pressable
+                          style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
                           onPress={() => openPartCorrectForm(p)}
                           disabled={busy}
                         >
@@ -3283,7 +3369,9 @@ function AppContent() {
                       ? "Nueva pieza"
                       : partFormMode === "correct"
                         ? "Corregir fecha"
-                        : "Reemplazar pieza"}
+                        : partFormMode === "edit"
+                          ? "Editar datos"
+                          : "Reemplazar pieza"}
                   </Text>
                   {partFormMode !== "correct" ? (
                     <>
@@ -3293,7 +3381,11 @@ function AppContent() {
                       <Pressable
                         key={t.id}
                         style={[styles.choiceSmall, partTypeId === t.id && styles.choiceOn]}
-                        onPress={() => setPartTypeId(t.id)}
+                        onPress={() => {
+                          setPartTypeId(t.id);
+                          setPartAttributes({});
+                        }}
+                        disabled={partFormMode === "edit"}
                       >
                         <Text
                           style={[
@@ -3314,9 +3406,93 @@ function AppContent() {
                         value={partBajada}
                         onChangeText={setPartBajada}
                         keyboardType="number-pad"
+                        editable={partFormMode !== "edit"}
                       />
                     </>
                   ) : null}
+                  {(selectedPartType()?.fields ?? []).map((field) => (
+                    <View key={field.id}>
+                      <Text style={styles.label}>
+                        {field.label}
+                        {field.required ? " *" : ""}
+                        {field.kind === "NUMBER" && field.unit ? ` (${field.unit})` : ""}
+                      </Text>
+                      {field.helpText ? <Text style={styles.help}>{field.helpText}</Text> : null}
+                      {field.kind === "TEXT" || field.kind === "NUMBER" ? (
+                        <TextInput
+                          style={styles.input}
+                          value={
+                            typeof partAttributes[field.key] === "string"
+                              ? (partAttributes[field.key] as string)
+                              : partAttributes[field.key] == null
+                                ? ""
+                                : String(partAttributes[field.key])
+                          }
+                          onChangeText={(text) =>
+                            setPartAttributes((prev) => ({ ...prev, [field.key]: text }))
+                          }
+                          keyboardType={field.kind === "NUMBER" ? "decimal-pad" : "default"}
+                          placeholder={field.required ? "Obligatorio" : "Opcional"}
+                          placeholderTextColor={colors.textMuted}
+                        />
+                      ) : null}
+                      {field.kind === "SELECT" ? (
+                        <View style={styles.wrapRow}>
+                          {field.options.map((opt) => (
+                            <Pressable
+                              key={opt}
+                              style={[
+                                styles.choiceSmall,
+                                partAttributes[field.key] === opt && styles.choiceOn,
+                              ]}
+                              onPress={() =>
+                                setPartAttributes((prev) => ({ ...prev, [field.key]: opt }))
+                              }
+                            >
+                              <Text
+                                style={[
+                                  styles.choiceText,
+                                  partAttributes[field.key] === opt && styles.choiceTextOn,
+                                ]}
+                              >
+                                {opt}
+                              </Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      ) : null}
+                      {field.kind === "BOOLEAN" ? (
+                        <View style={styles.wrapRow}>
+                          {(
+                            [
+                              [true, "Sí"],
+                              [false, "No"],
+                            ] as const
+                          ).map(([val, label]) => (
+                            <Pressable
+                              key={label}
+                              style={[
+                                styles.choiceSmall,
+                                partAttributes[field.key] === val && styles.choiceOn,
+                              ]}
+                              onPress={() =>
+                                setPartAttributes((prev) => ({ ...prev, [field.key]: val }))
+                              }
+                            >
+                              <Text
+                                style={[
+                                  styles.choiceText,
+                                  partAttributes[field.key] === val && styles.choiceTextOn,
+                                ]}
+                              >
+                                {label}
+                              </Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      ) : null}
+                    </View>
+                  ))}
                   <Text style={styles.label}>Marca / modelo</Text>
                   <TextInput
                     style={styles.input}
@@ -3348,6 +3524,8 @@ function AppContent() {
                   </Pressable>
                     </>
                   ) : null}
+                  {partFormMode !== "edit" ? (
+                    <>
                   <Text style={styles.label}>¿Cuándo se instaló?</Text>
                   <View style={styles.wrapRow}>
                     {INSTALL_CHIPS.map((c) => (
@@ -3382,6 +3560,8 @@ function AppContent() {
                         ? `Instalada aprox. el ${installPreview.date.toLocaleDateString("es-AR")}`
                         : `Instalada el ${installPreview.date.toLocaleDateString("es-AR")}`}
                     </Text>
+                  ) : null}
+                    </>
                   ) : null}
                   {status ? (
                     <View style={styles.feedback}>

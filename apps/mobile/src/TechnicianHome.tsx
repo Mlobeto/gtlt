@@ -13,6 +13,7 @@ import {
   type PartInstanceItem,
   type ServiceRequestItem,
 } from "./api";
+import { formatAttributeLine, powerSupplyLabel } from "./part-fields";
 import { DevicesSection } from "./DevicesSection";
 import type { Session } from "./session";
 import { colors, font, radius, space, touch } from "./theme";
@@ -23,6 +24,7 @@ type TamboLocation = {
   latitude?: number | null;
   longitude?: number | null;
   address?: string | null;
+  powerSupply?: "MONOPHASE" | "THREEPHASE" | null;
 };
 
 function mapsUrl(lat: number, lng: number) {
@@ -173,6 +175,9 @@ export function TechnicianHome({ session, online, onLogout, onStatus }: Props) {
           <Text style={styles.help}>
             Pedidos del tambo y el equipo cargado. Solo ves lo de este tambo.
           </Text>
+          {tambo ? (
+            <Text style={styles.itemMeta}>Corriente: {powerSupplyLabel(tambo.powerSupply)}</Text>
+          ) : null}
           <TamboDirections tambo={tambo} />
           <Pressable
             style={[styles.buttonSecondary, busy && styles.disabled]}
@@ -250,7 +255,11 @@ export function TechnicianHome({ session, online, onLogout, onStatus }: Props) {
                     : "Nivel tambo"}
                   {p.brandModel ? ` · ${p.brandModel}` : ""}
                 </Text>
-                {p.coldDetail ? (
+                {formatAttributeLine(p.partType.fields, p.attributes, p.coldDetail) ? (
+                  <Text style={styles.itemMeta}>
+                    {formatAttributeLine(p.partType.fields, p.attributes, p.coldDetail)}
+                  </Text>
+                ) : p.coldDetail ? (
                   <Text style={styles.itemMeta}>
                     Frío: {p.coldDetail.brand} {p.coldDetail.model} ·{" "}
                     {p.coldDetail.capacityLiters} L

@@ -36,6 +36,7 @@ export function serializeTamboRequest(
     equipmentList: request.equipmentList,
     serviceProviderId: request.serviceProviderId,
     notes: request.notes,
+    powerSupply: request.powerSupply,
     status: request.status,
     quoteItems: request.quoteItems,
     quoteTotal: decimalToNumber(request.quoteTotal),
