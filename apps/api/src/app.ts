@@ -83,13 +83,16 @@ export function createApp() {
   app.use(
     (
       err: Error & { status?: number; code?: string; extra?: Record<string, unknown> },
-      _req: express.Request,
+      req: express.Request,
       res: express.Response,
       _next: express.NextFunction,
     ) => {
       const status = err.status ?? (err.name === "MulterError" ? 400 : 500);
       if (status >= 500) {
         console.error(err);
+      } else if (status >= 400) {
+        const path = (req.originalUrl ?? req.url ?? "").split("?")[0];
+        console.warn(`${req.method} ${path} ${status} ${err.message}`);
       }
       res.status(status).json({
         error: err.message || "Internal error",

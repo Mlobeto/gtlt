@@ -15,7 +15,7 @@ const ALLOWED_MIME_TO_EXT: Record<string, string> = {
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024 }, // 8MB
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
   fileFilter: (_req, file, cb) => {
     if (!ALLOWED_MIME_TO_EXT[file.mimetype]) {
       cb(new HttpError(400, "Solo se aceptan imágenes JPEG, PNG o WEBP"));
@@ -33,7 +33,15 @@ uploadsRouter.post(
   "/photo",
   authenticate,
   requireRoles("TAMBERO", "DUENIO", "ADMIN", "VETERINARIO"),
-  upload.single("file"),
+  (req, res, next) => {
+    upload.single("file")(req, res, (err) => {
+      if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+        next(new HttpError(413, "La foto es demasiado grande (máximo 20 MB)"));
+        return;
+      }
+      next(err);
+    });
+  },
   async (req, res) => {
     if (!req.file) {
       throw new HttpError(400, "Falta el archivo (campo 'file')");

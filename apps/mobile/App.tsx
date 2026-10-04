@@ -247,6 +247,13 @@ function turnoLegible(shift: string): string {
   return shift === "AFTERNOON" ? "Tarde" : "Mañana";
 }
 
+function apiFailureStatus(err: unknown, labeled: string, fallback: string) {
+  if (err instanceof ApiError) {
+    return `${labeled}: ${err.message} (HTTP ${err.status})`;
+  }
+  return fallback;
+}
+
 /** Label en español para items del timeline del servidor (kinds: weight, photo, transfer, control). */
 function timelineItemLabel(kind: string, type: string, summary: string): string {
   if (kind === "health" || kind === "repro") return tipoLegible(type);
@@ -722,8 +729,8 @@ function AppContent() {
       if (isOwnerOrAdmin(session.roles)) {
         void loadNotifications(session);
       }
-    } catch {
-      setStatus("No se pudo enviar el pedido. Revisá la señal.");
+    } catch (err) {
+      setStatus(apiFailureStatus(err, "No se pudo enviar el pedido", "No se pudo enviar el pedido. Revisá la señal."));
     } finally {
       setBusy(false);
     }
@@ -1350,8 +1357,8 @@ function AppContent() {
         setStatus("Ficha actualizada.");
         await openAnimalDetail(selectedAnimalId);
       }
-    } catch {
-      setStatus("No se pudo guardar la ficha.");
+    } catch (err) {
+      setStatus(apiFailureStatus(err, "No se pudo guardar la ficha", "No se pudo guardar la ficha."));
     } finally {
       setBusy(false);
     }
@@ -1431,8 +1438,8 @@ function AppContent() {
       });
       setStatus("Foto guardada. Se sube sola cuando haya señal.");
       await openAnimalDetail(selectedAnimalId);
-    } catch {
-      setStatus("No se pudo guardar la foto.");
+    } catch (err) {
+      setStatus(apiFailureStatus(err, "No se pudo guardar la foto", "No se pudo guardar la foto."));
     } finally {
       setBusy(false);
     }
@@ -1524,8 +1531,19 @@ function AppContent() {
     try {
       let photoUrl: string | null = null;
       if (partPhotoUri) {
-        const uploaded = await uploadPhoto(session.token, partPhotoUri);
-        photoUrl = uploaded.url;
+        try {
+          const uploaded = await uploadPhoto(session.token, partPhotoUri);
+          photoUrl = uploaded.url;
+        } catch (err) {
+          setStatus(
+            apiFailureStatus(
+              err,
+              "No se pudo subir la foto",
+              "No se pudo guardar la pieza. Revisá la señal.",
+            ),
+          );
+          return;
+        }
       }
 
       const payload = {
@@ -1537,17 +1555,25 @@ function AppContent() {
         notes: partNotes.trim() || null,
       };
 
-      if (partFormMode === "create") {
-        await createPartInstance(session.token, { ...payload, tamboId: session.tamboId });
-        setStatus("Pieza cargada.");
-      } else if (replacingPartId) {
-        await replacePartInstance(session.token, replacingPartId, payload);
-        setStatus("Pieza reemplazada.");
+      try {
+        if (partFormMode === "create") {
+          await createPartInstance(session.token, { ...payload, tamboId: session.tamboId });
+          setStatus("Pieza cargada.");
+        } else if (replacingPartId) {
+          await replacePartInstance(session.token, replacingPartId, payload);
+          setStatus("Pieza reemplazada.");
+        }
+        await loadParts();
+        setScreen("parts");
+      } catch (err) {
+        setStatus(
+          apiFailureStatus(
+            err,
+            "No se pudo guardar la pieza",
+            "No se pudo guardar la pieza. Revisá la señal.",
+          ),
+        );
       }
-      await loadParts();
-      setScreen("parts");
-    } catch {
-      setStatus("No se pudo guardar la pieza. Revisá la señal.");
     } finally {
       setBusy(false);
     }

@@ -31,11 +31,17 @@ export async function uploadImage(
   contentType: string,
   extension: string,
 ): Promise<string> {
-  const container = getContainerClient();
-  const blobName = `${tenantId}/${randomUUID()}.${extension}`;
-  const blockBlobClient = container.getBlockBlobClient(blobName);
-  await blockBlobClient.uploadData(buffer, {
-    blobHTTPHeaders: { blobContentType: contentType },
-  });
-  return blockBlobClient.url;
+  try {
+    const container = getContainerClient();
+    const blobName = `${tenantId}/${randomUUID()}.${extension}`;
+    const blockBlobClient = container.getBlockBlobClient(blobName);
+    await blockBlobClient.uploadData(buffer, {
+      blobHTTPHeaders: { blobContentType: contentType },
+    });
+    return blockBlobClient.url;
+  } catch (err) {
+    if (err instanceof HttpError) throw err;
+    console.error(err);
+    throw new HttpError(502, "No se pudo guardar la foto en el almacenamiento");
+  }
 }
