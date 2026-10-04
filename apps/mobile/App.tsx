@@ -247,11 +247,13 @@ function turnoLegible(shift: string): string {
   return shift === "AFTERNOON" ? "Tarde" : "Mañana";
 }
 
-function apiFailureStatus(err: unknown, labeled: string, fallback: string) {
+function apiFailureStatus(err: unknown, labeled: string, _fallback: string) {
   if (err instanceof ApiError) {
     return `${labeled}: ${err.message} (HTTP ${err.status})`;
   }
-  return fallback;
+  const name = err instanceof Error ? err.name : "Error";
+  const message = err instanceof Error ? err.message : String(err);
+  return `No se pudo conectar con el servidor (${name}: ${message})`;
 }
 
 /** Label en español para items del timeline del servidor (kinds: weight, photo, transfer, control). */
@@ -1414,7 +1416,7 @@ function AppContent() {
     const cam = await ImagePicker.requestCameraPermissionsAsync();
     let uri: string | null = null;
     if (cam.granted) {
-      const shot = await ImagePicker.launchCameraAsync({ quality: 0.6, allowsEditing: false });
+      const shot = await ImagePicker.launchCameraAsync({ quality: 0.4, allowsEditing: false });
       if (!shot.canceled && shot.assets[0]?.uri) uri = shot.assets[0].uri;
     }
     if (!uri) {
@@ -1423,7 +1425,7 @@ function AppContent() {
         setStatus("Necesitamos permiso de cámara o galería para la foto.");
         return;
       }
-      const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.6, allowsEditing: false });
+      const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.4, allowsEditing: false });
       if (!picked.canceled && picked.assets[0]?.uri) uri = picked.assets[0].uri;
     }
     if (!uri) return;
@@ -1493,7 +1495,7 @@ function AppContent() {
   async function pickPartPhoto() {
     const cam = await ImagePicker.requestCameraPermissionsAsync();
     if (cam.granted) {
-      const shot = await ImagePicker.launchCameraAsync({ quality: 0.6, allowsEditing: false });
+      const shot = await ImagePicker.launchCameraAsync({ quality: 0.4, allowsEditing: false });
       if (!shot.canceled && shot.assets[0]?.uri) {
         setPartPhotoUri(shot.assets[0].uri);
         return;
@@ -1504,7 +1506,7 @@ function AppContent() {
       setStatus("Necesitamos permiso de cámara o galería para la foto.");
       return;
     }
-    const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.6, allowsEditing: false });
+    const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.4, allowsEditing: false });
     if (!picked.canceled && picked.assets[0]?.uri) {
       setPartPhotoUri(picked.assets[0].uri);
     }
