@@ -236,6 +236,15 @@ const SERVICE_CATEGORIES: { key: ServiceCategory; label: string }[] = [
   { key: "OTHER", label: "Otro" },
 ];
 
+const SERVICE_STATUS_ES: Record<string, string> = {
+  PENDING_APPROVAL: "Esperando tu OK",
+  OPEN: "Enviado",
+  ACKNOWLEDGED: "Recibido",
+  IN_PROGRESS: "En curso",
+  RESOLVED: "Resuelto",
+  CANCELLED: "Cancelado",
+};
+
 function tipoLegible(type: string): string {
   switch (type) {
     case "TREATMENT":
@@ -462,6 +471,9 @@ function AppContent() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [pendingApprovals, setPendingApprovals] = useState<ServiceRequestItem[]>(
+    [],
+  );
+  const [myServiceRequests, setMyServiceRequests] = useState<ServiceRequestItem[]>(
     [],
   );
   const [pumpStatus, setPumpStatus] = useState<"ON" | "OFF" | null>(null);
@@ -816,6 +828,24 @@ function AppContent() {
     }
   }
 
+  async function loadMyServiceRequests(s: Session = session!) {
+    if (!s) return;
+    try {
+      const res = await fetchServiceRequests(s.token, s.tamboId);
+      const items = [...res.items].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      setMyServiceRequests(items.slice(0, 10));
+    } catch {
+      // silencioso
+    }
+  }
+
+  useEffect(() => {
+    if (screen !== "service" || !session) return;
+    void loadMyServiceRequests(session);
+  }, [screen, session]);
+
   async function handleCreateServiceRequest() {
     if (!session) return;
     if (!online) {
@@ -840,6 +870,11 @@ function AppContent() {
         setStatus(
           "Pedido enviado. Espera la autorización del dueño antes de que lo vea el técnico.",
         );
+      } else if (isOwnerOrAdmin(session.roles)) {
+        const providerName = serviceProviders.find(
+          (p) => p.id === item.serviceProviderId,
+        )?.name;
+        setStatus(providerName ? `Pedido enviado a ${providerName}` : "Pedido enviado");
       } else {
         setStatus(
           serviceUrgent
@@ -850,6 +885,7 @@ function AppContent() {
       if (isOwnerOrAdmin(session.roles)) {
         void loadNotifications(session);
       }
+      void loadMyServiceRequests(session);
     } catch (err) {
       setStatus(apiFailureStatus(err, "No se pudo enviar el pedido", "No se pudo enviar el pedido. Revisá la señal."));
     } finally {
@@ -2634,49 +2670,6 @@ function AppContent() {
                       : ""}
                   </Text>
 
-                  {isOwnerOrAdmin(session.roles ?? []) ? (
-                    <>
-                      <Text style={styles.sectionInCard}>Autorización</Text>
-                      <Text style={styles.help}>
-                        ¿El tambero necesita tu OK antes de llamar al técnico?
-                      </Text>
-                      <View style={styles.row}>
-                        <Pressable
-                          style={[
-                            styles.choice,
-                            !requiresOwnerApproval && styles.choiceOn,
-                          ]}
-                          onPress={() => void handleToggleOwnerApproval(false)}
-                        >
-                          <Text
-                            style={[
-                              styles.choiceText,
-                              !requiresOwnerApproval && styles.choiceTextOn,
-                            ]}
-                          >
-                            Directo
-                          </Text>
-                        </Pressable>
-                        <Pressable
-                          style={[
-                            styles.choice,
-                            requiresOwnerApproval && styles.choiceOn,
-                          ]}
-                          onPress={() => void handleToggleOwnerApproval(true)}
-                        >
-                          <Text
-                            style={[
-                              styles.choiceText,
-                              requiresOwnerApproval && styles.choiceTextOn,
-                            ]}
-                          >
-                            Con mi OK
-                          </Text>
-                        </Pressable>
-                      </View>
-                    </>
-                  ) : null}
-
                   <Text style={styles.sectionInCard}>Qué pasó</Text>
                   <View style={styles.wrapRow}>
                     {SERVICE_CATEGORIES.map((c) => (
@@ -2745,6 +2738,77 @@ function AppContent() {
                       {serviceUrgent ? "Pedir service URGENTE" : "Pedir service"}
                     </Text>
                   </Pressable>
+                  {status ? (
+                    <View style={styles.feedback}>
+                      <Text style={styles.feedbackText}>{status}</Text>
+                    </View>
+                  ) : null}
+
+                  <Text style={styles.sectionInCard}>Mis pedidos de service</Text>
+                  {myServiceRequests.length === 0 ? (
+                    <Text style={styles.empty}>Todavía no hay pedidos.</Text>
+                  ) : (
+                    myServiceRequests.map((r) => (
+                      <View key={r.id} style={styles.item}>
+                        <Text style={styles.itemTitle}>
+                          {SERVICE_CATEGORIES.find((c) => c.key === r.category)?.label ??
+                            r.category}
+                        </Text>
+                        <Text style={styles.itemMeta} numberOfLines={1}>
+                          {r.description}
+                        </Text>
+                        <Text style={styles.itemMeta}>
+                          {new Date(r.createdAt).toLocaleString("es-AR")}
+                        </Text>
+                        <Text style={styles.itemMeta}>
+                          {SERVICE_STATUS_ES[r.status] ?? r.status}
+                        </Text>
+                      </View>
+                    ))
+                  )}
+
+                  {isOwnerOrAdmin(session.roles ?? []) ? (
+                    <>
+                      <Text style={styles.sectionInCard}>Autorización</Text>
+                      <Text style={styles.help}>
+                        ¿El tambero necesita tu OK antes de llamar al técnico?
+                      </Text>
+                      <View style={styles.row}>
+                        <Pressable
+                          style={[
+                            styles.choice,
+                            !requiresOwnerApproval && styles.choiceOn,
+                          ]}
+                          onPress={() => void handleToggleOwnerApproval(false)}
+                        >
+                          <Text
+                            style={[
+                              styles.choiceText,
+                              !requiresOwnerApproval && styles.choiceTextOn,
+                            ]}
+                          >
+                            Directo
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          style={[
+                            styles.choice,
+                            requiresOwnerApproval && styles.choiceOn,
+                          ]}
+                          onPress={() => void handleToggleOwnerApproval(true)}
+                        >
+                          <Text
+                            style={[
+                              styles.choiceText,
+                              requiresOwnerApproval && styles.choiceTextOn,
+                            ]}
+                          >
+                            Con mi OK
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </>
+                  ) : null}
 
                   {isOwnerOrAdmin(session.roles ?? []) ? (
                     <>
@@ -2844,11 +2908,6 @@ function AppContent() {
                         </View>
                       ) : null}
                     </>
-                  ) : null}
-                  {status ? (
-                    <View style={styles.feedback}>
-                      <Text style={styles.feedbackText}>{status}</Text>
-                    </View>
                   ) : null}
                 </View>
               ) : null}

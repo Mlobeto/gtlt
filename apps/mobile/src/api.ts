@@ -646,6 +646,7 @@ export type ServiceRequestItem = {
   status: string;
   relatedPartInstanceId: string | null;
   assignedTechnicianUserId: string | null;
+  serviceProviderId?: string | null;
   createdAt: string;
   resolvedAt: string | null;
   approvedAt?: string | null;
