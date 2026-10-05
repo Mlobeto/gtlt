@@ -1,9 +1,13 @@
 import { Router } from "express";
 import multer from "multer";
+import { pipeline } from "node:stream/promises";
+import type { Readable } from "node:stream";
 import { HttpError } from "../lib/http-error.js";
+import { downloadImage, uploadImage } from "../lib/blob-storage.js";
+import { tenantPhotoBlobName } from "../lib/photo-url.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
-import { uploadImage } from "../lib/blob-storage.js";
+import { verifyAccessToken } from "../lib/auth-tokens.js";
 
 export const uploadsRouter = Router();
 
@@ -32,7 +36,7 @@ const upload = multer({
 uploadsRouter.post(
   "/photo",
   authenticate,
-  requireRoles("TAMBERO", "DUENIO", "ADMIN", "VETERINARIO"),
+  requireRoles("TAMBERO", "DUENIO", "ADMIN", "VETERINARIO", "TECNICO"),
   (req, res, next) => {
     upload.single("file")(req, res, (err) => {
       if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
@@ -53,3 +57,39 @@ uploadsRouter.post(
     res.status(201).json({ url });
   },
 );
+
+/** Lee una foto del contenedor. Bearer o `access_token` (para <img> en el web). */
+uploadsRouter.get("/file", async (req, res) => {
+  const header = req.headers.authorization;
+  const queryToken = typeof req.query.access_token === "string" ? req.query.access_token : "";
+  const raw = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : queryToken;
+  if (!raw) {
+    throw new HttpError(401, "Missing or invalid Authorization header");
+  }
+  let auth;
+  try {
+    auth = verifyAccessToken(raw);
+  } catch {
+    throw new HttpError(401, "Invalid or expired token");
+  }
+
+  const url = typeof req.query.url === "string" ? req.query.url : "";
+  const blobName = tenantPhotoBlobName(url, auth.tenantId);
+  const download = await downloadImage(blobName);
+  const body = download.readableStreamBody;
+  if (!body) {
+    throw new HttpError(502, "No se pudo leer la foto del almacenamiento");
+  }
+
+  res.setHeader("Content-Type", download.contentType ?? "image/jpeg");
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  if (download.contentLength != null) {
+    res.setHeader("Content-Length", String(download.contentLength));
+  }
+  try {
+    await pipeline(body as Readable, res);
+  } catch (err) {
+    if (!res.headersSent) throw err;
+    res.destroy();
+  }
+});

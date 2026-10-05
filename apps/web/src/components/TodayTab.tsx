@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { api, type PartInstanceItem } from '../lib/api'
+import { api, photoFileUrl, type PartInstanceItem } from '../lib/api'
 import type { AuthToken } from '../types/auth'
 import { TamboPicker, useTamboId } from './TamboPicker'
-import { Badge, Button, Card, EmptyState, ErrorBanner, StatCard } from './ui'
+import { Badge, Button, Card, EmptyState, ErrorBanner, Field, StatCard } from './ui'
 
 const CATEGORY_LABEL: Record<string, string> = {
   VACUUM_PUMP: 'Bomba de vacío',
@@ -57,6 +57,46 @@ function formatDuration(minutes: number | null, ongoing: boolean) {
   return m ? `${h} h ${m} min` : `${h} h`
 }
 
+const INSTALL_CHIPS = [
+  { key: 'today', label: 'Hoy', days: 0, approx: false },
+  { key: '1w', label: 'Hace 1 semana', days: 7, approx: true },
+  { key: '1m', label: 'Hace 1 mes', days: 30, approx: true },
+  { key: '3m', label: 'Hace 3 meses', days: 91, approx: true },
+] as const
+
+function resolveChip(key: string, other: string): { date: Date; approx: boolean } | null {
+  if (key === 'other') {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(other.trim())
+    if (!m) return null
+    const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0, 0)
+    return { date, approx: false }
+  }
+  const preset = INSTALL_CHIPS.find((c) => c.key === key)
+  if (!preset) return null
+  const date = new Date()
+  date.setHours(12, 0, 0, 0)
+  date.setDate(date.getDate() - preset.days)
+  return { date, approx: preset.approx }
+}
+
+function daysOverdue(p: PartInstanceItem): number | null {
+  if (p.life?.kind !== 'USAGE_BASED' || p.life.status !== 'OVERDUE') return null
+  if (p.life.estimatedReplacementDate) {
+    const start = new Date(p.life.estimatedReplacementDate)
+    const now = new Date()
+    return Math.max(
+      0,
+      Math.round(
+        (Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) -
+          Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) /
+          86_400_000,
+      ),
+    )
+  }
+  if (p.life.byTime) return Math.max(0, Math.round(p.life.byTime.days - p.life.byTime.lifeDays))
+  return null
+}
+
 export function TodayTab({ auth }: { auth: AuthToken }) {
   const { tamboId, setTamboId, ready, error, setError } = useTamboId(auth.token)
   const [loading, setLoading] = useState(false)
@@ -67,6 +107,9 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
   const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([])
   const [dueParts, setDueParts] = useState<PartInstanceItem[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({})
+  const [chip, setChip] = useState('today')
+  const [otherDate, setOtherDate] = useState('')
 
   useEffect(() => {
     if (!ready) return
@@ -101,11 +144,11 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
         setIntervals(historyRes.intervals || [])
         setPendingServices(servicesRes.items || [])
         setPendingPhotos(photosRes.items || [])
-        setDueParts(
-          (partsRes.items || []).filter(
-            (p) => p.life?.kind === 'USAGE_BASED' && (p.life.status === 'SOON' || p.life.status === 'OVERDUE'),
-          ),
+        const due = (partsRes.items || []).filter(
+          (p) => p.life?.kind === 'USAGE_BASED' && (p.life.status === 'SOON' || p.life.status === 'OVERDUE'),
         )
+        setDueParts(due)
+        setSelectedIds(Object.fromEntries(due.map((p) => [p.id, true])))
       } catch (err) {
         if (cancelled) return
         setError(err instanceof Error ? err.message : 'Error al cargar el estado de hoy')
@@ -133,6 +176,39 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
     ])
     setPendingServices(servicesRes.items || [])
     setPendingPhotos(photosRes.items || [])
+  }
+
+  const markChanged = async () => {
+    const instanceIds = dueParts.filter((p) => selectedIds[p.id]).map((p) => p.id)
+    const installed = resolveChip(chip, otherDate)
+    if (instanceIds.length === 0) {
+      setError('Elegí al menos una pieza.')
+      return
+    }
+    if (!installed) {
+      setError('Elegí cuándo se instalaron.')
+      return
+    }
+    try {
+      setBusyId('batch')
+      setError('')
+      await api.replacePartInstancesBatch(auth.token, {
+        instanceIds,
+        installedAt: installed.date.toISOString(),
+        installedAtApprox: installed.approx,
+      })
+      if (!tamboId) return
+      const partsRes = await api.getPartInstances(auth.token, tamboId)
+      const due = (partsRes.items || []).filter(
+        (p) => p.life?.kind === 'USAGE_BASED' && (p.life.status === 'SOON' || p.life.status === 'OVERDUE'),
+      )
+      setDueParts(due)
+      setSelectedIds(Object.fromEntries(due.map((p) => [p.id, true])))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudieron marcar las piezas')
+    } finally {
+      setBusyId(null)
+    }
   }
 
   const actService = async (id: string, action: 'approve' | 'reject') => {
@@ -212,10 +288,16 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
             {dueParts.map((p) => (
               <li key={p.id} className="border border-line rounded-lg p-4 space-y-1">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-semibold text-ink">
+                  <label className="flex items-center gap-2 font-semibold text-ink">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(selectedIds[p.id])}
+                      onChange={(e) => setSelectedIds((prev) => ({ ...prev, [p.id]: e.target.checked }))}
+                    />
                     {p.partType.name}
+                    {p.label ? ` · ${p.label}` : ''}
                     {p.bajadaNumber != null ? ` · bajada ${p.bajadaNumber}` : ''}
-                  </p>
+                  </label>
                   <Badge tone={p.life?.status === 'OVERDUE' ? 'danger' : 'warn'}>
                     {p.life?.status === 'OVERDUE' ? 'Para cambiar' : 'Cambiar pronto'}
                   </Badge>
@@ -226,10 +308,52 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
                     ? ` · estimado ${new Date(p.life.estimatedReplacementDate).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}`
                     : ''}
                 </p>
+                {(daysOverdue(p) ?? 0) > 14 ? (
+                  <p className="text-sm text-accent-text">
+                    ¿Ya se cambió? Registralo para que la cuenta de vida útil quede al día.
+                  </p>
+                ) : null}
               </li>
             ))}
           </ul>
         )}
+        {!isLoading && dueParts.length > 0 ? (
+          <div className="pt-3 border-t border-line space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {INSTALL_CHIPS.map((c) => (
+                <Button key={c.key} variant={chip === c.key ? 'primary' : 'secondary'} onClick={() => setChip(c.key)}>
+                  {c.label}
+                </Button>
+              ))}
+              <Button variant={chip === 'other' ? 'primary' : 'secondary'} onClick={() => setChip('other')}>
+                Fecha
+              </Button>
+            </div>
+            {chip === 'other' ? (
+              <Field label="AAAA-MM-DD" value={otherDate} onChange={(e) => setOtherDate(e.target.value)} />
+            ) : null}
+            <Button
+              disabled={busyId === 'batch'}
+              onClick={() => void markChanged()}
+            >
+              Marcar como cambiadas
+            </Button>
+            <p className="text-sm text-ink-muted">
+              Para comprar:{' '}
+            {Object.values(
+              dueParts.reduce<Record<string, { name: string; units: number }>>((acc, p) => {
+                const qty = p.quantityPerInstance ?? p.partType.quantityPerInstance ?? 1
+                const cur = acc[p.partType.id] ?? { name: p.partType.name.toLowerCase(), units: 0 }
+                cur.units += qty
+                acc[p.partType.id] = cur
+                return acc
+              }, {}),
+            )
+              .map((row) => `${row.units} ${row.name}`)
+              .join(' · ')}
+          </p>
+          </div>
+        ) : null}
       </Card>
 
       <Card title="Service pendiente de tu OK">
@@ -283,7 +407,7 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
               <li key={p.id} className="border border-line rounded-lg p-3 space-y-2">
                 {p.photoUrl ? (
                   <img
-                    src={p.photoUrl}
+                    src={photoFileUrl(auth.token, p.photoUrl)}
                     alt={`Consulta caravana ${p.animal?.earTag ?? ''}`}
                     className="w-full max-h-48 rounded-lg border border-line object-cover"
                   />

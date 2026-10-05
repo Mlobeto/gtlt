@@ -22,6 +22,8 @@ const createSchema = z.object({
   defaultUsageThreshold: z.number().int().min(100).max(100_000).optional().nullable(),
   defaultLifeMonths: z.number().int().min(1).max(120).optional().nullable(),
   sortOrder: z.number().int().min(0).max(10_000).optional(),
+  allowsMultiple: z.boolean().optional(),
+  quantityPerInstance: z.number().int().min(1).max(100).optional(),
 });
 
 const patchSchema = z.object({
@@ -33,6 +35,8 @@ const patchSchema = z.object({
   defaultLifeMonths: z.number().int().min(1).max(120).optional().nullable(),
   sortOrder: z.number().int().min(0).max(10_000).optional(),
   active: z.boolean().optional(),
+  allowsMultiple: z.boolean().optional(),
+  quantityPerInstance: z.number().int().min(1).max(100).optional(),
 });
 
 const fieldCreateSchema = z.object({
@@ -86,6 +90,29 @@ async function uniqueCode(base: string): Promise<string> {
   return code;
 }
 
+function assertAllowsMultiple(appliesPerBajada: boolean, allowsMultiple: boolean) {
+  if (allowsMultiple && appliesPerBajada) {
+    throw new HttpError(400, "Un tipo por bajada no puede repetirse en el tambo.");
+  }
+}
+
+async function assertCanDisableMultiple(partTypeId: string) {
+  const groups = await prisma.partInstance.groupBy({
+    by: ["tamboId"],
+    where: { partTypeId, replacedAt: null },
+    _count: { _all: true },
+  });
+  const tambos = groups.filter((g) => g._count._all > 1).length;
+  if (tambos > 0) {
+    throw new HttpError(
+      409,
+      `No se puede desmarcar: ${tambos} tambo${tambos === 1 ? "" : "s"} ya ${tambos === 1 ? "tiene" : "tienen"} más de una pieza vigente de este tipo.`,
+      "MULTIPLE_INSTANCES_IN_USE",
+      { tambos },
+    );
+  }
+}
+
 adminPartTypesRouter.get(
   "/part-types",
   authenticate,
@@ -110,6 +137,8 @@ adminPartTypesRouter.get(
         defaultLifeMonths: t.defaultLifeMonths,
         sortOrder: t.sortOrder,
         active: t.active,
+        allowsMultiple: t.allowsMultiple,
+        quantityPerInstance: t.quantityPerInstance,
         installedCount: t._count.instances,
         fields: t.fields.map(serializePartTypeField),
       })),
@@ -132,6 +161,8 @@ adminPartTypesRouter.post(
       parsed.data.defaultUsageThreshold,
       parsed.data.defaultLifeMonths,
     );
+    const allowsMultiple = parsed.data.allowsMultiple ?? false;
+    assertAllowsMultiple(parsed.data.appliesPerBajada, allowsMultiple);
     const code = await uniqueCode(codeFromPartName(parsed.data.name));
     const item = await prisma.partType.create({
       data: {
@@ -141,6 +172,8 @@ adminPartTypesRouter.post(
         appliesPerBajada: parsed.data.appliesPerBajada,
         pattern: parsed.data.pattern,
         sortOrder: parsed.data.sortOrder ?? 0,
+        allowsMultiple,
+        quantityPerInstance: parsed.data.quantityPerInstance ?? 1,
         ...thresholds,
       },
     });
@@ -176,6 +209,12 @@ adminPartTypesRouter.patch(
     }
 
     const nextPattern = body.data.pattern ?? existing.pattern;
+    const nextApplies = body.data.appliesPerBajada ?? existing.appliesPerBajada;
+    const nextAllows = body.data.allowsMultiple ?? existing.allowsMultiple;
+    assertAllowsMultiple(nextApplies, nextAllows);
+    if (existing.allowsMultiple && !nextAllows) {
+      await assertCanDisableMultiple(existing.id);
+    }
 
     const thresholds = assertUsageThresholds(
       nextPattern,
@@ -199,6 +238,10 @@ adminPartTypesRouter.patch(
         ...thresholds,
         ...(body.data.sortOrder != null ? { sortOrder: body.data.sortOrder } : {}),
         ...(body.data.active != null ? { active: body.data.active } : {}),
+        allowsMultiple: nextAllows,
+        ...(body.data.quantityPerInstance != null
+          ? { quantityPerInstance: body.data.quantityPerInstance }
+          : {}),
       },
     });
     res.json({ item });

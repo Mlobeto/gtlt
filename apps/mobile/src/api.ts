@@ -402,6 +402,12 @@ export async function uploadPhoto(token: string, localUri: string): Promise<{ ur
   return body;
 }
 
+/** Fuente para <Image>: el blob no es público, se lee autenticado. */
+export function photoSource(token: string, url: string) {
+  const params = new URLSearchParams({ url, access_token: token });
+  return { uri: `${API_URL}/uploads/file?${params.toString()}` };
+}
+
 /** Registra una foto (perfil o consulta) ya subida (photoUrl resuelta) para un animal. */
 export function createAnimalPhoto(
   token: string,
@@ -652,6 +658,11 @@ export type ServiceRequestItem = {
   } | null;
   createdBy?: { id: string; name: string };
   assignedTechnician?: { id: string; name: string; email: string | null } | null;
+  workReport?: {
+    id: string;
+    status: string;
+    replacedPartsCount: number;
+  } | null;
 };
 
 export type PartLifeStatus = "OK" | "SOON" | "OVERDUE";
@@ -688,7 +699,17 @@ export type PartInstanceItem = {
   photoUrl: string | null;
   notes: string | null;
   attributes?: Record<string, string | number | boolean>;
-  partType: { id: string; code: string; name: string; pattern: string; fields?: PartTypeField[] };
+  label?: string | null;
+  quantityPerInstance?: number;
+  partType: {
+    id: string;
+    code: string;
+    name: string;
+    pattern: string;
+    fields?: PartTypeField[];
+    allowsMultiple?: boolean;
+    quantityPerInstance?: number;
+  };
   life?: PartLife;
   effectiveUsageThreshold?: number | null;
   effectiveLifeMonths?: number | null;
@@ -724,6 +745,8 @@ export type PartTypeItem = {
   name: string;
   pattern: "USAGE_BASED" | "REACTIVE" | "BRANDED";
   appliesPerBajada: boolean;
+  allowsMultiple?: boolean;
+  quantityPerInstance?: number;
   fields?: PartTypeField[];
 };
 
@@ -896,6 +919,7 @@ type PartInstancePayload = {
   notes?: string | null;
   clientMutationId?: string;
   attributes?: Record<string, string | number | boolean>;
+  label?: string | null;
 };
 
 export function createPartInstance(token: string, payload: PartInstancePayload) {
@@ -914,7 +938,9 @@ export function patchPartInstance(
     installedAtApprox?: boolean;
     brandModel?: string | null;
     notes?: string | null;
+    photoUrl?: string | null;
     attributes?: Record<string, string | number | boolean>;
+    label?: string | null;
   },
 ) {
   return request<{ item: PartInstanceItem }>(`/part-instances/${partInstanceId}`, {
@@ -937,6 +963,176 @@ export function replacePartInstance(
       body: JSON.stringify(payload),
     },
   );
+}
+
+export type WorkReportMeasurement = {
+  label: string;
+  value: string;
+  unit?: string;
+};
+
+export type WorkReportReplacedPart = {
+  id: string;
+  partTypeId: string;
+  partTypeName: string;
+  bajadaNumber: number | null;
+  label: string | null;
+  installedAt: string;
+};
+
+export type WorkReportItem = {
+  id: string;
+  tamboId: string;
+  tambo?: { id: string; name: string } | null;
+  serviceRequestId: string | null;
+  serviceRequest?: {
+    id: string;
+    category: string;
+    status: string;
+    description: string;
+  } | null;
+  authorId: string;
+  authorRole: string;
+  author?: { id: string; name: string } | null;
+  performedAt: string;
+  summary: string;
+  tasks: string[];
+  hoursWorked: number | null;
+  measurements: WorkReportMeasurement[];
+  photoUrls: string[];
+  status: "DRAFT" | "SUBMITTED";
+  submittedAt: string | null;
+  replacedPartsCount: number;
+  replacedParts: WorkReportReplacedPart[];
+};
+
+export type PartHistoryItem = {
+  id: string;
+  partTypeName: string;
+  bajadaNumber: number | null;
+  label: string | null;
+  installedAt: string;
+  installedAtApprox: boolean;
+  replacedAt: string;
+  daysInService: number;
+  estimatedMilkingsInService: number | null;
+  estimatedMilkingsNote: string | null;
+  createdBy: { id: string; name: string } | null;
+  installedInReport: {
+    id: string;
+    status: string;
+    summary: string;
+    performedAt: string;
+    authorRole: string;
+  } | null;
+};
+
+export function fetchWorkReports(
+  token: string,
+  tamboId: string,
+  query?: { from?: string; to?: string; serviceRequestId?: string },
+) {
+  const q = new URLSearchParams({ tamboId });
+  if (query?.from) q.set("from", query.from);
+  if (query?.to) q.set("to", query.to);
+  if (query?.serviceRequestId) q.set("serviceRequestId", query.serviceRequestId);
+  return request<{ items: WorkReportItem[] }>(`/work-reports?${q.toString()}`, { token });
+}
+
+export function fetchWorkReport(token: string, id: string) {
+  return request<{ item: WorkReportItem }>(`/work-reports/${id}`, { token });
+}
+
+export function createWorkReport(
+  token: string,
+  payload: { tamboId: string; serviceRequestId?: string | null; performedAt?: string },
+) {
+  return request<{ item: WorkReportItem }>("/work-reports", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export function patchWorkReport(
+  token: string,
+  id: string,
+  payload: {
+    performedAt?: string;
+    summary?: string;
+    tasks?: string[];
+    hoursWorked?: number | null;
+    measurements?: WorkReportMeasurement[];
+    photoUrls?: string[];
+  },
+) {
+  return request<{ item: WorkReportItem }>(`/work-reports/${id}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export function replaceWorkReportParts(
+  token: string,
+  id: string,
+  payload: {
+    instanceIds: string[];
+    installedAt: string;
+    installedAtApprox?: boolean;
+    notes?: string | null;
+  },
+) {
+  return request<{ item: WorkReportItem; parts: PartInstanceItem[] }>(
+    `/work-reports/${id}/replace-parts`,
+    {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function submitWorkReport(token: string, id: string) {
+  return request<{ item: WorkReportItem }>(`/work-reports/${id}/submit`, {
+    method: "POST",
+    token,
+    body: "{}",
+  });
+}
+
+export function replacePartInstancesBatch(
+  token: string,
+  payload: {
+    instanceIds: string[];
+    installedAt: string;
+    installedAtApprox?: boolean;
+    notes?: string | null;
+  },
+) {
+  return request<{ item: WorkReportItem; parts: PartInstanceItem[] }>(
+    "/part-instances/replace-batch",
+    {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function fetchPartHistory(
+  token: string,
+  query: { tamboId: string; partTypeId: string; bajadaNumber?: number | null; label?: string | null },
+) {
+  const q = new URLSearchParams({
+    tamboId: query.tamboId,
+    partTypeId: query.partTypeId,
+  });
+  if (query.bajadaNumber != null) q.set("bajadaNumber", String(query.bajadaNumber));
+  if (query.label) q.set("label", query.label);
+  return request<{ items: PartHistoryItem[] }>(`/part-instances/history?${q.toString()}`, {
+    token,
+  });
 }
 
 export function fetchNotifications(token: string) {

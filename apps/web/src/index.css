@@ -41,3 +41,37 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+.print-only {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 16mm;
+  }
+
+  body {
+    background: white;
+    color: var(--color-ink);
+  }
+
+  .print-hide {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .md\:ml-\[220px\] {
+    margin-left: 0 !important;
+  }
+
+  .work-report-print {
+    border: none;
+    box-shadow: none;
+    padding: 0;
+  }
+}

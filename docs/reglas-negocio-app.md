@@ -1,6 +1,6 @@
 # Reglas de negocio — capa aplicación / API
 
-**Última actualización:** 2026-10-04
+**Última actualización:** 2026-10-05
 
 Validaciones que **no** se expresan como constraint de PostgreSQL (dependen de otra tabla o de lógica de dominio). Implementar en servicios antes de dar por cerrado el CRUD/sync.
 
@@ -25,7 +25,13 @@ Validaciones que **no** se expresan como constraint de PostgreSQL (dependen de o
 
 3. **Vigencia**
    - Al reemplazar una pieza: setear `replacedAt` en la instancia anterior y crear una nueva fila (no update in-place del tipo/instalación).
-   - La unicidad de “una vigente por (tambo, tipo, bajada|tambo-level)” la garantiza SQL en `docs/partial-indexes.sql`.
+   - Por bajada: una vigente por `(tambo, tipo, bajada)` (`part_instances_one_active_per_bajada`).
+   - Nivel tambo: una vigente por `(tambo, tipo, label normalizado)` (`part_instances_one_active_tambo_level`). `label` se compara en minúsculas y sin espacios de más (`lower(btrim(label))`); nulo cuenta como `''`.
+   - Si `PartType.allowsMultiple` es falso, no hay nombre: una sola pieza vigente por tipo y tambo. Si es verdadero (solo tipos que **no** son por bajada), cada unidad lleva `PartInstance.label` obligatorio (1–60), único en ese tipo y tambo.
+   - `allowsMultiple` lo marca la desarrolladora. No se puede activar en un tipo por bajada (`400`). No se puede desactivar si algún tambo ya tiene más de una pieza vigente (`409` con la cantidad de tambos).
+   - Unidades por pieza (`PartType.quantityPerInstance`, 1–100, default 1): **informativo** (listas de compra). No cambia el cálculo de vida útil, que sigue siendo **por pieza**.
+   - Los repetidores de pulsado no tienen rango de bajadas en el modelo: son un tipo repetible con un campo de ficha de texto ("Bajadas que cubre").
+   - Limitación conocida: el sensor del relé de la bomba sigue siendo **uno por tambo**. Un sensor por bomba queda para más adelante.
 
 4. **Quién carga / reemplaza (decisión de producto)**
    - Alta y reemplazo de piezas de ordeñe y frío: **mobile**, en el tambo.
@@ -55,6 +61,37 @@ Validaciones que **no** se expresan como constraint de PostgreSQL (dependen de o
 - En un pedido con hardware es **obligatorio**. En solo-software es opcional. Al convertir el pedido en tambo (`POST /admin/tambos`) se copia. Dueño/admin y desarrolladora pueden corregirlo (`PATCH /tambos/:id`, `PATCH /admin/tambos/:id`).
 - El técnico lo ve en `GET /service-requests/workspace` y `GET /my/service-requests`.
 
+## Informe de trabajo (`WorkReport`)
+
+Contenedor de un trabajo: fecha (`performedAt`), resumen (hasta 2000), tareas (hasta 30 textos de 200), horas (0–100, opcional), mediciones libres `{ label, value, unit? }` (hasta 20; **no** se comparan todavía con el rendimiento de fábrica), fotos (hasta 6, URLs de `POST /uploads/photo`) y las piezas cambiadas en ese trabajo.
+
+### Estados
+
+- `DRAFT`: solo lo edita el autor. Dueño/admin lo pueden leer. No se lista a los demás.
+- `SUBMITTED`: queda **cerrado**. No se edita ni se le agregan piezas.
+
+### Quién lo arma
+
+- **Técnico:** siempre ligado a un pedido de service que vea, en estado `ACKNOWLEDGED`, `IN_PROGRESS` o `RESOLVED`. Sin ese pedido: `400`. Al enviarlo, `notifyOwners` avisa a dueños y administradores: título "Informe de trabajo", cuerpo con nombre, tambo, cantidad de piezas y de tareas.
+- **Tambero, dueño o administrador:** el mismo informe **sin pedido**, marcado "Trabajo propio". Si mandan `serviceRequestId`, se valida igual que para el técnico.
+- `authorRole` sale de la sesión. Si hay dos roles, gana el más específico: `TECNICO` primero, después `TAMBERO`, `DUENIO`, `ADMIN`.
+
+### Cambio de piezas
+
+- **Todo cambio de piezas pertenece a un informe.** `POST /work-reports/:id/replace-parts` solo en borrador y solo el autor. Todas las piezas del mismo tambo, vigentes; una inválida invalida todo (`invalidIds`) y no se cambia nada.
+- El atajo **"Ya las cambié"** (`POST /part-instances/replace-batch`, tambero/dueño/admin, **no** técnico) crea un informe propio con resumen automático "Cambio de {N} piezas: {tipos}", hace el reemplazo y lo deja `SUBMITTED`.
+- El reemplazo individual `POST /part-instances/:id/replace` sigue igual (una pieza, mismos roles de tambo).
+- La vida útil de la pieza **nueva** arranca desde su `installedAt`. No se cambia la fórmula.
+- Borrar un borrador: solo el autor, y solo si todavía no hay piezas cambiadas. Esos cambios **no** se revierten.
+
+### Historial
+
+`GET /part-instances/history?tamboId=&partTypeId=&bajadaNumber=&label=`: instalaciones **anteriores** (`replacedAt` no nulo) del mismo tipo y posición, de la más reciente a la más vieja, con días en servicio. Si el tipo tiene vida por ordeñes, los ordeñes estimados se calculan con `estimatePartLife` y `now = replacedAt` (usa la cantidad **actual** de vacas).
+
+### Offline
+
+Registrar informes y cambios de piezas necesita conexión, igual que el resto de la carga de máquinas. No hay cola offline.
+
 ## Correcciones append-only
 
 Aplica a `MilkingSession`, `ControlLechero` (header) y `MilkDelivery`:
@@ -69,7 +106,7 @@ Aplica a `MilkingSession`, `ControlLechero` (header) y `MilkDelivery`:
 - Solo `TAMBERO` / `VETERINARIO` / `TECNICO` → alcance = filas de `MembershipTambo`.
 - `TECNICO` **nunca** acceso automático a todos los tambos; es actor externo (puede ser de distintos fabricantes; `companyName` texto libre en Membership).
 - `Membership.status`: `PENDING` (invitación) | `ACTIVE`. Login solo con `ACTIVE`.
-- API: sesión solo-`TECNICO` tiene **lista blanca** de recursos (`part-types`, `part-instances`, `service-requests`, `tambos`, `auth`). Animales/producción/sanidad/repro denegados a nivel guard global.
+- API: sesión solo-`TECNICO` tiene **lista blanca** de recursos (`part-types`, `part-instances`, `service-requests`, `work-reports`, `uploads`, `tambos`, `auth`). Animales/producción/sanidad/repro denegados a nivel guard global.
 
 ### Roles compuestos (celular)
 

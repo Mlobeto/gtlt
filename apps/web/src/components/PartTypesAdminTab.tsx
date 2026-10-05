@@ -11,6 +11,8 @@ const emptyForm = {
   defaultUsageThreshold: '',
   defaultLifeMonths: '',
   sortOrder: '0',
+  allowsMultiple: false,
+  quantityPerInstance: '1',
 }
 
 const emptyFieldForm = {
@@ -74,6 +76,8 @@ export function PartTypesAdminTab({ auth }: { auth: AuthToken }) {
       defaultUsageThreshold: item.defaultUsageThreshold != null ? String(item.defaultUsageThreshold) : '',
       defaultLifeMonths: item.defaultLifeMonths != null ? String(item.defaultLifeMonths) : '',
       sortOrder: String(item.sortOrder),
+      allowsMultiple: item.allowsMultiple ?? false,
+      quantityPerInstance: String(item.quantityPerInstance ?? 1),
     })
   }
 
@@ -85,6 +89,8 @@ export function PartTypesAdminTab({ auth }: { auth: AuthToken }) {
     defaultUsageThreshold: form.defaultUsageThreshold ? Number(form.defaultUsageThreshold) : null,
     defaultLifeMonths: form.defaultLifeMonths ? Number(form.defaultLifeMonths) : null,
     sortOrder: Number(form.sortOrder) || 0,
+    allowsMultiple: form.appliesPerBajada ? false : form.allowsMultiple,
+    quantityPerInstance: Number(form.quantityPerInstance) || 1,
   })
 
   const save = async () => {
@@ -239,6 +245,8 @@ export function PartTypesAdminTab({ auth }: { auth: AuthToken }) {
                   <th className="py-2 pr-3 font-semibold">Nombre</th>
                   <th className="py-2 pr-3 font-semibold">Tipo</th>
                   <th className="py-2 pr-3 font-semibold">Bajada</th>
+                  <th className="py-2 pr-3 font-semibold">Varias</th>
+                  <th className="py-2 pr-3 font-semibold">Unid.</th>
                   <th className="py-2 pr-3 font-semibold">Ordeñes</th>
                   <th className="py-2 pr-3 font-semibold">Meses</th>
                   <th className="py-2 pr-3 font-semibold">Estado</th>
@@ -258,6 +266,8 @@ export function PartTypesAdminTab({ auth }: { auth: AuthToken }) {
                           : 'Cuando falla'}
                     </td>
                     <td className="py-2 pr-3 text-ink-muted">{item.appliesPerBajada ? 'Sí' : 'No'}</td>
+                    <td className="py-2 pr-3 text-ink-muted">{item.allowsMultiple ? 'Sí' : 'No'}</td>
+                    <td className="py-2 pr-3 text-ink-muted">{item.quantityPerInstance ?? 1}</td>
                     <td className="py-2 pr-3 text-ink-muted">{item.defaultUsageThreshold ?? '—'}</td>
                     <td className="py-2 pr-3 text-ink-muted">{item.defaultLifeMonths ?? '—'}</td>
                     <td className="py-2 pr-3">
@@ -317,10 +327,46 @@ export function PartTypesAdminTab({ auth }: { auth: AuthToken }) {
               <input
                 type="checkbox"
                 checked={form.appliesPerBajada}
-                onChange={(e) => setForm((f) => ({ ...f, appliesPerBajada: e.target.checked }))}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    appliesPerBajada: e.target.checked,
+                    allowsMultiple: e.target.checked ? false : f.allowsMultiple,
+                  }))
+                }
               />
               Se instala por bajada
             </label>
+            <label className="flex items-start gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={form.allowsMultiple}
+                disabled={form.appliesPerBajada}
+                onChange={(e) => setForm((f) => ({ ...f, allowsMultiple: e.target.checked }))}
+              />
+              <span>
+                Puede haber más de una en el tambo
+                {form.appliesPerBajada ? (
+                  <span className="block text-ink-muted">
+                    No aplica: las piezas por bajada ya se distinguen por número de bajada.
+                  </span>
+                ) : (
+                  <span className="block text-ink-muted">
+                    Cada unidad lleva un nombre (Principal, Auxiliar, etc.).
+                  </span>
+                )}
+              </span>
+            </label>
+            <Field
+              label="Unidades por pieza"
+              hint="Ej. 4 para las pezoneras: cuántas unidades físicas hay en cada bajada. Solo para armar listas de compra"
+              type="number"
+              min={1}
+              max={100}
+              value={form.quantityPerInstance}
+              onChange={(e) => setForm((f) => ({ ...f, quantityPerInstance: e.target.value }))}
+            />
             {form.pattern === 'USAGE_BASED' ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field

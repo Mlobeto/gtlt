@@ -8,9 +8,9 @@
 --    Motivo: evita el sentinel -1 (que colisionaría si algún día bajada_number
 --    admitiera valores ≤0) y deja explícito el caso NULL vs NOT NULL.
 --
---    Sin este fix: dos PartInstance de equipo de frío (bajada_number NULL,
---    replaced_at NULL, mismo part_type_id) podrían coexistir en el mismo tambo;
---    usage_counter, alertas y lecturas EKC 202 no sabrían cuál es el vigente.
+--    Sin este fix: dos PartInstance de equipo de frío no repetible (bajada_number NULL,
+--    replaced_at NULL, mismo part_type_id, mismo label/nulo) podrían coexistir.
+--    Tipos con allowsMultiple se distinguen por label (minúsculas, sin espacios de más).
 -- ---------------------------------------------------------------------------
 
 CREATE UNIQUE INDEX part_instances_one_active_per_bajada
@@ -19,7 +19,7 @@ CREATE UNIQUE INDEX part_instances_one_active_per_bajada
     AND bajada_number IS NOT NULL;
 
 CREATE UNIQUE INDEX part_instances_one_active_tambo_level
-  ON part_instances (tambo_id, part_type_id)
+  ON part_instances (tambo_id, part_type_id, (COALESCE(lower(btrim(label)), '')))
   WHERE replaced_at IS NULL
     AND bajada_number IS NULL;
 

@@ -45,3 +45,19 @@ export async function uploadImage(
     throw new HttpError(502, "No se pudo guardar la foto en el almacenamiento");
   }
 }
+
+export async function downloadImage(blobName: string) {
+  try {
+    const container = getContainerClient();
+    const blockBlobClient = container.getBlockBlobClient(blobName);
+    const exists = await blockBlobClient.exists();
+    if (!exists) {
+      throw new HttpError(404, "Foto no encontrada");
+    }
+    return blockBlobClient.download();
+  } catch (err) {
+    if (err instanceof HttpError) throw err;
+    console.error(err);
+    throw new HttpError(502, "No se pudo leer la foto del almacenamiento");
+  }
+}

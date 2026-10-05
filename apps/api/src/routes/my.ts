@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { HttpError } from "../lib/http-error.js";
+import { workReportListSummary } from "../lib/work-report-ops.js";
 import { authenticate } from "../middleware/authenticate.js";
 
 export const myRouter = Router();
@@ -68,6 +69,14 @@ myRouter.get("/service-requests", authenticate, async (req, res) => {
           powerSupply: true,
         },
       },
+      workReports: {
+        select: {
+          id: true,
+          status: true,
+          _count: { select: { installedParts: true } },
+        },
+        orderBy: { updatedAt: "desc" },
+      },
     },
     orderBy: [{ urgency: "desc" }, { createdAt: "desc" }],
     take: 200,
@@ -82,6 +91,7 @@ myRouter.get("/service-requests", authenticate, async (req, res) => {
       description: row.description,
       createdAt: row.createdAt.toISOString(),
       tenant: row.tenant,
+      workReport: workReportListSummary(row.workReports),
       tambo: {
         id: row.tambo.id,
         name: row.tambo.name,

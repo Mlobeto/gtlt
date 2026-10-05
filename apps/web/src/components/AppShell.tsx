@@ -25,7 +25,7 @@ export function AppShell<K extends string>({
 }) {
   return (
     <div className="min-h-screen bg-subtle md:flex">
-      <aside className="bg-brand-dark text-white md:fixed md:inset-y-0 md:left-0 md:w-[220px] md:flex md:flex-col">
+      <aside className="print-hide bg-brand-dark text-white md:fixed md:inset-y-0 md:left-0 md:w-[220px] md:flex md:flex-col">
         <div className="flex items-center justify-between gap-3 px-5 py-4 md:block md:py-6">
           <div className="min-w-0">
             <img src="/cal-logo-white.svg" alt="CAL" className="h-7 w-auto" />
@@ -76,8 +76,8 @@ export function AppShell<K extends string>({
         </div>
       </aside>
 
-      <div className="flex-1 min-w-0 md:ml-[220px]">
-        <header className="px-4 sm:px-6 lg:px-8 pt-6 pb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex-1 min-w-0 md:ml-[220px] print:ml-0">
+        <header className="print-hide px-4 sm:px-6 lg:px-8 pt-6 pb-4 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl sm:text-3xl font-bold text-ink">{title}</h1>
           {headerRight}
         </header>

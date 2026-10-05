@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { api } from '../lib/api'
+import { api, photoFileUrl, type PartInstanceItem } from '../lib/api'
 import { TamboPicker } from '../components/TamboPicker'
 import { AppShell, type NavItem } from '../components/AppShell'
 import { DevicesSection } from '../components/DevicesSection'
+import { WorkReportEditor } from '../components/WorkReportsTab'
 import { Badge, Button, Card, EmptyState, ErrorBanner, type BadgeTone } from '../components/ui'
 import type { AuthToken } from '../types/auth'
 
@@ -97,6 +98,11 @@ type InboxItem = {
     longitude?: number | null
     address?: string | null
   }
+  workReport?: {
+    id: string
+    status: string
+    replacedPartsCount: number
+  } | null
 }
 
 type ServiceRequestItem = {
@@ -110,18 +116,10 @@ type ServiceRequestItem = {
     id: string
     partType?: { name: string }
   } | null
-}
-
-type PartInstanceItem = {
-  id: string
-  bajadaNumber: number | null
-  brandModel: string | null
-  photoUrl: string | null
-  partType: { name: string }
-  coldDetail: {
-    brand: string
-    model: string
-    capacityLiters: string | number
+  workReport?: {
+    id: string
+    status: string
+    replacedPartsCount: number
   } | null
 }
 
@@ -393,6 +391,27 @@ export function TechnicianDashboardPage({
                         {r.relatedPartInstance?.partType?.name ? (
                           <p className="text-xs text-ink-muted">Pieza: {r.relatedPartInstance.partType.name}</p>
                         ) : null}
+                        <p className="text-sm text-ink-muted">
+                          {r.workReport?.status === 'SUBMITTED'
+                            ? `Informe enviado · ${r.workReport.replacedPartsCount} piezas`
+                            : r.workReport?.status === 'DRAFT'
+                              ? 'Informe en borrador'
+                              : 'Sin informe'}
+                        </p>
+                        {['ACKNOWLEDGED', 'IN_PROGRESS', 'RESOLVED'].includes(r.status) && tamboId ? (
+                          <WorkReportEditor
+                            token={auth.token}
+                            tamboId={tamboId}
+                            serviceRequestId={r.id}
+                            parts={parts}
+                            onChanged={() => {
+                              void api.getTechnicianWorkspace(auth.token, tamboId).then((ws) => {
+                                setRequests(ws.serviceRequests || [])
+                                setParts(ws.partInstances || [])
+                              })
+                            }}
+                          />
+                        ) : null}
                         {next.length === 0 ? (
                           <p className="text-sm text-ink-muted">Este pedido ya está cerrado.</p>
                         ) : (
@@ -439,7 +458,7 @@ export function TechnicianDashboardPage({
                       ) : null}
                       {p.photoUrl ? (
                         <img
-                          src={p.photoUrl}
+                          src={photoFileUrl(auth.token, p.photoUrl)}
                           alt={p.partType.name}
                           className="mt-1 w-full max-h-40 rounded-lg border border-line object-cover"
                         />

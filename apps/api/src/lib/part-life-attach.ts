@@ -74,6 +74,7 @@ export function lifeForInstance(
     installedAtApprox: item.installedAtApprox,
     effectiveUsageThreshold: thresholds.usageThreshold,
     effectiveLifeMonths: thresholds.lifeMonths,
+    quantityPerInstance: item.partType.quantityPerInstance,
   };
 }
 

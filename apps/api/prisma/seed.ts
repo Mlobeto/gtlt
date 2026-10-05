@@ -37,6 +37,8 @@ type PartTypeSeed = {
   defaultUsageThreshold: number | null;
   defaultLifeMonths: number | null;
   appliesPerBajada: boolean;
+  allowsMultiple?: boolean;
+  quantityPerInstance?: number;
   active: boolean;
   sortOrder: number;
   description: string;
@@ -54,6 +56,7 @@ const PART_TYPES: PartTypeSeed[] = [
     defaultUsageThreshold: 2500,
     defaultLifeMonths: null,
     appliesPerBajada: true,
+    quantityPerInstance: 4,
     active: true,
     sortOrder: 10,
     description: "Incluye las pezoneras. Se cambian juntas.",
@@ -127,12 +130,24 @@ const PART_TYPES: PartTypeSeed[] = [
     description: "Copas del conjunto de ordeñe. Se cambian cuando fallan.",
   },
   {
+    code: "PULSE_PER_BAJADA",
+    name: "Pulsador por bajada",
+    pattern: "REACTIVE",
+    defaultUsageThreshold: null,
+    defaultLifeMonths: null,
+    appliesPerBajada: true,
+    active: true,
+    sortOrder: 70,
+    description: "Pulsador instalado en la bajada. Se cambia cuando falla.",
+  },
+  {
     code: "VACUUM_PUMP",
     name: "Bomba de vacío",
     pattern: "REACTIVE",
     defaultUsageThreshold: null,
     defaultLifeMonths: null,
     appliesPerBajada: false,
+    allowsMultiple: true,
     active: true,
     sortOrder: 95,
     description: "Bomba de vacío a nivel tambo. Ficha: modelo, caudal nominal, motor.",
@@ -205,12 +220,47 @@ const PART_TYPES: PartTypeSeed[] = [
       "Sistema de descarga (eléctrico o neumático) a nivel tambo. Revisión en service.",
   },
   {
+    code: "PULSE_PANEL",
+    name: "Tablero de pulsado",
+    pattern: "REACTIVE",
+    defaultUsageThreshold: null,
+    defaultLifeMonths: null,
+    appliesPerBajada: false,
+    active: true,
+    sortOrder: 160,
+    description: "Tablero de pulsado a nivel tambo.",
+  },
+  {
+    code: "PULSE_CENTRAL",
+    name: "Pulsador central",
+    pattern: "REACTIVE",
+    defaultUsageThreshold: null,
+    defaultLifeMonths: null,
+    appliesPerBajada: false,
+    active: true,
+    sortOrder: 170,
+    description: "Pulsador central a nivel tambo.",
+  },
+  {
+    code: "PULSE_REPEATER",
+    name: "Repetidor de pulsado",
+    pattern: "REACTIVE",
+    defaultUsageThreshold: null,
+    defaultLifeMonths: null,
+    appliesPerBajada: false,
+    allowsMultiple: true,
+    active: true,
+    sortOrder: 180,
+    description: "Repetidor de pulsado. Cada uno cubre un tramo de bajadas (texto en la ficha).",
+  },
+  {
     code: "COLD_TANK",
     name: "Equipo de frío",
     pattern: "BRANDED",
     defaultUsageThreshold: null,
     defaultLifeMonths: null,
     appliesPerBajada: false,
+    allowsMultiple: true,
     active: true,
     sortOrder: 200,
     description:
@@ -229,6 +279,8 @@ async function seedPartTypes() {
         defaultUsageThreshold: part.defaultUsageThreshold,
         defaultLifeMonths: part.defaultLifeMonths,
         appliesPerBajada: part.appliesPerBajada,
+        allowsMultiple: part.allowsMultiple ?? false,
+        quantityPerInstance: part.quantityPerInstance ?? 1,
         active: part.active,
         sortOrder: part.sortOrder,
         description: part.description,
@@ -322,10 +374,32 @@ const COLD_TANK_FIELDS: PartFieldSeed[] = [
   },
 ];
 
+const MODEL_FIELD: PartFieldSeed = {
+  key: "model",
+  label: "Modelo",
+  kind: "TEXT",
+  sortOrder: 10,
+};
+
+const PULSE_REPEATER_FIELDS: PartFieldSeed[] = [
+  MODEL_FIELD,
+  {
+    key: "bajadas_cubiertas",
+    label: "Bajadas que cubre",
+    kind: "TEXT",
+    helpText: "Ej. 1 a 2",
+    sortOrder: 20,
+  },
+];
+
 async function seedPartTypeFields() {
   const catalog: { code: string; fields: PartFieldSeed[] }[] = [
     { code: "VACUUM_PUMP", fields: VACUUM_PUMP_FIELDS },
     { code: "COLD_TANK", fields: COLD_TANK_FIELDS },
+    { code: "PULSE_PANEL", fields: [MODEL_FIELD] },
+    { code: "PULSE_CENTRAL", fields: [MODEL_FIELD] },
+    { code: "PULSE_REPEATER", fields: PULSE_REPEATER_FIELDS },
+    { code: "PULSE_PER_BAJADA", fields: [MODEL_FIELD] },
   ];
 
   for (const entry of catalog) {

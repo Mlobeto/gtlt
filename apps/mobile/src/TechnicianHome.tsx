@@ -15,6 +15,7 @@ import {
 } from "./api";
 import { formatAttributeLine, powerSupplyLabel } from "./part-fields";
 import { DevicesSection } from "./DevicesSection";
+import { WorkReportScreen } from "./WorkReportScreen";
 import type { Session } from "./session";
 import { colors, font, radius, space, touch } from "./theme";
 
@@ -83,7 +84,7 @@ const NEXT_STATUS: Record<string, { value: string; label: string }[]> = {
   ],
 };
 
-type TechScreen = "home" | "equipment" | "request";
+type TechScreen = "home" | "equipment" | "request" | "report";
 
 type Props = {
   session: Session;
@@ -230,6 +231,13 @@ export function TechnicianHome({ session, online, onLogout, onStatus }: Props) {
                 <Text style={styles.itemMeta} numberOfLines={2}>
                   {r.description}
                 </Text>
+                <Text style={styles.itemMeta}>
+                  {r.workReport?.status === "SUBMITTED"
+                    ? `Informe enviado · ${r.workReport.replacedPartsCount} piezas`
+                    : r.workReport?.status === "DRAFT"
+                      ? "Informe en borrador"
+                      : "Sin informe"}
+                </Text>
               </Pressable>
             ))
           )}
@@ -303,7 +311,35 @@ export function TechnicianHome({ session, online, onLogout, onStatus }: Props) {
           {(NEXT_STATUS[selected.status] ?? []).length === 0 ? (
             <Text style={styles.empty}>Este pedido ya está cerrado.</Text>
           ) : null}
+          <Text style={styles.itemMeta}>
+            {selected.workReport?.status === "SUBMITTED"
+              ? `Informe enviado · ${selected.workReport.replacedPartsCount} piezas`
+              : selected.workReport?.status === "DRAFT"
+                ? "Informe en borrador"
+                : "Sin informe"}
+          </Text>
+          {["ACKNOWLEDGED", "IN_PROGRESS", "RESOLVED"].includes(selected.status) ? (
+            <Pressable
+              style={[styles.buttonSecondary, busy && styles.disabled]}
+              onPress={() => setScreen("report")}
+              disabled={busy}
+            >
+              <Text style={styles.buttonSecondaryText}>Informe de trabajo</Text>
+            </Pressable>
+          ) : null}
         </View>
+      ) : null}
+
+      {screen === "report" && selected ? (
+        <WorkReportScreen
+          token={session.token}
+          tamboId={session.tamboId}
+          online={online}
+          serviceRequestId={selected.id}
+          parts={parts}
+          onStatus={onStatus}
+          onChanged={() => void load()}
+        />
       ) : null}
     </View>
   );

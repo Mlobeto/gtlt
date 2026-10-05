@@ -20,6 +20,8 @@ export const TECNICO_ALLOWED_PATH_PREFIXES = [
   "/part-types",
   "/part-instances",
   "/service-requests",
+  "/work-reports",
+  "/uploads",
   "/memberships/accept-invite",
   "/notifications",
   "/devices",

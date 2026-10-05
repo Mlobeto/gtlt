@@ -3,10 +3,19 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { HttpError } from "../lib/http-error.js";
-import { parseInstalledAt } from "../lib/part-date.js";
+import { parseInstalledAt, wholeDaysBetween } from "../lib/part-date.js";
+import { optionalTenantPhotoUrl } from "../lib/photo-url.js";
 import { requireValidAttributes, serializePartTypeField, toFieldDef } from "../lib/part-attributes.js";
-import { withPartLife } from "../lib/part-life-attach.js";
+import { lifeForInstance, loadPartLifeContext, withPartLife } from "../lib/part-life-attach.js";
 import { requireTamboInTenant } from "../lib/tambo-scope.js";
+import {
+  autoReplaceSummary,
+  farmAuthorRoleFromSession,
+  invalidPartIds,
+  replacePartsOnTx,
+  reportInclude,
+  serializeWorkReport,
+} from "../lib/work-report-ops.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
 
@@ -55,6 +64,7 @@ const createSchema = z.object({
   notes: z.string().max(2000).optional().nullable(),
   clientMutationId: z.string().min(1).max(100).optional(),
   attributes: z.record(z.string(), z.unknown()).optional(),
+  label: z.string().max(80).optional().nullable(),
   coldDetail: z
     .object({
       brand: z.string().min(1).max(120),
@@ -71,14 +81,54 @@ const patchSchema = z.object({
   installedAtApprox: z.boolean().optional(),
   brandModel: z.string().max(200).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
+  photoUrl: z.string().max(2000).optional().nullable(),
   attributes: z.record(z.string(), z.unknown()).optional(),
+  label: z.string().max(80).optional().nullable(),
 });
 
-function mapPrismaError(err: unknown): never {
+function mapPrismaError(err: unknown, allowsMultiple = false): never {
   if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-    throw new HttpError(409, "Conflict: duplicate part instance or clientMutationId");
+    const target = [
+      ...(Array.isArray(err.meta?.target) ? err.meta.target.map(String) : []),
+      String(err.meta?.target ?? ""),
+      String(err.meta?.constraint ?? ""),
+      err.message,
+    ].join(" ").toLowerCase();
+    if (target.includes("client_mutation") || target.includes("clientmutationid")) {
+      throw new HttpError(409, "Conflict: duplicate clientMutationId");
+    }
+    if (allowsMultiple) {
+      throw new HttpError(
+        409,
+        "Ya hay una pieza con ese nombre en este tipo",
+        "DUPLICATE_PART_LABEL",
+      );
+    }
+    throw new HttpError(
+      409,
+      "Ya hay una pieza vigente de este tipo en el tambo: usá Reemplazar",
+      "DUPLICATE_PART_TYPE",
+    );
   }
   throw err;
+}
+
+function resolveLabel(raw: unknown, allowsMultiple: boolean, inherited?: string | null): string | null {
+  if (!allowsMultiple) {
+    if (raw != null && String(raw).trim() !== "") {
+      throw new HttpError(
+        400,
+        "Este tipo no lleva nombre: solo puede haber una pieza vigente en el tambo.",
+      );
+    }
+    return null;
+  }
+  const source = raw !== undefined && raw !== null ? String(raw) : (inherited ?? "");
+  const label = source.trim();
+  if (label.length < 1 || label.length > 60) {
+    throw new HttpError(400, "Completá el nombre o posición (1 a 60 caracteres).");
+  }
+  return label;
 }
 
 async function assertCreatablePartType(partTypeId: string) {
@@ -131,6 +181,176 @@ partInstancesRouter.get(
   },
 );
 
+const historySchema = z.object({
+  tamboId: z.string().uuid(),
+  partTypeId: z.string().uuid(),
+  bajadaNumber: z.coerce.number().int().positive().optional(),
+  label: z.string().optional(),
+});
+
+/** Instalaciones anteriores (con replacedAt) del mismo tipo y posición. */
+partInstancesRouter.get(
+  "/history",
+  authenticate,
+  requireRoles("TAMBERO", "DUENIO", "ADMIN", "TECNICO"),
+  async (req, res) => {
+    const parsed = historySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid query", details: parsed.error.flatten() });
+      return;
+    }
+    const auth = req.auth!;
+    const { tamboId, partTypeId } = parsed.data;
+    await requireTamboInTenant(auth, tamboId);
+    const bajadaNumber = parsed.data.bajadaNumber ?? null;
+    const labelNorm = (parsed.data.label ?? "").trim().toLowerCase();
+
+    const rows = await prisma.partInstance.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        tamboId,
+        partTypeId,
+        bajadaNumber,
+        replacedAt: { not: null },
+      },
+      include: {
+        partType: true,
+        createdBy: { select: { id: true, name: true } },
+        installedInReport: {
+          select: { id: true, status: true, summary: true, performedAt: true, authorRole: true },
+        },
+      },
+      orderBy: [{ replacedAt: "desc" }, { installedAt: "desc" }],
+    });
+
+    const previous = rows.filter(
+      (row) => (row.label ?? "").trim().toLowerCase() === labelNorm,
+    );
+
+    const ctx = await loadPartLifeContext(auth.tenantId, [tamboId]);
+
+    const items = previous.map((row) => {
+      const replacedAt = row.replacedAt!;
+      const daysInService = wholeDaysBetween(row.installedAt, replacedAt);
+      const { life } = lifeForInstance(row, ctx, replacedAt);
+      const estimatedMilkingsInService =
+        life.kind === "USAGE_BASED" && life.byUsage ? life.byUsage.milkings : null;
+      return {
+        id: row.id,
+        tamboId: row.tamboId,
+        partTypeId: row.partTypeId,
+        partTypeName: row.partType.name,
+        bajadaNumber: row.bajadaNumber,
+        label: row.label,
+        installedAt: row.installedAt.toISOString(),
+        installedAtApprox: row.installedAtApprox,
+        replacedAt: replacedAt.toISOString(),
+        daysInService,
+        estimatedMilkingsInService,
+        estimatedMilkingsNote:
+          estimatedMilkingsInService != null
+            ? "Usa la cantidad actual de vacas del tambo."
+            : null,
+        createdBy: row.createdBy,
+        installedInReport: row.installedInReport
+          ? {
+              id: row.installedInReport.id,
+              status: row.installedInReport.status,
+              summary: row.installedInReport.summary,
+              performedAt: row.installedInReport.performedAt.toISOString(),
+              authorRole: row.installedInReport.authorRole,
+            }
+          : null,
+      };
+    });
+
+    res.json({ items });
+  },
+);
+
+const replaceBatchSchema = z.object({
+  instanceIds: z.array(z.string().uuid()).min(1).max(50),
+  installedAt: z.string().min(1),
+  installedAtApprox: z.boolean().optional(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+
+/** Atajo "Ya las cambié": informe propio + reemplazo + envío, en una transacción de negocio. */
+partInstancesRouter.post(
+  "/replace-batch",
+  authenticate,
+  requireRoles("TAMBERO", "DUENIO", "ADMIN"),
+  async (req, res) => {
+    const parsed = replaceBatchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid body", details: parsed.error.flatten() });
+      return;
+    }
+    const auth = req.auth!;
+    const uniqueIds = [...new Set(parsed.data.instanceIds)];
+    const found = await prisma.partInstance.findMany({
+      where: {
+        id: { in: uniqueIds },
+        tenantId: auth.tenantId,
+        replacedAt: null,
+      },
+      include: { partType: { select: { name: true } } },
+    });
+    const tamboIds = [...new Set(found.map((p) => p.tamboId))];
+    const tamboId = tamboIds[0];
+    const invalidIds =
+      !tamboId || tamboIds.length !== 1
+        ? uniqueIds
+        : invalidPartIds(uniqueIds, found, tamboId, auth.tenantId);
+    if (!tamboId || invalidIds.length > 0) {
+      throw new HttpError(
+        400,
+        "Hay piezas que no se pueden cambiar. No se modificó ninguna.",
+        "INVALID_PART_INSTANCES",
+        { invalidIds: invalidIds.length ? invalidIds : uniqueIds },
+      );
+    }
+    await requireTamboInTenant(auth, tamboId);
+
+    const installedAt = parseInstalledAt(parsed.data.installedAt);
+    const authorRole = farmAuthorRoleFromSession(auth.roles);
+    const summary = autoReplaceSummary(found);
+    const foundById = new Map(found.map((p) => [p.id, p]));
+
+    const { report, created } = await prisma.$transaction(async (tx) => {
+      const report = await tx.workReport.create({
+        data: {
+          tenantId: auth.tenantId,
+          tamboId,
+          authorId: auth.userId,
+          authorRole,
+          performedAt: installedAt,
+          summary,
+          status: "SUBMITTED",
+          submittedAt: new Date(),
+        },
+      });
+      const created = await replacePartsOnTx(tx, {
+        auth,
+        reportId: report.id,
+        foundById,
+        uniqueIds,
+        installedAt,
+        installedAtApprox: parsed.data.installedAtApprox,
+        notes: parsed.data.notes,
+      });
+      return { report, created };
+    });
+
+    const item = await prisma.workReport.findFirstOrThrow({
+      where: { id: report.id },
+      include: reportInclude,
+    });
+    const parts = await withPartLife(auth.tenantId, created);
+    res.status(201).json({ item: serializeWorkReport(item), parts });
+  },
+);
+
 partInstancesRouter.post(
   "/",
   authenticate,
@@ -160,6 +380,9 @@ partInstancesRouter.post(
       throw new HttpError(400, "bajadaNumber must be null for this part type");
     }
 
+    const label = resolveLabel(data.label, partType.allowsMultiple);
+    const photoUrl = optionalTenantPhotoUrl(data.photoUrl ?? null, auth.tenantId) ?? null;
+
     try {
       const item = await prisma.partInstance.create({
         data: {
@@ -168,10 +391,11 @@ partInstancesRouter.post(
           tamboId: data.tamboId,
           partTypeId: data.partTypeId,
           bajadaNumber: data.bajadaNumber ?? null,
+          label,
           installedAt,
           installedAtApprox: data.installedAtApprox ?? false,
           brandModel: data.brandModel ?? null,
-          photoUrl: data.photoUrl ?? null,
+          photoUrl,
           notes: data.notes ?? null,
           attributes,
           clientMutationId: data.clientMutationId,
@@ -182,7 +406,7 @@ partInstancesRouter.post(
       const [enriched] = await withPartLife(auth.tenantId, [item]);
       res.status(201).json({ item: serializeInstance(enriched) });
     } catch (err) {
-      mapPrismaError(err);
+      mapPrismaError(err, partType.allowsMultiple);
     }
   },
 );
@@ -213,8 +437,14 @@ partInstancesRouter.post(
     const partType = await assertCreatablePartType(body.data.partTypeId);
     const attributes = validatedAttributes(partType, body.data.attributes);
     const installedAt = parseInstalledAt(body.data.installedAt);
+    const label = resolveLabel(
+      body.data.label,
+      partType.allowsMultiple,
+      previous.label,
+    );
 
     const data = body.data;
+    const photoUrl = optionalTenantPhotoUrl(data.photoUrl ?? null, auth.tenantId) ?? null;
     try {
       const result = await prisma.$transaction(async (tx) => {
         const voided = await tx.partInstance.update({
@@ -228,10 +458,11 @@ partInstancesRouter.post(
             tamboId: previous.tamboId,
             partTypeId: data.partTypeId,
             bajadaNumber: data.bajadaNumber ?? previous.bajadaNumber,
+            label,
             installedAt,
             installedAtApprox: data.installedAtApprox ?? false,
             brandModel: data.brandModel ?? null,
-            photoUrl: data.photoUrl ?? null,
+            photoUrl,
             notes: data.notes ?? null,
             attributes,
             clientMutationId: data.clientMutationId,
@@ -244,7 +475,7 @@ partInstancesRouter.post(
       const [item] = await withPartLife(auth.tenantId, [result.item]);
       res.status(201).json({ previous: result.previous, item: serializeInstance(item) });
     } catch (err) {
-      mapPrismaError(err);
+      mapPrismaError(err, partType.allowsMultiple);
     }
   },
 );
@@ -276,7 +507,12 @@ partInstancesRouter.patch(
       parsed.data.attributes !== undefined
         ? validatedAttributes(existing.partType, parsed.data.attributes)
         : undefined;
+    const label =
+      parsed.data.label !== undefined
+        ? resolveLabel(parsed.data.label, existing.partType.allowsMultiple)
+        : undefined;
 
+    try {
     const item = await prisma.partInstance.update({
       where: { id: existing.id },
       data: {
@@ -288,11 +524,18 @@ partInstancesRouter.patch(
           : {}),
         ...(parsed.data.brandModel !== undefined ? { brandModel: parsed.data.brandModel } : {}),
         ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes } : {}),
+        ...(parsed.data.photoUrl !== undefined
+          ? { photoUrl: optionalTenantPhotoUrl(parsed.data.photoUrl, auth.tenantId) ?? null }
+          : {}),
         ...(attributes !== undefined ? { attributes } : {}),
+        ...(label !== undefined ? { label } : {}),
       },
       include: instanceInclude,
     });
     const [enriched] = await withPartLife(auth.tenantId, [item]);
     res.json({ item: serializeInstance(enriched) });
+    } catch (err) {
+      mapPrismaError(err, existing.partType.allowsMultiple);
+    }
   },
 );

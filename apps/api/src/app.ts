@@ -33,6 +33,7 @@ import { weightEventsRouter } from "./routes/weight-events.js";
 import { animalPhotosRouter } from "./routes/animal-photos.js";
 import { siresRouter } from "./routes/sires.js";
 import { uploadsRouter } from "./routes/uploads.js";
+import { workReportsRouter } from "./routes/work-reports.js";
 import { softAuthenticate } from "./middleware/soft-authenticate.js";
 import { technicianResourceGuard } from "./middleware/technician-guard.js";
 
@@ -59,6 +60,7 @@ export function createApp() {
   app.use("/part-instances", partInstancesRouter);
   app.use("/part-type-config", partTypeConfigRouter);
   app.use("/service-requests", serviceRequestsRouter);
+  app.use("/work-reports", workReportsRouter);
   app.use("/notifications", notificationsRouter);
   app.use("/support-tickets", supportTicketsRouter);
   app.use("/app-prototype-config", appPrototypeConfigRouter);

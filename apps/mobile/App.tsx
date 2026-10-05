@@ -53,12 +53,17 @@ import {
   updateTamboSettings,
   updateTamboLocation,
   uploadPhoto,
+  photoSource,
   fetchTamboServiceProvider,
   type AppNotification,
   type PartInstanceItem,
   type PartTypeItem,
   type ServiceRequestItem,
 } from "./src/api";
+import { TechnicianHome } from "./src/TechnicianHome";
+import { WorkReportScreen } from "./src/WorkReportScreen";
+import { ReplaceBatchScreen } from "./src/ReplaceBatchScreen";
+import { PartHistoryScreen } from "./src/PartHistoryScreen";
 import {
   attributesFromSource,
   collectAttributes,
@@ -67,7 +72,6 @@ import {
 } from "./src/part-fields";
 import { ownerOnly } from "./src/roles";
 import { TambosScreen } from "./src/TambosScreen";
-import { TechnicianHome } from "./src/TechnicianHome";
 import { buildActionLists, type ActionLists } from "./src/animals/actionLists";
 import {
   countPendingOutbox,
@@ -135,6 +139,9 @@ type Screen =
   | "animalForm"
   | "parts"
   | "partForm"
+  | "workReport"
+  | "replaceBatch"
+  | "partHistory"
   | "service"
   | "notifications"
   | "today"
@@ -310,6 +317,42 @@ function lifeChipLabel(status: string) {
   return "OK";
 }
 
+function daysOverdue(p: PartInstanceItem): number | null {
+  if (p.life?.kind !== "USAGE_BASED" || p.life.status !== "OVERDUE") return null;
+  if (p.life.estimatedReplacementDate) {
+    const start = new Date(p.life.estimatedReplacementDate);
+    const now = new Date();
+    return Math.max(
+      0,
+      Math.round(
+        (Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) -
+          Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) /
+          86_400_000,
+      ),
+    );
+  }
+  if (p.life.byTime) {
+    return Math.max(0, Math.round(p.life.byTime.days - p.life.byTime.lifeDays));
+  }
+  if (p.life.byUsage && p.life.byUsage.percent >= 1) {
+    const installed = new Date(p.installedAt);
+    const now = new Date();
+    const daysSince = Math.max(
+      0,
+      Math.round(
+        (Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) -
+          Date.UTC(installed.getFullYear(), installed.getMonth(), installed.getDate())) /
+          86_400_000,
+      ),
+    );
+    if (p.life.byUsage.milkings > 0 && daysSince > 0) {
+      const rate = p.life.byUsage.milkings / daysSince;
+      return Math.max(0, Math.round(daysSince - p.life.byUsage.threshold / rate));
+    }
+  }
+  return null;
+}
+
 /** Label en español para items del timeline del servidor (kinds: weight, photo, transfer, control). */
 function timelineItemLabel(kind: string, type: string, summary: string): string {
   if (kind === "health" || kind === "repro") return tipoLegible(type);
@@ -434,9 +477,13 @@ function AppContent() {
   const [partBrandModel, setPartBrandModel] = useState("");
   const [partNotes, setPartNotes] = useState("");
   const [partAttributes, setPartAttributes] = useState<AttributeDraft>({});
+  const [partLabel, setPartLabel] = useState("");
   const [partPhotoUri, setPartPhotoUri] = useState<string | null>(null);
   const [partInstallChip, setPartInstallChip] = useState<string | null>(null);
   const [partInstallOther, setPartInstallOther] = useState("");
+  const [batchPreselectedIds, setBatchPreselectedIds] = useState<string[]>([]);
+  const [historyPart, setHistoryPart] = useState<PartInstanceItem | null>(null);
+  const [partLocalPhotos, setPartLocalPhotos] = useState<Record<string, string>>({});
 
   const actionLists = useMemo(
     () => buildActionLists({ animals, repros, withdrawals, now: new Date() }),
@@ -449,6 +496,13 @@ function AppContent() {
       ),
     [parts],
   );
+  const groupedParts = useMemo(() => {
+    return [...parts].sort((a, b) => {
+      const byType = a.partType.name.localeCompare(b.partType.name, "es");
+      if (byType !== 0) return byType;
+      return (a.label ?? "").localeCompare(b.label ?? "", "es");
+    });
+  }, [parts]);
   const installPreview = resolveInstallDate(partInstallChip, partInstallOther);
   const scrollRef = useRef<ScrollView>(null);
   const detailFromTodayRef = useRef(false);
@@ -1531,8 +1585,26 @@ function AppContent() {
     void loadParts();
   }
 
+  function openReplaceBatch(ids: string[]) {
+    setBatchPreselectedIds(ids);
+    setScreen("replaceBatch");
+  }
+
   function selectedPartType(): PartTypeItem | null {
     return partTypes.find((t) => t.id === partTypeId) ?? null;
+  }
+
+  function duePartLine(p: PartInstanceItem) {
+    const qty = p.quantityPerInstance ?? p.partType.quantityPerInstance ?? 1;
+    return [
+      p.partType.name,
+      p.label,
+      p.bajadaNumber != null ? `bajada ${p.bajadaNumber}` : null,
+      qty > 1 ? `${qty} unidades` : null,
+      p.life?.percent != null ? `${Math.round(Math.min(p.life.percent, 1) * 100)}%` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   }
 
   function openPartCreateForm() {
@@ -1543,6 +1615,7 @@ function AppContent() {
     setPartBrandModel("");
     setPartNotes("");
     setPartAttributes({});
+    setPartLabel("");
     setPartPhotoUri(null);
     setPartInstallChip(null);
     setPartInstallOther("");
@@ -1558,6 +1631,7 @@ function AppContent() {
     setPartBrandModel(part.brandModel ?? "");
     setPartNotes("");
     setPartAttributes(attributesFromSource(type.fields, part.attributes, part.coldDetail));
+    setPartLabel(part.label ?? "");
     setPartPhotoUri(null);
     setPartInstallChip("today");
     setPartInstallOther("");
@@ -1573,7 +1647,8 @@ function AppContent() {
     setPartBrandModel(part.brandModel ?? "");
     setPartNotes(part.notes ?? "");
     setPartAttributes(attributesFromSource(type.fields, part.attributes, part.coldDetail));
-    setPartPhotoUri(null);
+    setPartLabel(part.label ?? "");
+    setPartPhotoUri(partLocalPhotos[part.id] ?? part.photoUrl ?? null);
     setPartInstallChip(null);
     setPartInstallOther("");
     setScreen("partForm");
@@ -1658,12 +1733,24 @@ function AppContent() {
         setStatus(collected.error);
         return;
       }
+      if (type?.allowsMultiple && !partLabel.trim()) {
+        setStatus("Completá el nombre o posición.");
+        return;
+      }
       setBusy(true);
       try {
+        let photoUrl: string | undefined;
+        if (partPhotoUri && !partPhotoUri.startsWith("http")) {
+          const uploaded = await uploadPhoto(session.token, partPhotoUri);
+          photoUrl = uploaded.url;
+          setPartLocalPhotos((prev) => ({ ...prev, [replacingPartId]: partPhotoUri }));
+        }
         await patchPartInstance(session.token, replacingPartId, {
           attributes: collected.value,
           brandModel: partBrandModel.trim() || null,
           notes: partNotes.trim() || null,
+          ...(photoUrl ? { photoUrl } : {}),
+          ...(type?.allowsMultiple ? { label: partLabel.trim() } : {}),
         });
         setStatus("Datos actualizados.");
         await loadParts();
@@ -1690,6 +1777,10 @@ function AppContent() {
     const bajadaNumber = partType.appliesPerBajada ? Number(partBajada) : null;
     if (partType.appliesPerBajada && (!Number.isFinite(bajadaNumber) || (bajadaNumber as number) < 1)) {
       setStatus("Anotá el número de bajada.");
+      return;
+    }
+    if (partType.allowsMultiple && !partLabel.trim()) {
+      setStatus("Completá el nombre o posición.");
       return;
     }
 
@@ -1727,14 +1818,21 @@ function AppContent() {
         photoUrl,
         notes: partNotes.trim() || null,
         attributes: collected.value,
+        ...(partType.allowsMultiple ? { label: partLabel.trim() } : {}),
       };
 
       try {
         if (partFormMode === "create") {
-          await createPartInstance(session.token, { ...payload, tamboId: session.tamboId });
+          const res = await createPartInstance(session.token, { ...payload, tamboId: session.tamboId });
+          if (partPhotoUri) {
+            setPartLocalPhotos((prev) => ({ ...prev, [res.item.id]: partPhotoUri }));
+          }
           setStatus("Pieza cargada.");
         } else if (replacingPartId) {
-          await replacePartInstance(session.token, replacingPartId, payload);
+          const res = await replacePartInstance(session.token, replacingPartId, payload);
+          if (partPhotoUri) {
+            setPartLocalPhotos((prev) => ({ ...prev, [res.item.id]: partPhotoUri }));
+          }
           setStatus("Pieza reemplazada.");
         }
         await loadParts();
@@ -2096,7 +2194,7 @@ function AppContent() {
                           ? "animalDetail"
                           : "animals",
                       );
-                    } else if (screen === "partForm") {
+                    } else if (screen === "partForm" || screen === "workReport" || screen === "replaceBatch" || screen === "partHistory") {
                       setScreen("parts");
                     } else {
                       goHome();
@@ -2106,7 +2204,10 @@ function AppContent() {
                   <Text style={styles.backText}>
                     {screen === "animalDetail" ||
                     screen === "animalForm" ||
-                    screen === "partForm"
+                    screen === "partForm" ||
+                    screen === "workReport" ||
+                    screen === "replaceBatch" ||
+                    screen === "partHistory"
                       ? "← Volver"
                       : "← Volver al inicio"}
                   </Text>
@@ -2172,13 +2273,24 @@ function AppContent() {
                         </Text>
                         {dueParts.slice(0, 3).map((p) => (
                           <Text key={p.id} style={styles.meta}>
-                            {p.partType.name}
-                            {p.bajadaNumber != null ? ` · bajada ${p.bajadaNumber}` : ""}
-                            {p.life?.percent != null
-                              ? ` · ${Math.round(Math.min(p.life.percent, 1) * 100)}%`
+                            {duePartLine(p)}
+                            {daysOverdue(p) != null && daysOverdue(p)! > 14
+                              ? " · ¿Ya se cambió? Registralo para que la cuenta de vida útil quede al día."
                               : ""}
                           </Text>
                         ))}
+                        {dueParts.some((p) => (daysOverdue(p) ?? 0) > 14) ? (
+                          <Pressable
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              openReplaceBatch(
+                                dueParts.filter((p) => (daysOverdue(p) ?? 0) > 14).map((p) => p.id),
+                              );
+                            }}
+                          >
+                            <Text style={styles.todayRowLabel}>Ya las cambié</Text>
+                          </Pressable>
+                        ) : null}
                       </View>
                       <Text style={styles.todayRowArrow}>›</Text>
                     </Pressable>
@@ -2205,15 +2317,14 @@ function AppContent() {
                           <Text style={styles.todayRowLabel}>
                             Piezas por cambiar · {dueParts.length}
                           </Text>
-                          {dueParts.slice(0, 3).map((p) => (
-                            <Text key={p.id} style={styles.meta}>
-                              {p.partType.name}
-                              {p.bajadaNumber != null ? ` · bajada ${p.bajadaNumber}` : ""}
-                              {p.life?.percent != null
-                                ? ` · ${Math.round(Math.min(p.life.percent, 1) * 100)}%`
-                                : ""}
-                            </Text>
-                          ))}
+                        {dueParts.slice(0, 3).map((p) => (
+                          <Text key={p.id} style={styles.meta}>
+                            {duePartLine(p)}
+                            {daysOverdue(p) != null && daysOverdue(p)! > 14
+                              ? " · ¿Ya se cambió? Registralo para que la cuenta de vida útil quede al día."
+                              : ""}
+                          </Text>
+                        ))}
                         </View>
                         <Text style={styles.todayRowArrow}>›</Text>
                       </Pressable>
@@ -3249,15 +3360,54 @@ function AppContent() {
                   >
                     <Text style={styles.buttonText}>+ Nueva pieza</Text>
                   </Pressable>
+                  <Pressable
+                    style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                    onPress={() => setScreen("workReport")}
+                    disabled={busy}
+                  >
+                    <Text style={styles.buttonSecondaryText}>Registrar trabajo</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                    onPress={() => openReplaceBatch(dueParts.map((p) => p.id))}
+                    disabled={busy}
+                  >
+                    <Text style={styles.buttonSecondaryText}>Ya las cambié</Text>
+                  </Pressable>
+                  {dueParts.map((p) =>
+                    (daysOverdue(p) ?? 0) > 14 ? (
+                      <Pressable
+                        key={`due-${p.id}`}
+                        style={styles.item}
+                        onPress={() =>
+                          openReplaceBatch(
+                            dueParts.filter((x) => x.partType.id === p.partType.id).map((x) => x.id),
+                          )
+                        }
+                      >
+                        <Text style={styles.itemTitle}>{duePartLine(p)}</Text>
+                        <Text style={styles.itemMeta}>
+                          ¿Ya se cambió? Registralo para que la cuenta de vida útil quede al día.
+                        </Text>
+                        <Text style={styles.buttonSecondaryText}>Ya las cambié</Text>
+                      </Pressable>
+                    ) : null,
+                  )}
                   {parts.length === 0 ? (
                     <Text style={styles.empty}>Todavía no hay piezas cargadas.</Text>
                   ) : (
-                    parts.map((p) => (
+                    groupedParts.map((p) => (
                       <View key={p.id} style={styles.item}>
                         <Text style={styles.itemTitle}>
                           {p.partType.name}
+                          {p.label ? ` · ${p.label}` : ""}
                           {p.bajadaNumber != null ? ` · bajada ${p.bajadaNumber}` : ""}
                         </Text>
+                        {(p.quantityPerInstance ?? p.partType.quantityPerInstance ?? 1) > 1 ? (
+                          <Text style={styles.itemMeta}>
+                            × {p.quantityPerInstance ?? p.partType.quantityPerInstance} por pieza
+                          </Text>
+                        ) : null}
                         {p.brandModel ? (
                           <Text style={styles.itemMeta}>{p.brandModel}</Text>
                         ) : null}
@@ -3332,8 +3482,16 @@ function AppContent() {
                             ) : null}
                           </>
                         ) : null}
-                        {p.photoUrl ? (
-                          <Image source={{ uri: p.photoUrl }} style={styles.animalPhoto} />
+                        {p.photoUrl || partLocalPhotos[p.id] ? (
+                          <Image
+                            source={
+                              partLocalPhotos[p.id]
+                                ? { uri: partLocalPhotos[p.id] }
+                                : photoSource(session.token, p.photoUrl!)
+                            }
+                            style={styles.animalPhoto}
+                            resizeMode="cover"
+                          />
                         ) : null}
                         <Pressable
                           style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
@@ -3356,10 +3514,54 @@ function AppContent() {
                         >
                           <Text style={styles.buttonSecondaryText}>Reemplazar</Text>
                         </Pressable>
+                        <Pressable
+                          style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                          onPress={() => {
+                            setHistoryPart(p);
+                            setScreen("partHistory");
+                          }}
+                          disabled={busy}
+                        >
+                          <Text style={styles.buttonSecondaryText}>Historial</Text>
+                        </Pressable>
                       </View>
                     ))
                   )}
                 </View>
+              ) : null}
+
+              {screen === "workReport" && session ? (
+                <WorkReportScreen
+                  token={session.token}
+                  tamboId={session.tamboId}
+                  online={online}
+                  parts={parts}
+                  onStatus={setStatus}
+                  onChanged={() => void loadParts()}
+                />
+              ) : null}
+
+              {screen === "replaceBatch" && session ? (
+                <ReplaceBatchScreen
+                  token={session.token}
+                  online={online}
+                  parts={parts}
+                  preselectedIds={batchPreselectedIds}
+                  onStatus={setStatus}
+                  onDone={() => {
+                    void loadParts();
+                    setScreen("parts");
+                  }}
+                />
+              ) : null}
+
+              {screen === "partHistory" && session && historyPart ? (
+                <PartHistoryScreen
+                  token={session.token}
+                  tamboId={session.tamboId}
+                  part={historyPart}
+                  onStatus={setStatus}
+                />
               ) : null}
 
               {screen === "partForm" ? (
@@ -3384,6 +3586,7 @@ function AppContent() {
                         onPress={() => {
                           setPartTypeId(t.id);
                           setPartAttributes({});
+                          if (!t.allowsMultiple) setPartLabel("");
                         }}
                         disabled={partFormMode === "edit"}
                       >
@@ -3398,6 +3601,38 @@ function AppContent() {
                       </Pressable>
                     ))}
                   </View>
+                  {selectedPartType()?.allowsMultiple ? (
+                    <>
+                      <Text style={styles.label}>
+                        {partFormMode === "edit" ? "Renombrar" : "Nombre o posición"} *
+                      </Text>
+                      <View style={styles.wrapRow}>
+                        {["Principal", "Auxiliar"].map((chip) => (
+                          <Pressable
+                            key={chip}
+                            style={[styles.choiceSmall, partLabel === chip && styles.choiceOn]}
+                            onPress={() => setPartLabel(chip)}
+                          >
+                            <Text
+                              style={[
+                                styles.choiceText,
+                                partLabel === chip && styles.choiceTextOn,
+                              ]}
+                            >
+                              {chip}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                      <TextInput
+                        style={styles.input}
+                        value={partLabel}
+                        onChangeText={setPartLabel}
+                        placeholder="Ej. Principal"
+                        placeholderTextColor={colors.textMuted}
+                      />
+                    </>
+                  ) : null}
                   {selectedPartType()?.appliesPerBajada ? (
                     <>
                       <Text style={styles.label}>Bajada</Text>
@@ -3511,7 +3746,15 @@ function AppContent() {
                   />
                   <Text style={styles.label}>Foto</Text>
                   {partPhotoUri ? (
-                    <Image source={{ uri: partPhotoUri }} style={styles.animalPhoto} />
+                    <Image
+                      source={
+                        partPhotoUri.startsWith("http") && session
+                          ? photoSource(session.token, partPhotoUri)
+                          : { uri: partPhotoUri }
+                      }
+                      style={styles.animalPhoto}
+                      resizeMode="cover"
+                    />
                   ) : (
                     <Text style={styles.help}>Opcional — foto de la pieza instalada.</Text>
                   )}

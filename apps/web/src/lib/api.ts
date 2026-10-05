@@ -1,5 +1,10 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
+export function photoFileUrl(token: string, url: string) {
+  const params = new URLSearchParams({ url, access_token: token })
+  return `${API_URL}/uploads/file?${params.toString()}`
+}
+
 export class ApiError extends Error {
   status: number
   code?: string
@@ -158,8 +163,59 @@ export type PartInstanceItem = {
   bajadaNumber: number | null
   installedAt: string
   installedAtApprox?: boolean
-  partType: { id: string; name: string; pattern: string }
+  label?: string | null
+  brandModel?: string | null
+  photoUrl?: string | null
+  quantityPerInstance?: number
+  partType: {
+    id: string
+    name: string
+    pattern: string
+    allowsMultiple?: boolean
+    quantityPerInstance?: number
+  }
   life?: PartLife
+  coldDetail?: {
+    brand: string
+    model: string
+    capacityLiters: string | number
+  } | null
+}
+
+export type WorkReportMeasurement = {
+  label: string
+  value: string
+  unit?: string
+}
+
+export type WorkReportReplacedPart = {
+  id: string
+  partTypeId: string
+  partTypeName: string
+  bajadaNumber: number | null
+  label: string | null
+  installedAt: string
+}
+
+export type WorkReportItem = {
+  id: string
+  tamboId: string
+  tambo?: { id: string; name: string } | null
+  serviceRequestId: string | null
+  serviceRequest?: { id: string; category: string; status: string; description: string } | null
+  authorId: string
+  authorRole: string
+  author?: { id: string; name: string } | null
+  performedAt: string
+  summary: string
+  tasks: string[]
+  hoursWorked: number | null
+  measurements: WorkReportMeasurement[]
+  photoUrls: string[]
+  status: 'DRAFT' | 'SUBMITTED'
+  submittedAt: string | null
+  replacedPartsCount: number
+  replacedParts: WorkReportReplacedPart[]
 }
 
 export type PartTypeConfigItem = {
@@ -186,6 +242,8 @@ export type AdminPartType = {
   sortOrder: number
   active: boolean
   installedCount: number
+  allowsMultiple?: boolean
+  quantityPerInstance?: number
   fields?: PartTypeField[]
 }
 
@@ -1046,6 +1104,8 @@ export const api = {
       defaultUsageThreshold?: number | null
       defaultLifeMonths?: number | null
       sortOrder?: number
+      allowsMultiple?: boolean
+      quantityPerInstance?: number
     },
   ) {
     const res = await fetch(`${API_URL}/admin/part-types`, {
@@ -1072,6 +1132,8 @@ export const api = {
       defaultLifeMonths: number | null
       sortOrder: number
       active: boolean
+      allowsMultiple: boolean
+      quantityPerInstance: number
     }>,
   ) {
     const res = await fetch(`${API_URL}/admin/part-types/${id}`, {
@@ -1160,10 +1222,139 @@ export const api = {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}` },
     })
-    if (!res.ok) {
-      const body = await res.json().catch(() => null)
-      throw new Error(body?.error || 'No se pudo marcar la foto como vista')
-    }
+    if (!res.ok) throw await toApiError(res, 'No se pudo marcar la foto como vista')
     return res.json()
+  },
+
+  async uploadPhoto(token: string, file: File) {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await fetch(`${API_URL}/uploads/photo`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo subir la foto')
+    return res.json() as Promise<{ url: string }>
+  },
+
+  async getWorkReports(
+    token: string,
+    tamboId: string,
+    query?: { from?: string; to?: string; serviceRequestId?: string },
+  ) {
+    const params = new URLSearchParams({ tamboId })
+    if (query?.from) params.set('from', query.from)
+    if (query?.to) params.set('to', query.to)
+    if (query?.serviceRequestId) params.set('serviceRequestId', query.serviceRequestId)
+    const res = await fetch(`${API_URL}/work-reports?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los informes')
+    return res.json() as Promise<{ items: WorkReportItem[] }>
+  },
+
+  async getWorkReport(token: string, id: string) {
+    const res = await fetch(`${API_URL}/work-reports/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo cargar el informe')
+    return res.json() as Promise<{ item: WorkReportItem }>
+  },
+
+  async createWorkReport(
+    token: string,
+    data: { tamboId: string; serviceRequestId?: string | null; performedAt?: string },
+  ) {
+    const res = await fetch(`${API_URL}/work-reports`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo crear el informe')
+    return res.json() as Promise<{ item: WorkReportItem }>
+  },
+
+  async patchWorkReport(
+    token: string,
+    id: string,
+    data: {
+      performedAt?: string
+      summary?: string
+      tasks?: string[]
+      hoursWorked?: number | null
+      measurements?: WorkReportMeasurement[]
+      photoUrls?: string[]
+    },
+  ) {
+    const res = await fetch(`${API_URL}/work-reports/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo guardar el informe')
+    return res.json() as Promise<{ item: WorkReportItem }>
+  },
+
+  async replaceWorkReportParts(
+    token: string,
+    id: string,
+    data: {
+      instanceIds: string[]
+      installedAt: string
+      installedAtApprox?: boolean
+      notes?: string | null
+    },
+  ) {
+    const res = await fetch(`${API_URL}/work-reports/${id}/replace-parts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudieron cambiar las piezas')
+    return res.json() as Promise<{ item: WorkReportItem; parts: PartInstanceItem[] }>
+  },
+
+  async submitWorkReport(token: string, id: string) {
+    const res = await fetch(`${API_URL}/work-reports/${id}/submit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: '{}',
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo enviar el informe')
+    return res.json() as Promise<{ item: WorkReportItem }>
+  },
+
+  async replacePartInstancesBatch(
+    token: string,
+    data: {
+      instanceIds: string[]
+      installedAt: string
+      installedAtApprox?: boolean
+      notes?: string | null
+    },
+  ) {
+    const res = await fetch(`${API_URL}/part-instances/replace-batch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudieron marcar las piezas como cambiadas')
+    return res.json() as Promise<{ item: WorkReportItem; parts: PartInstanceItem[] }>
   },
 }

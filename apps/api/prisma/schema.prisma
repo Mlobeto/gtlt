@@ -67,6 +67,12 @@ enum NotificationType {
   SERVICE_REJECTED
   /// AnimalPhoto.type = CONSULT recién cargada — a dueño/admin + veterinarios con acceso al tambo.
   ANIMAL_PHOTO_CONSULT
+  WORK_REPORT_SUBMITTED
+}
+
+enum WorkReportStatus {
+  DRAFT
+  SUBMITTED
 }
 
 enum SupportTicketCategory {
@@ -238,6 +244,7 @@ model Tenant {
   animalPhotos         AnimalPhoto[]
   weightEvents         WeightEvent[]
   tamboRequests        TamboRequest[]
+  workReports          WorkReport[]
 
   @@map("tenants")
 }
@@ -285,6 +292,7 @@ model Tambo {
   animalPhotos  AnimalPhoto[]
   weightEvents  WeightEvent[]
   tamboRequest  TamboRequest?
+  workReports   WorkReport[]
 
   @@index([tenantId])
   @@index([tenantId, name])
@@ -357,6 +365,7 @@ model User {
   devicesCreated          Device[]          @relation("DeviceCreatedBy")
   tamboRequestsRequested  TamboRequest[]    @relation("TamboRequestRequestedBy")
   tamboRequestsQuoted     TamboRequest[]    @relation("TamboRequestQuotedBy")
+  workReportsAuthored     WorkReport[]      @relation("WorkReportAuthor")
 
   @@map("users")
 }
@@ -885,6 +894,10 @@ model PartType {
   defaultLifeMonths     Int?                   @map("default_life_months")
   /// true = pertenece al grupo de ordeñe por bajada (centralizador, copas, tubos).
   appliesPerBajada      Boolean                @map("applies_per_bajada") @default(false)
+  /// Solo nivel tambo: más de una pieza vigente, cada una con PartInstance.label.
+  allowsMultiple        Boolean                @default(false) @map("allows_multiple")
+  /// Unidades físicas que representa cada pieza cargada (informativo; no afecta vida útil).
+  quantityPerInstance   Int                    @default(1) @map("quantity_per_instance")
   active                Boolean                @default(true)
   sortOrder             Int                    @default(0) @map("sort_order")
   description           String?
@@ -960,6 +973,8 @@ model PartInstance {
   /// Nullable: solo grupo de ordeñe por bajada. Piezas a nivel tambo (ej. frío) → null.
   /// Validación app: ver comentario del model + docs/reglas-negocio-app.md
   bajadaNumber     Int?      @map("bajada_number")
+  /// Nombre/posición si PartType.allowsMultiple (ej. "Principal"). Nulo en tipos de una sola.
+  label            String?
   installedAt      DateTime  @map("installed_at")
   installedAtApprox Boolean  @default(false) @map("installed_at_approx")
   /// Texto libre opcional; la mayoría de piezas genéricas no tienen marca identificable.
@@ -972,6 +987,7 @@ model PartInstance {
   attributes       Json      @default("{}")
   createdById      String?   @map("created_by_id") @db.Uuid
   clientMutationId String?   @map("client_mutation_id")
+  installedInReportId String? @map("installed_in_report_id") @db.Uuid
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -979,6 +995,7 @@ model PartInstance {
   tambo         Tambo                @relation(fields: [tamboId], references: [id])
   partType      PartType             @relation(fields: [partTypeId], references: [id])
   createdBy     User?                @relation("PartCreatedBy", fields: [createdById], references: [id])
+  installedInReport WorkReport?      @relation(fields: [installedInReportId], references: [id], onDelete: SetNull)
   coldDetail      ColdEquipmentDetail?
   milkDeliveries  MilkDelivery[]
   serviceRequests ServiceRequest[]
@@ -986,11 +1003,15 @@ model PartInstance {
   @@index([tenantId, tamboId, replacedAt])
   @@index([tenantId, tamboId, bajadaNumber, partTypeId])
   @@index([tenantId, clientMutationId])
+  @@index([installedInReportId])
   /// PARTIAL UNIQUE (migración SQL — docs/partial-indexes.sql): DOS índices,
   /// porque en Postgres NULL != NULL y un único índice con bajada_number no
   /// impediría dos equipos de frío vigentes en el mismo tambo.
   ///   1) (tambo_id, part_type_id, bajada_number) WHERE replaced_at IS NULL AND bajada_number IS NOT NULL
-  ///   2) (tambo_id, part_type_id)              WHERE replaced_at IS NULL AND bajada_number IS NULL
+  ///   2) (tambo_id, part_type_id, COALESCE(lower(btrim(label)), ''))
+  ///      WHERE replaced_at IS NULL AND bajada_number IS NULL
+  ///      — una vigente por tipo y tambo; si allowsMultiple, el nombre (sin
+  ///      mayúsculas ni espacios de más) distingue unidades.
   @@map("part_instances")
 }
 
@@ -1038,11 +1059,44 @@ model ServiceRequest {
   createdBy           User           @relation("ServiceRequestCreatedBy", fields: [createdById], references: [id])
   approvedBy          User?          @relation("ServiceRequestApprovedBy", fields: [approvedById], references: [id])
   serviceProvider     ServiceProvider? @relation(fields: [serviceProviderId], references: [id])
+  workReports         WorkReport[]
 
   @@index([tenantId, tamboId, status])
   @@index([tenantId, assignedTechnicianUserId, status])
   @@index([relatedPartInstanceId])
   @@map("service_requests")
+}
+
+/// Informe de un trabajo (técnico ligado a un pedido, o trabajo propio del tambo).
+/// SUBMITTED queda cerrado: no se edita ni se le agregan piezas.
+model WorkReport {
+  id               String           @id @default(uuid()) @db.Uuid
+  tenantId         String           @map("tenant_id") @db.Uuid
+  tamboId          String           @map("tambo_id") @db.Uuid
+  serviceRequestId String?          @map("service_request_id") @db.Uuid
+  authorId         String           @map("author_id") @db.Uuid
+  /// Rol con el que se escribió: TECNICO, TAMBERO, DUENIO o ADMIN.
+  authorRole       String           @map("author_role")
+  performedAt      DateTime         @map("performed_at")
+  summary          String           @default("")
+  tasks            Json             @default("[]")
+  hoursWorked      Decimal?         @map("hours_worked") @db.Decimal(6, 2)
+  measurements     Json             @default("[]")
+  photoUrls        String[]         @default([]) @map("photo_urls")
+  status           WorkReportStatus @default(DRAFT)
+  submittedAt      DateTime?        @map("submitted_at")
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  tambo          Tambo           @relation(fields: [tamboId], references: [id])
+  serviceRequest ServiceRequest? @relation(fields: [serviceRequestId], references: [id], onDelete: SetNull)
+  author         User            @relation("WorkReportAuthor", fields: [authorId], references: [id])
+  installedParts PartInstance[]
+
+  @@index([tenantId, tamboId, performedAt])
+  @@index([serviceRequestId])
+  @@map("work_reports")
 }
 
 /// Bandeja in-app (push Expo/WhatsApp después). Destinatario = User.

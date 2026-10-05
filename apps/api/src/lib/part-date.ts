@@ -15,3 +15,9 @@ export function parseInstalledAt(value: string): Date {
   }
   return date;
 }
+
+export function wholeDaysBetween(from: Date, to: Date): number {
+  const start = Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate());
+  const end = Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate());
+  return Math.max(0, Math.round((end - start) / 86_400_000));
+}

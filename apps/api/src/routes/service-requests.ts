@@ -5,6 +5,7 @@ import { HttpError } from "../lib/http-error.js";
 import { notifyOwners, createNotification } from "../lib/notifications.js";
 import { withPartLife } from "../lib/part-life-attach.js";
 import { requireTamboInTenant } from "../lib/tambo-scope.js";
+import { workReportListSummary, workReportOnServiceSelect } from "../lib/work-report-ops.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
 import { hasAllTamboAccess } from "../lib/access.js";
@@ -192,12 +193,18 @@ serviceRequestsRouter.get(
           select: { id: true, name: true, email: true, phone: true },
         },
         createdBy: { select: { id: true, name: true } },
+        workReports: workReportOnServiceSelect,
       },
       orderBy: [{ urgency: "desc" }, { createdAt: "desc" }],
       take: 100,
     });
 
-    res.json({ items });
+    res.json({
+      items: items.map(({ workReports, ...item }) => ({
+        ...item,
+        workReport: workReportListSummary(workReports),
+      })),
+    });
   },
 );
 
@@ -247,6 +254,7 @@ serviceRequestsRouter.get(
             select: { id: true, name: true, email: true },
           },
           createdBy: { select: { id: true, name: true } },
+          workReports: workReportOnServiceSelect,
         },
         orderBy: [{ urgency: "desc" }, { createdAt: "desc" }],
       }),
@@ -274,7 +282,10 @@ serviceRequestsRouter.get(
           }
         : null,
       partInstances: await withPartLife(auth.tenantId, parts),
-      serviceRequests: requests,
+      serviceRequests: requests.map(({ workReports, ...item }) => ({
+        ...item,
+        workReport: workReportListSummary(workReports),
+      })),
     });
   },
 );

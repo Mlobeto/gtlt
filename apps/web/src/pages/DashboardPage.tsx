@@ -9,6 +9,7 @@ import { TodayTab } from '../components/TodayTab'
 import { AnimalsTab } from '../components/AnimalsTab'
 import { TeamTab } from '../components/TeamTab'
 import { SettingsTab } from '../components/SettingsTab'
+import { WorkReportsTab } from '../components/WorkReportsTab'
 import { AppShell } from '../components/AppShell'
 import { Button } from '../components/ui'
 import { api } from '../lib/api'
@@ -19,14 +20,15 @@ interface DashboardPageProps {
   onLogout: () => void
 }
 
-type Tab = 'today' | 'tickets' | 'prototype' | 'accounts' | 'tambo-requests' | 'part-types' | 'plans' | 'animals' | 'team' | 'settings'
+type Tab = 'today' | 'works' | 'tickets' | 'prototype' | 'accounts' | 'tambo-requests' | 'part-types' | 'plans' | 'animals' | 'team' | 'settings'
 
 export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
-  const isOwner = auth.roles.includes('DUENIO')
+  const isOwner = auth.roles.includes('DUENIO') || auth.roles.includes('ADMIN')
   const isDeveloper = auth.roles.includes('DESARROLLADORA')
   const tabs: { id: Tab; label: string }[] = isOwner
     ? [
         { id: 'today', label: 'Hoy' },
+        { id: 'works', label: 'Trabajos' },
         { id: 'animals', label: 'Animales' },
         { id: 'team', label: 'Equipo' },
         { id: 'settings', label: 'Configuración' },
@@ -62,7 +64,11 @@ export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
     fetchMe()
   }, [auth.token])
 
-  const roleLabel = isOwner ? 'Dueño/a del tambo' : 'Desarrollador/a'
+  const roleLabel = auth.roles.includes('ADMIN') && !auth.roles.includes('DUENIO')
+    ? 'Administrador/a'
+    : isOwner
+      ? 'Dueño/a del tambo'
+      : 'Desarrollador/a'
 
   return (
     <>
@@ -89,6 +95,7 @@ export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
       >
         <div>
           {activeTab === 'today' && isOwner && <TodayTab auth={auth} />}
+          {activeTab === 'works' && isOwner && <WorkReportsTab auth={auth} />}
           {activeTab === 'tickets' && isDeveloper && !isOwner && (
             <TicketsTab
               auth={auth}
