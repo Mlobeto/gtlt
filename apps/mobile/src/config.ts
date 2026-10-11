@@ -7,3 +7,5 @@
 export const API_URL =
   process.env.EXPO_PUBLIC_API_URL ??
   "https://gtlt-api.proudmoss-fef6994b.eastus2.azurecontainerapps.io";
+
+export const WEB_URL = (process.env.EXPO_PUBLIC_WEB_URL ?? "").replace(/\/$/, "");

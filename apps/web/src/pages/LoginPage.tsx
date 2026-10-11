@@ -22,14 +22,34 @@ function isTenantRequiredError(
 const hasWebRole = (roles: string[]) =>
   roles.some((role) => WEB_ALLOWED_ROLES.includes(role as (typeof WEB_ALLOWED_ROLES)[number]))
 
+let consumedInviteHash: string | null | undefined
+
+function consumeInviteHash(): string | null {
+  if (consumedInviteHash !== undefined) return consumedInviteHash
+  if (typeof window === 'undefined') {
+    consumedInviteHash = null
+    return null
+  }
+  const hash = window.location.hash
+  if (!hash.startsWith('#invitacion=')) {
+    consumedInviteHash = null
+    return null
+  }
+  const raw = decodeURIComponent(hash.slice('#invitacion='.length)).replace(/\s+/g, '')
+  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
+  consumedInviteHash = /^[0-9a-fA-F]{32,}$/.test(raw) ? raw : null
+  return consumedInviteHash
+}
+
 export function LoginPage({ onSuccess }: LoginPageProps) {
+  const inviteFromHash = consumeInviteHash()
   const [email, setEmail] = useState(import.meta.env.DEV ? 'admin@gtlt.local' : '')
   const [password, setPassword] = useState(import.meta.env.DEV ? 'demo1234' : '')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [tenants, setTenants] = useState<TenantChoice[] | null>(null)
-  const [mode, setMode] = useState<'login' | 'invite'>('login')
-  const [inviteCode, setInviteCode] = useState('')
+  const [mode, setMode] = useState<'login' | 'invite'>(inviteFromHash ? 'invite' : 'login')
+  const [inviteCode, setInviteCode] = useState(inviteFromHash ?? '')
   const [inviteName, setInviteName] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -90,7 +110,7 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
       setMode('login')
       setNotice(
         hasWebRole(accepted.item.roles)
-          ? 'Cuenta lista, ingresá'
+          ? 'Cuenta lista. Ingresá con tu correo y tu clave.'
           : 'Tu cuenta quedó activa. Entrá desde la app del celular.',
       )
     } catch (err) {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { buildInviteMessages } from '../lib/inviteMessages'
 import type { AuthToken } from '../types/auth'
 import { Badge, Button, Card, EmptyState, ErrorBanner, inputClass } from './ui'
 
@@ -23,12 +24,6 @@ const ROLE_LABEL: Record<string, string> = {
   ADMIN: 'Admin',
 }
 
-function inviteMessage(token: string) {
-  return (
-    `Te invité a CAL. Instalá la app, tocá «Tengo un código de invitación» y pegá este código: ${token}. Vence en 7 días.` +
-    ` También podés activarla en ${window.location.origin}`
-  )
-}
 
 export function TeamTab({ auth }: TeamTabProps) {
   const [tambos, setTambos] = useState<{ id: string; name: string }[]>([])
@@ -38,8 +33,12 @@ export function TeamTab({ auth }: TeamTabProps) {
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [inviteResult, setInviteResult] = useState<{ token: string | null } | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [inviteResult, setInviteResult] = useState<{
+    token: string | null
+    role: 'TAMBERO' | 'VETERINARIO'
+  } | null>(null)
+  const [copied, setCopied] = useState<'intro' | 'code' | null>(null)
+  const [inviterName, setInviterName] = useState('')
   const [form, setForm] = useState({
     email: '',
     phone: '',
@@ -61,6 +60,18 @@ export function TeamTab({ auth }: TeamTabProps) {
       }
     }
     void loadTambos()
+  }, [auth.token])
+
+  useEffect(() => {
+    const loadMe = async () => {
+      try {
+        const data = await api.getMe(auth.token)
+        setInviterName(data.user?.name ?? '')
+      } catch {
+        setInviterName('')
+      }
+    }
+    void loadMe()
   }, [auth.token])
 
   const loadTeam = async () => {
@@ -101,8 +112,8 @@ export function TeamTab({ auth }: TeamTabProps) {
         name: form.name || undefined,
         role: form.role,
       })
-      setInviteResult({ token: result.inviteToken ?? null })
-      setCopied(false)
+      setInviteResult({ token: result.inviteToken ?? null, role: form.role })
+      setCopied(null)
       setForm({ email: '', phone: '', name: '', role: 'TAMBERO' })
       setShowForm(false)
       await loadTeam()
@@ -113,12 +124,21 @@ export function TeamTab({ auth }: TeamTabProps) {
     }
   }
 
-  const copyToken = async (token: string) => {
+  const shareMessages = (token: string, role: 'TAMBERO' | 'VETERINARIO') =>
+    buildInviteMessages({
+      inviterName: inviterName || 'el dueño',
+      tamboName: tambos.find((t) => t.id === tamboId)?.name ?? 'el tambo',
+      role,
+      token,
+      webUrl: window.location.origin,
+    })
+
+  const copyText = async (text: string, which: 'intro' | 'code') => {
     try {
-      await navigator.clipboard.writeText(token)
-      setCopied(true)
+      await navigator.clipboard.writeText(text)
+      setCopied(which)
     } catch {
-      setError('No se pudo copiar. Seleccioná el código y copialo a mano.')
+      setError('No se pudo copiar. Seleccioná el texto y copialo a mano.')
     }
   }
 
@@ -128,21 +148,39 @@ export function TeamTab({ auth }: TeamTabProps) {
 
       {inviteResult?.token ? (
         <div className="bg-accent-soft border border-accent/40 text-accent-text px-4 py-3 rounded-lg text-sm space-y-3">
-          <p>Invitación lista. Pasale este código (vence en 7 días, un solo uso):</p>
-          <code className="block break-all bg-surface p-2 rounded border border-line text-ink">
-            {inviteResult.token}
-          </code>
+          <p>Invitación lista. Mandalos en ese orden. El segundo es para copiar el código si el enlace no abre.</p>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" onClick={() => void copyToken(inviteResult.token!)}>
-              {copied ? 'Copiado' : 'Copiar'}
+            <Button
+              variant="secondary"
+              onClick={() =>
+                void copyText(shareMessages(inviteResult.token!, inviteResult.role).intro, 'intro')
+              }
+            >
+              {copied === 'intro' ? 'Copiado' : 'Copiar invitación'}
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() =>
+                void copyText(shareMessages(inviteResult.token!, inviteResult.role).code, 'code')
+              }
+            >
+              {copied === 'code' ? 'Copiado' : 'Copiar solo el código'}
             </Button>
             <a
-              href={`https://wa.me/?text=${encodeURIComponent(inviteMessage(inviteResult.token))}`}
+              href={`https://wa.me/?text=${encodeURIComponent(shareMessages(inviteResult.token, inviteResult.role).intro)}`}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center min-h-10 px-4 rounded-lg bg-primary text-white font-semibold hover:bg-primary-deep"
             >
-              Enviar por WhatsApp
+              WhatsApp: invitación
+            </a>
+            <a
+              href={`https://wa.me/?text=${encodeURIComponent(shareMessages(inviteResult.token, inviteResult.role).code)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center min-h-10 px-4 rounded-lg border border-primary text-primary-deep bg-surface hover:bg-primary-soft font-semibold"
+            >
+              WhatsApp: solo el código
             </a>
           </div>
         </div>

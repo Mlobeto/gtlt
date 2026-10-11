@@ -12,7 +12,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://gtlt-api.proudmoss-fef6994b.eastus2.azurecontainerapps.io"
+        "EXPO_PUBLIC_API_URL": "https://gtlt-api.proudmoss-fef6994b.eastus2.azurecontainerapps.io",
+        "EXPO_PUBLIC_WEB_URL": "https://gtlt.vercel.app"
       }
     },
     "production": {
@@ -22,7 +23,8 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://gtlt-api.proudmoss-fef6994b.eastus2.azurecontainerapps.io"
+        "EXPO_PUBLIC_API_URL": "https://gtlt-api.proudmoss-fef6994b.eastus2.azurecontainerapps.io",
+        "EXPO_PUBLIC_WEB_URL": "https://gtlt.vercel.app"
       }
     }
   }

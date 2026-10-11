@@ -71,6 +71,8 @@ import {
   type AttributeDraft,
 } from "./src/part-fields";
 import { ownerOnly } from "./src/roles";
+import { WEB_URL } from "./src/config";
+import { buildInviteMessages } from "./src/inviteMessages";
 import { TambosScreen } from "./src/TambosScreen";
 import { buildActionLists, type ActionLists } from "./src/animals/actionLists";
 import {
@@ -2889,15 +2891,45 @@ function AppContent() {
                               <Text style={styles.feedbackText} selectable>
                                 {inviteResult.token}
                               </Text>
+                              <Text style={styles.help}>
+                                Mandalos en ese orden. El segundo es para copiar el código si el
+                                enlace no abre.
+                              </Text>
                               <Pressable
                                 style={styles.button}
-                                onPress={() =>
-                                  void Share.share({
-                                    message: `Te invitó ${session.userName} a CAL. Instalá la app, tocá «Tengo un código de invitación» y pegá este código: ${inviteResult.token}. Vence en 7 días.`,
-                                  })
-                                }
+                                onPress={() => {
+                                  const token = inviteResult.token;
+                                  if (!token) return;
+                                  const { intro } = buildInviteMessages({
+                                    inviterName: session.userName,
+                                    tamboName: session.tamboName,
+                                    role: "TECNICO",
+                                    token,
+                                    webUrl: WEB_URL,
+                                  });
+                                  void Share.share({ message: intro });
+                                }}
                               >
-                                <Text style={styles.buttonText}>Compartir invitación</Text>
+                                <Text style={styles.buttonText}>1. Compartir invitación</Text>
+                              </Pressable>
+                              <Pressable
+                                style={styles.buttonSecondary}
+                                onPress={() => {
+                                  const token = inviteResult.token;
+                                  if (!token) return;
+                                  const { code } = buildInviteMessages({
+                                    inviterName: session.userName,
+                                    tamboName: session.tamboName,
+                                    role: "TECNICO",
+                                    token,
+                                    webUrl: WEB_URL,
+                                  });
+                                  void Share.share({ message: code });
+                                }}
+                              >
+                                <Text style={styles.buttonSecondaryText}>
+                                  2. Compartir solo el código
+                                </Text>
                               </Pressable>
                             </>
                           ) : (
