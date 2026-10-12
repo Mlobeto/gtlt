@@ -253,6 +253,7 @@ model Tenant {
   weightEvents         WeightEvent[]
   tamboRequests        TamboRequest[]
   workReports          WorkReport[]
+  serviceProviders     ServiceProvider[]
 
   @@map("tenants")
 }
@@ -271,6 +272,9 @@ model Tambo {
   longitude Decimal? @db.Decimal(9, 6)
   address   String?
   powerSupply PowerSupply? @map("power_supply")
+  /// Copia del presupuesto de equipos al momento del alta (precios congelados).
+  plannedEquipment Json @default("[]") @map("planned_equipment")
+  pumpCount Int @default(1) @map("pump_count")
   active      Boolean  @default(true)
   /// Nulo = en instalación (usable, no se factura). Se setea al activar.
   activatedAt DateTime? @map("activated_at")
@@ -279,6 +283,7 @@ model Tambo {
 
   tenant              Tenant               @relation(fields: [tenantId], references: [id])
   defaultServiceProvider ServiceProvider?  @relation(fields: [defaultServiceProviderId], references: [id])
+  serviceProviderPeriods TamboServiceProviderPeriod[]
   membershipTambos    MembershipTambo[]
   animals             Animal[]
   milkingSessions     MilkingSession[]
@@ -305,6 +310,25 @@ model Tambo {
   @@index([tenantId])
   @@index([tenantId, name])
   @@map("tambos")
+}
+
+/// Historia de quién atiende el tambo. Un solo período abierto por tambo
+/// (índice parcial WHERE ended_at IS NULL).
+model TamboServiceProviderPeriod {
+  id                String    @id @default(uuid()) @db.Uuid
+  tamboId           String    @map("tambo_id") @db.Uuid
+  serviceProviderId String    @map("service_provider_id") @db.Uuid
+  startedAt         DateTime  @map("started_at")
+  endedAt           DateTime? @map("ended_at")
+  startedById       String?   @map("started_by_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  tambo           Tambo           @relation(fields: [tamboId], references: [id])
+  serviceProvider ServiceProvider @relation(fields: [serviceProviderId], references: [id])
+  startedBy       User?           @relation("PeriodStartedBy", fields: [startedById], references: [id])
+
+  @@index([tamboId, startedAt])
+  @@map("tambo_service_provider_periods")
 }
 
 model TamboRequest {
@@ -350,6 +374,7 @@ model User {
   name         String
   /// Auth provider/hash a definir — placeholder Fase 1
   passwordHash String?  @map("password_hash")
+  mustChangePassword Boolean @default(false) @map("must_change_password")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -374,6 +399,7 @@ model User {
   tamboRequestsRequested  TamboRequest[]    @relation("TamboRequestRequestedBy")
   tamboRequestsQuoted     TamboRequest[]    @relation("TamboRequestQuotedBy")
   workReportsAuthored     WorkReport[]      @relation("WorkReportAuthor")
+  serviceProviderPeriodsStarted TamboServiceProviderPeriod[] @relation("PeriodStartedBy")
 
   @@map("users")
 }
@@ -1055,12 +1081,16 @@ model ServiceProvider {
   name      String
   isDefault Boolean  @default(false) @map("is_default")
   active    Boolean  @default(true)
+  /// Nulo = empresa socia (catálogo global). Con tenant = proveedor privado de esa cuenta.
+  tenantId  String?  @map("tenant_id") @db.Uuid
   createdAt DateTime @default(now())
 
+  tenant          Tenant?          @relation(fields: [tenantId], references: [id])
   tambos          Tambo[]
   serviceRequests ServiceRequest[]
   memberships     Membership[]
   tamboRequests   TamboRequest[]
+  tamboPeriods    TamboServiceProviderPeriod[]
 
   @@map("service_providers")
 }

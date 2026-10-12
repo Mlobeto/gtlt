@@ -19,11 +19,12 @@ import type { AuthToken } from '../types/auth'
 interface DashboardPageProps {
   auth: AuthToken
   onLogout: () => void
+  onSessionChange?: (next: AuthToken) => void
 }
 
 type Tab = 'today' | 'works' | 'tickets' | 'prototype' | 'accounts' | 'tambo-requests' | 'part-types' | 'hardware' | 'plans' | 'animals' | 'team' | 'settings'
 
-export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
+export function DashboardPage({ auth, onLogout, onSessionChange }: DashboardPageProps) {
   const isOwner = auth.roles.includes('DUENIO') || auth.roles.includes('ADMIN')
   const isDeveloper = auth.roles.includes('DESARROLLADORA')
   const tabs: { id: Tab; label: string }[] = isOwner
@@ -114,7 +115,9 @@ export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
           {activeTab === 'plans' && isDeveloper && <PlansTab auth={auth} />}
           {activeTab === 'animals' && isOwner && <AnimalsTab auth={auth} />}
           {activeTab === 'team' && isOwner && <TeamTab auth={auth} />}
-          {activeTab === 'settings' && isOwner && <SettingsTab auth={auth} />}
+          {activeTab === 'settings' && isOwner && (
+            <SettingsTab auth={auth} onSessionChange={onSessionChange} />
+          )}
         </div>
       </AppShell>
 

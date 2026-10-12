@@ -63,3 +63,11 @@ CREATE UNIQUE INDEX devices_one_active_per_label
   WHERE retired_at IS NULL
     AND bajada_number IS NULL;
 
+-- ---------------------------------------------------------------------------
+-- 6) TamboServiceProviderPeriod: un solo período abierto por tambo
+-- ---------------------------------------------------------------------------
+
+CREATE UNIQUE INDEX tambo_service_provider_periods_one_open
+  ON tambo_service_provider_periods (tambo_id)
+  WHERE ended_at IS NULL;
+

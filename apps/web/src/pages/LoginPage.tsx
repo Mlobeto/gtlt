@@ -125,6 +125,7 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
     user: { id: string }
     tenant: { id: string }
     roles?: string[]
+    mustChangePassword?: boolean
   }) => {
     const roles: string[] = result.roles ?? []
     if (!hasWebRole(roles)) {
@@ -137,6 +138,7 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
       userId: result.user.id,
       tenantId: result.tenant.id,
       roles,
+      mustChangePassword: Boolean(result.mustChangePassword),
     })
   }
 

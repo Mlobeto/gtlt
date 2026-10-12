@@ -27,6 +27,18 @@ export function authContextFromMembership(
     roles: membership.roles,
     tamboIds: resolveTamboIds(membership),
     serviceProviderId: membership.serviceProviderId ?? null,
+    mustChangePassword: false,
+  };
+}
+
+export function authContextWithPasswordFlag(
+  userId: string,
+  membership: Membership & { tambos: { tamboId: string }[] },
+  mustChangePassword: boolean,
+): AuthContext {
+  return {
+    ...authContextFromMembership(userId, membership),
+    mustChangePassword,
   };
 }
 

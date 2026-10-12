@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { signAccessToken } from "../lib/auth-tokens.js";
-import { authContextFromMembership } from "../lib/access.js";
+import { authContextWithPasswordFlag } from "../lib/access.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { HttpError } from "../lib/http-error.js";
 
@@ -77,7 +77,7 @@ authRouter.post("/login", async (req, res) => {
     return;
   }
 
-  const auth = authContextFromMembership(user.id, membership);
+  const auth = authContextWithPasswordFlag(user.id, membership, user.mustChangePassword);
 
   const accessToken = signAccessToken(auth);
 
@@ -91,6 +91,7 @@ authRouter.post("/login", async (req, res) => {
     tenant: membership.tenant,
     roles: membership.roles,
     tamboIds: auth.tamboIds,
+    mustChangePassword: user.mustChangePassword,
   });
 });
 
@@ -98,7 +99,7 @@ authRouter.get("/me", authenticate, async (req, res) => {
   const auth = req.auth!;
   const user = await prisma.user.findUnique({
     where: { id: auth.userId },
-    select: { id: true, email: true, name: true, phone: true },
+    select: { id: true, email: true, name: true, phone: true, mustChangePassword: true },
   });
 
   if (!user) {
@@ -134,6 +135,61 @@ authRouter.get("/me", authenticate, async (req, res) => {
     roles: auth.roles,
     tamboAccess: auth.tamboIds === null ? "ALL" : "RESTRICTED",
     tambos,
+    mustChangePassword: user.mustChangePassword,
+  });
+});
+
+authRouter.post("/change-password", authenticate, async (req, res) => {
+  const parsed = z
+    .object({
+      currentPassword: z.string().min(1),
+      newPassword: z.string().min(8).max(100),
+    })
+    .safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid body", details: parsed.error.flatten() });
+    return;
+  }
+  if (parsed.data.newPassword === parsed.data.currentPassword) {
+    throw new HttpError(400, "La clave nueva tiene que ser distinta de la actual.");
+  }
+
+  const auth = req.auth!;
+  const user = await prisma.user.findUnique({ where: { id: auth.userId } });
+  if (!user?.passwordHash) {
+    throw new HttpError(401, "User not found");
+  }
+  const valid = await bcrypt.compare(parsed.data.currentPassword, user.passwordHash);
+  if (!valid) {
+    throw new HttpError(400, "La clave actual no es correcta.");
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash, mustChangePassword: false },
+  });
+
+  const membership = await prisma.membership.findFirst({
+    where: { userId: user.id, tenantId: auth.tenantId, status: "ACTIVE" },
+    include: {
+      tenant: { select: { id: true, name: true } },
+      tambos: { select: { tamboId: true } },
+    },
+  });
+  if (!membership) {
+    throw new HttpError(403, "User has no tenant membership");
+  }
+
+  const ctx = authContextWithPasswordFlag(user.id, membership, false);
+  const accessToken = signAccessToken(ctx);
+  res.json({
+    accessToken,
+    user: { id: user.id, email: user.email, name: user.name },
+    tenant: membership.tenant,
+    roles: membership.roles,
+    tamboIds: ctx.tamboIds,
+    mustChangePassword: false,
   });
 });
 
@@ -154,7 +210,7 @@ authRouter.post("/switch-tenant", authenticate, async (req, res) => {
     include: {
       tenant: { select: { id: true, name: true } },
       tambos: { select: { tamboId: true } },
-      user: { select: { id: true, email: true, name: true } },
+      user: { select: { id: true, email: true, name: true, mustChangePassword: true } },
     },
   });
 
@@ -162,14 +218,23 @@ authRouter.post("/switch-tenant", authenticate, async (req, res) => {
     throw new HttpError(403, "No membership for this tenant");
   }
 
-  const ctx = authContextFromMembership(auth.userId, membership);
+  const ctx = authContextWithPasswordFlag(
+    auth.userId,
+    membership,
+    membership.user.mustChangePassword,
+  );
   const accessToken = signAccessToken(ctx);
 
   res.json({
     accessToken,
-    user: membership.user,
+    user: {
+      id: membership.user.id,
+      email: membership.user.email,
+      name: membership.user.name,
+    },
     tenant: membership.tenant,
     roles: membership.roles,
     tamboIds: ctx.tamboIds,
+    mustChangePassword: membership.user.mustChangePassword,
   });
 });

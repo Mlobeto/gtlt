@@ -3,6 +3,7 @@ export interface AuthToken {
   userId: string
   tenantId: string
   roles: string[]
+  mustChangePassword?: boolean
 }
 
 /** Roles con acceso al panel web: dueño, desarrolladora y técnico. */

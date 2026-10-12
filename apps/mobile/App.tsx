@@ -46,6 +46,7 @@ import {
   isOwnerOrAdmin,
   isTechnicianOnly,
   login as apiLogin,
+  changePassword as apiChangePassword,
   markAllNotificationsRead,
   markNotificationRead,
   rejectServiceRequest,
@@ -150,7 +151,8 @@ type Screen =
   | "tambos"
   | "switchTambo"
   | "account"
-  | "photosReview";
+  | "photosReview"
+  | "changePassword";
 
 type TodaySectionKey = keyof ActionLists;
 
@@ -452,6 +454,15 @@ function AppContent() {
   const [inviteCode, setInviteCode] = useState("");
   const [inviteName, setInviteName] = useState("");
   const [loginTenants, setLoginTenants] = useState<{ id: string; name: string }[]>([]);
+  const [pendingAuth, setPendingAuth] = useState<{
+    token: string;
+    userName: string;
+    roles: string[];
+    tenantId: string;
+  } | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [repeatPassword, setRepeatPassword] = useState("");
   const [inviteResult, setInviteResult] = useState<{ token: string | null } | null>(null);
   const [serviceCategory, setServiceCategory] =
     useState<ServiceCategory>("VACUUM_PUMP");
@@ -621,8 +632,18 @@ function AppContent() {
                 address: t.address ?? null,
               });
             }
-          } catch {
-            // ignore
+          } catch (err) {
+            if (err instanceof ApiError && err.code === "PASSWORD_CHANGE_REQUIRED") {
+              setPendingAuth({
+                token: existing.token,
+                userName: existing.userName,
+                roles: existing.roles,
+                tenantId: existing.tenantId,
+              });
+              setSession(null);
+              setScreen("changePassword");
+              setStatus("Tenés que elegir una clave nueva antes de seguir.");
+            }
           }
           if (isOwnerOrAdmin(existing.roles ?? [])) {
             void loadNotifications(existing);
@@ -660,12 +681,12 @@ function AppContent() {
     };
   }, [refreshLocal, runAutoSync]);
 
-  async function handleLogin(tenantId?: string) {
-    setBusy(true);
-    setStatus("Entrando...");
-    try {
-      const res = await apiLogin(email.trim(), password, tenantId);
-      setLoginTenants([]);
+  async function enterWithToken(res: {
+    accessToken: string;
+    user: { name: string };
+    tenant: { id: string };
+    roles: string[];
+  }) {
       const tambos = await fetchTambos(res.accessToken);
       if (!tambos.items.length) {
         throw new Error("No encontramos un tambo para esta cuenta.");
@@ -706,6 +727,26 @@ function AppContent() {
           ? `Listo. Service en ${tambo.name}.`
           : `Listo. Estás en ${tambo.name}.`,
       );
+  }
+
+  async function handleLogin(tenantId?: string) {
+    setBusy(true);
+    setStatus("Entrando...");
+    try {
+      const res = await apiLogin(email.trim(), password, tenantId);
+      setLoginTenants([]);
+      if (res.mustChangePassword) {
+        setPendingAuth({
+          token: res.accessToken,
+          userName: res.user.name,
+          roles: res.roles,
+          tenantId: res.tenant.id,
+        });
+        setScreen("changePassword");
+        setStatus("Antes de seguir, elegí tu clave.");
+        return;
+      }
+      await enterWithToken(res);
     } catch (err) {
       if (err instanceof ApiError && err.code === "MEMBERSHIP_PENDING") {
         setLoginMode("acceptInvite");
@@ -723,6 +764,41 @@ function AppContent() {
       } else {
         setStatus("No se pudo entrar. Revisá usuario, contraseña o la señal.");
       }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleForcedPasswordChange() {
+    if (!pendingAuth && !session) return;
+    if (newPassword.length < 8) {
+      setStatus("La clave nueva tiene que tener al menos 8 caracteres.");
+      return;
+    }
+    if (newPassword === currentPassword) {
+      setStatus("La clave nueva tiene que ser distinta de la actual.");
+      return;
+    }
+    if (newPassword !== repeatPassword) {
+      setStatus("La clave nueva y la repetición no coinciden.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const token = pendingAuth?.token ?? session!.token;
+      const res = await apiChangePassword(token, currentPassword, newPassword);
+      setCurrentPassword("");
+      setNewPassword("");
+      setRepeatPassword("");
+      setPendingAuth(null);
+      await enterWithToken({
+        accessToken: res.accessToken,
+        user: { name: res.user.name },
+        tenant: res.tenant,
+        roles: res.roles,
+      });
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "No se pudo cambiar la clave.");
     } finally {
       setBusy(false);
     }
@@ -2085,7 +2161,47 @@ function AppContent() {
             ) : null}
           </View>
 
-          {!session ? (
+          {!session && pendingAuth ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Elegí tu clave</Text>
+              <Text style={styles.help}>Antes de seguir, cambiá la clave inicial que te pasaron.</Text>
+              <Text style={styles.label}>Clave actual</Text>
+              <TextInput
+                style={styles.input}
+                secureTextEntry
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+              />
+              <Text style={styles.label}>Clave nueva</Text>
+              <TextInput
+                style={styles.input}
+                secureTextEntry
+                value={newPassword}
+                onChangeText={setNewPassword}
+              />
+              <Text style={styles.label}>Repetí la clave nueva</Text>
+              <TextInput
+                style={styles.input}
+                secureTextEntry
+                value={repeatPassword}
+                onChangeText={setRepeatPassword}
+              />
+              {status ? (
+                <View style={styles.feedback}>
+                  <Text style={styles.feedbackText}>{status}</Text>
+                </View>
+              ) : null}
+              <Pressable
+                style={[styles.button, busy && styles.buttonDisabled]}
+                disabled={busy}
+                onPress={() => void handleForcedPasswordChange()}
+              >
+                <Text style={styles.buttonText}>{busy ? "Guardando..." : "Guardar clave"}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {!session && !pendingAuth ? (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>
                 {loginMode === "login" ? "Entrar" : "Activar invitación"}
@@ -2601,6 +2717,35 @@ function AppContent() {
                       <Text style={styles.feedbackText}>{status}</Text>
                     </View>
                   ) : null}
+                  <Text style={styles.label}>Cambiar mi clave</Text>
+                  <Text style={styles.label}>Clave actual</Text>
+                  <TextInput
+                    style={styles.input}
+                    secureTextEntry
+                    value={currentPassword}
+                    onChangeText={setCurrentPassword}
+                  />
+                  <Text style={styles.label}>Clave nueva</Text>
+                  <TextInput
+                    style={styles.input}
+                    secureTextEntry
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                  />
+                  <Text style={styles.label}>Repetí la clave nueva</Text>
+                  <TextInput
+                    style={styles.input}
+                    secureTextEntry
+                    value={repeatPassword}
+                    onChangeText={setRepeatPassword}
+                  />
+                  <Pressable
+                    style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                    disabled={busy}
+                    onPress={() => void handleForcedPasswordChange()}
+                  >
+                    <Text style={styles.buttonSecondaryText}>Guardar clave nueva</Text>
+                  </Pressable>
                   <Pressable onPress={handleLogout}>
                     <Text style={styles.link}>Salir</Text>
                   </Pressable>

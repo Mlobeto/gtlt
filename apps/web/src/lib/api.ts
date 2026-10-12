@@ -129,6 +129,24 @@ export type TamboRequestItem = {
   tenant?: { id: string; name: string }
 }
 
+export type PlannedEquipmentItem = {
+  productId: string
+  code: string
+  name: string
+  deviceKind: DeviceKind | null
+  quantity: number
+  unitPrice: number | null
+  currency: string
+}
+
+export type InstallationProgress = {
+  deviceKind: DeviceKind
+  name: string
+  planned: number
+  installed: number
+  missing: number
+}
+
 export type InstallingTambo = {
   id: string
   tenantId: string
@@ -136,13 +154,23 @@ export type InstallingTambo = {
   name: string
   address: string | null
   bajadaCount: number
+  pumpCount?: number
   powerSupply?: PowerSupply | null
+  plannedEquipment?: PlannedEquipmentItem[]
+  installationProgress?: InstallationProgress[]
   active: boolean
   activatedAt: string | null
   state: TamboLifecycleState
   activeDevices: number
   connectedDevices: number
   devices: { id: string; kind: DeviceKind; label: string | null; lastSeenAt: string | null; connected: boolean }[]
+}
+
+export type ServiceProviderPeriod = {
+  id: string
+  serviceProvider: { id: string; name: string }
+  startedAt: string
+  endedAt: string | null
 }
 
 export type DeviceKind = 'VACUUM_PUMP_SENSOR' | 'FLOW_METER' | 'RFID_READER' | 'GATE_SENSOR'
@@ -307,7 +335,32 @@ export const api = {
       throw err
     }
     if (!res.ok) throw new Error(body?.error || 'Login failed')
-    return body
+    return body as {
+      accessToken: string
+      user: { id: string; email: string | null; name: string }
+      tenant: { id: string }
+      roles: string[]
+      mustChangePassword?: boolean
+    }
+  },
+
+  async changePassword(token: string, currentPassword: string, newPassword: string) {
+    const res = await fetch(`${API_URL}/auth/change-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo cambiar la clave')
+    return res.json() as Promise<{
+      accessToken: string
+      user: { id: string }
+      tenant: { id: string }
+      roles: string[]
+      mustChangePassword: boolean
+    }>
   },
 
   async getMe(token: string) {
@@ -416,6 +469,64 @@ export const api = {
     })
     if (!res.ok) throw new Error('Failed to fetch accounts')
     return res.json()
+  },
+
+  async createAdminTenantTambo(
+    token: string,
+    tenantId: string,
+    data: {
+      name?: string
+      bajadaCount: number
+      powerSupply?: 'MONOPHASE' | 'THREEPHASE' | null
+      pumpCount?: number
+      defaultServiceProviderId: string
+      equipmentProductIds: string[]
+    },
+  ) {
+    const res = await fetch(`${API_URL}/admin/tenants/${tenantId}/tambos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo agregar el tambo')
+    return res.json()
+  },
+
+  async resetAdminUserPassword(token: string, userId: string, temporaryPassword?: string) {
+    const res = await fetch(`${API_URL}/admin/users/${userId}/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(temporaryPassword ? { temporaryPassword } : {}),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo restablecer la clave')
+    return res.json() as Promise<{ item: { id: string; email: string | null; name: string }; temporaryPassword: string }>
+  },
+
+  async updateAdminTamboServiceProvider(token: string, tamboId: string, serviceProviderId: string) {
+    const res = await fetch(`${API_URL}/admin/tambos/${tamboId}/service-provider`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ serviceProviderId }),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo cambiar el proveedor')
+    return res.json()
+  },
+
+  async getAdminTamboServiceProviderPeriods(token: string, tamboId: string) {
+    const res = await fetch(`${API_URL}/admin/tambos/${tamboId}/service-provider-periods`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los períodos')
+    return res.json() as Promise<{ items: ServiceProviderPeriod[] }>
   },
 
   async createAdminTenant(token: string, data: any) {

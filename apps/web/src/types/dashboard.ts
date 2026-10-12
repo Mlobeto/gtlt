@@ -49,6 +49,16 @@ export interface AdminTenant {
   activeTambos?: number
   installingTambos?: number
   owner: { id: string; name: string; email: string | null } | null
+  tambos?: {
+    id: string
+    name: string
+    state: 'ACTIVE' | 'INSTALLING' | 'ARCHIVED'
+    bajadaCount: number
+    pumpCount: number
+    powerSupply: 'MONOPHASE' | 'THREEPHASE' | null
+    defaultServiceProvider: { id: string; name: string } | null
+    providerSince: string | null
+  }[]
   subscription: {
     id: string
     status: 'ACTIVE' | 'PAST_DUE' | 'CANCELED'

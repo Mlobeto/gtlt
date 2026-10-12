@@ -3,7 +3,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma.js";
 import { HttpError } from "../lib/http-error.js";
-import { authContextFromMembership } from "../lib/access.js";
+import { authContextWithPasswordFlag } from "../lib/access.js";
 import { signAccessToken } from "../lib/auth-tokens.js";
 import { createInvite } from "../lib/invites.js";
 import { requireTamboInTenant } from "../lib/tambo-scope.js";
@@ -77,7 +77,11 @@ membershipsRouter.patch(
       include: { tambos: { select: { tamboId: true } } },
     });
 
-    const ctx = authContextFromMembership(auth.userId, updated);
+    const user = await prisma.user.findUnique({
+      where: { id: auth.userId },
+      select: { mustChangePassword: true },
+    });
+    const ctx = authContextWithPasswordFlag(auth.userId, updated, Boolean(user?.mustChangePassword));
     const accessToken = signAccessToken(ctx);
     res.json({ roles: updated.roles, accessToken });
   },

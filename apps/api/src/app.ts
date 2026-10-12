@@ -36,6 +36,7 @@ import { siresRouter } from "./routes/sires.js";
 import { uploadsRouter } from "./routes/uploads.js";
 import { workReportsRouter } from "./routes/work-reports.js";
 import { softAuthenticate } from "./middleware/soft-authenticate.js";
+import { requirePasswordChange } from "./middleware/require-password-change.js";
 import { technicianResourceGuard } from "./middleware/technician-guard.js";
 
 export function createApp() {
@@ -50,6 +51,7 @@ export function createApp() {
 
   // Whitelist TECNICO: bloquea animales/producción aunque se agregue un route nuevo.
   app.use(softAuthenticate);
+  app.use(requirePasswordChange);
   app.use(technicianResourceGuard);
 
   app.use("/auth", authRouter);

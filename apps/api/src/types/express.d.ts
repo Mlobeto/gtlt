@@ -8,6 +8,7 @@ export type AuthContext = {
   tamboIds: string[] | null;
   /** Proveedor del técnico. Null si no aplica o es independiente. */
   serviceProviderId: string | null;
+  mustChangePassword?: boolean;
 };
 
 export type DeviceAuthContext = {

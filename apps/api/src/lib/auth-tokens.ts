@@ -10,6 +10,8 @@ export type JwtPayload = {
   tamboIds: string[] | null;
   /** Ausente en tokens emitidos antes de este cambio → se trata como null. */
   serviceProviderId?: string | null;
+  /** Ausente en tokens viejos → se trata como false. */
+  mustChangePassword?: boolean;
 };
 
 export function signAccessToken(ctx: AuthContext): string {
@@ -19,6 +21,7 @@ export function signAccessToken(ctx: AuthContext): string {
     roles: ctx.roles,
     tamboIds: ctx.tamboIds,
     serviceProviderId: ctx.serviceProviderId,
+    mustChangePassword: Boolean(ctx.mustChangePassword),
   };
 
   return jwt.sign(payload, env.jwtSecret, {
@@ -38,5 +41,6 @@ export function verifyAccessToken(token: string): AuthContext {
     roles: decoded.roles,
     tamboIds: decoded.tamboIds ?? null,
     serviceProviderId: decoded.serviceProviderId ?? null,
+    mustChangePassword: decoded.mustChangePassword === true,
   };
 }

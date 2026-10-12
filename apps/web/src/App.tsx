@@ -3,7 +3,9 @@ import './App.css'
 import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { TechnicianDashboardPage } from './pages/TechnicianDashboardPage'
+import { ChangePasswordScreen } from './components/ChangePasswordScreen'
 import { isTechnicianWebSession, type AuthToken } from './types/auth'
+import { api, ApiError } from './lib/api'
 
 function App() {
   const [auth, setAuth] = useState<AuthToken | null>(null)
@@ -20,6 +22,26 @@ function App() {
     }
     setLoading(false)
   }, [])
+
+  const persist = (next: AuthToken) => {
+    setAuth(next)
+    localStorage.setItem('gtlt_auth', JSON.stringify(next))
+  }
+
+  useEffect(() => {
+    if (!auth || auth.mustChangePassword) return
+    const check = async () => {
+      try {
+        const me = await api.getMe(auth.token)
+        if (me.mustChangePassword) persist({ ...auth, mustChangePassword: true })
+      } catch (err) {
+        if (err instanceof ApiError && err.code === 'PASSWORD_CHANGE_REQUIRED') {
+          persist({ ...auth, mustChangePassword: true })
+        }
+      }
+    }
+    void check()
+  }, [auth?.token])
 
   const logout = () => {
     localStorage.removeItem('gtlt_auth')
@@ -39,13 +61,12 @@ function App() {
 
   if (!auth) {
     return (
-      <LoginPage
-        onSuccess={(token) => {
-          setAuth(token)
-          localStorage.setItem('gtlt_auth', JSON.stringify(token))
-        }}
-      />
+      <LoginPage onSuccess={persist} />
     )
+  }
+
+  if (auth.mustChangePassword) {
+    return <ChangePasswordScreen auth={auth} required onChanged={persist} />
   }
 
   if (isTechnicianWebSession(auth.roles)) {
@@ -53,15 +74,12 @@ function App() {
       <TechnicianDashboardPage
         auth={auth}
         onLogout={logout}
-        onSessionChange={(next) => {
-          setAuth(next)
-          localStorage.setItem('gtlt_auth', JSON.stringify(next))
-        }}
+        onSessionChange={persist}
       />
     )
   }
 
-  return <DashboardPage auth={auth} onLogout={logout} />
+  return <DashboardPage auth={auth} onLogout={logout} onSessionChange={persist} />
 }
 
 export default App

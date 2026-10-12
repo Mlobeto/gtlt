@@ -5,6 +5,12 @@ import { HttpError } from "../lib/http-error.js";
 import { hasHardware, parseHardware } from "../lib/tambo-equipment.js";
 import { isDeviceConnected } from "../lib/devices.js";
 import { tamboLifecycleState } from "../lib/tambo-state.js";
+import { installationProgress } from "../lib/tambo-onboarding.js";
+import {
+  assertPartnerProvider,
+  changeDefaultServiceProvider,
+  openServiceProviderPeriod,
+} from "../lib/service-provider-periods.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
 
@@ -57,7 +63,10 @@ adminTambosRouter.get(
           name: t.name,
           address: t.address,
           bajadaCount: t.bajadaCount,
+          pumpCount: t.pumpCount,
           powerSupply: t.powerSupply,
+          plannedEquipment: t.plannedEquipment,
+          installationProgress: installationProgress(t.plannedEquipment, t.devices),
           active: t.active,
           activatedAt: t.activatedAt,
           state: tamboLifecycleState(t),
@@ -106,6 +115,10 @@ adminTambosRouter.post(
             : "Solo se puede crear el tambo de un pedido aceptado.",
         );
       }
+      if (!request.serviceProviderId) {
+        throw new HttpError(400, "El proveedor predeterminado tiene que ser una empresa socia activa.");
+      }
+      const provider = await assertPartnerProvider(tx, request.serviceProviderId);
 
       const tambo = await tx.tambo.create({
         data: {
@@ -113,11 +126,18 @@ adminTambosRouter.post(
           name: request.name,
           address: request.address,
           bajadaCount: request.bajadaCount,
-          defaultServiceProviderId: request.serviceProviderId,
+          defaultServiceProviderId: provider.id,
           powerSupply: request.powerSupply,
           active: true,
           activatedAt: null,
         },
+      });
+
+      await openServiceProviderPeriod(tx, {
+        tamboId: tambo.id,
+        serviceProviderId: provider.id,
+        startedAt: new Date(),
+        startedById: req.auth!.userId,
       });
 
       await tx.tamboRequest.update({
@@ -202,6 +222,68 @@ adminTambosRouter.patch(
         ...item,
         state: tamboLifecycleState(item),
       },
+    });
+  },
+);
+
+adminTambosRouter.patch(
+  "/tambos/:id/service-provider",
+  authenticate,
+  requireRoles("DESARROLLADORA"),
+  async (req, res) => {
+    const idParsed = z.string().uuid().safeParse(req.params.id);
+    const body = z.object({ serviceProviderId: z.string().uuid() }).safeParse(req.body);
+    if (!idParsed.success || !body.success) {
+      res.status(400).json({ error: "Invalid body" });
+      return;
+    }
+
+    const item = await prisma.$transaction((tx) =>
+      changeDefaultServiceProvider(tx, {
+        tamboId: idParsed.data,
+        serviceProviderId: body.data.serviceProviderId,
+        startedById: req.auth!.userId,
+      }),
+    );
+
+    res.json({ item });
+  },
+);
+
+adminTambosRouter.get(
+  "/tambos/:id/service-provider-periods",
+  authenticate,
+  requireRoles("DESARROLLADORA"),
+  async (req, res) => {
+    const idParsed = z.string().uuid().safeParse(req.params.id);
+    if (!idParsed.success) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const tambo = await prisma.tambo.findUnique({
+      where: { id: idParsed.data },
+      select: { id: true },
+    });
+    if (!tambo) throw new HttpError(404, "Tambo not found");
+
+    const items = await prisma.tamboServiceProviderPeriod.findMany({
+      where: { tamboId: tambo.id },
+      include: {
+        serviceProvider: { select: { id: true, name: true } },
+        startedBy: { select: { id: true, name: true } },
+      },
+      orderBy: { startedAt: "desc" },
+    });
+
+    res.json({
+      items: items.map((p) => ({
+        id: p.id,
+        serviceProvider: p.serviceProvider,
+        startedAt: p.startedAt,
+        endedAt: p.endedAt,
+        startedBy: p.startedBy,
+      })),
     });
   },
 );

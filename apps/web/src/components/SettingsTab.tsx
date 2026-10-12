@@ -3,15 +3,17 @@ import { api } from '../lib/api'
 import type { AuthToken } from '../types/auth'
 import { PartLifeSettings } from './PartLifeSettings'
 import { TambosSection } from './TambosSection'
+import { ChangePasswordScreen } from './ChangePasswordScreen'
 import { Card, ErrorBanner, inputClass } from './ui'
 
 interface SettingsTabProps {
   auth: AuthToken
+  onSessionChange?: (next: AuthToken) => void
 }
 
 type Provider = { id: string; name: string }
 
-export function SettingsTab({ auth }: SettingsTabProps) {
+export function SettingsTab({ auth, onSessionChange }: SettingsTabProps) {
   const [tambos, setTambos] = useState<{ id: string; name: string }[]>([])
   const [tamboId, setTamboId] = useState('')
   const [catalog, setCatalog] = useState<Provider[]>([])
@@ -64,6 +66,9 @@ export function SettingsTab({ auth }: SettingsTabProps) {
 
   return (
     <div className="space-y-6 max-w-2xl">
+    {onSessionChange ? (
+      <ChangePasswordScreen auth={auth} title="Cambiar mi clave" onChanged={onSessionChange} />
+    ) : null}
     <TambosSection token={auth.token} />
     <PartLifeSettings token={auth.token} />
     <Card title="Configuración del tambo">

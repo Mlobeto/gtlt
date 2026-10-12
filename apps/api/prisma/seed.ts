@@ -3,6 +3,21 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
+async function ensureOpenProviderPeriod(
+  tamboId: string,
+  providerId: string | null,
+  startedAt: Date,
+) {
+  if (!providerId) return;
+  const open = await prisma.tamboServiceProviderPeriod.findFirst({
+    where: { tamboId, endedAt: null },
+  });
+  if (open) return;
+  await prisma.tamboServiceProviderPeriod.create({
+    data: { tamboId, serviceProviderId: providerId, startedAt },
+  });
+}
+
 /** Credenciales solo para desarrollo local — ver docs/arquitectura.md */
 const DEMO_EMAIL = "admin@gtlt.local";
 const DEMO_PASSWORD = "demo1234";
@@ -615,6 +630,7 @@ async function seedDevTenant(defaultProvider: { id: string }) {
       },
     });
   }
+  await ensureOpenProviderPeriod(tambo.id, tambo.defaultServiceProviderId, tambo.createdAt);
 
   const lifetimePlan = await prisma.plan.findUniqueOrThrow({ where: { code: "LIFETIME" } });
   await prisma.subscription.upsert({
@@ -804,6 +820,7 @@ async function seedDevTenant(defaultProvider: { id: string }) {
       data: { defaultServiceProviderId: defaultProvider.id },
     });
   }
+  await ensureOpenProviderPeriod(tamboNorte.id, tamboNorte.defaultServiceProviderId, tamboNorte.createdAt);
 
   if (!techMembership.tambos.some((t) => t.tamboId === tamboNorte.id)) {
     await prisma.membershipTambo.create({
@@ -949,6 +966,7 @@ async function seedProdTenant(defaultProvider: { id: string }) {
       data: { defaultServiceProviderId: defaultProvider.id },
     });
   }
+  await ensureOpenProviderPeriod(tambo.id, tambo.defaultServiceProviderId, tambo.createdAt);
 
   const lifetimePlan = await prisma.plan.findUniqueOrThrow({
     where: { code: "LIFETIME" },

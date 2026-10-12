@@ -8,6 +8,7 @@ import {
   getBillingSummary,
 } from "../lib/tambo-billing.js";
 import { tamboLifecycleState } from "../lib/tambo-state.js";
+import { changeDefaultServiceProvider } from "../lib/service-provider-periods.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
 
@@ -262,7 +263,7 @@ tambosRouter.get("/:tamboId/service-provider", authenticate, async (req, res) =>
       select: { defaultServiceProviderId: true },
     }),
     prisma.serviceProvider.findMany({
-      where: { active: true },
+      where: { active: true, tenantId: null },
       orderBy: [{ isDefault: "desc" }, { name: "asc" }],
     }),
   ]);
@@ -289,22 +290,21 @@ tambosRouter.patch(
     const auth = req.auth!;
     await requireTamboInTenant(auth, tamboId);
 
-    const provider = await prisma.serviceProvider.findFirst({
-      where: { id: body.data.serviceProviderId, active: true },
-    });
-    if (!provider) throw new HttpError(404, "Service provider not found");
+    const item = await prisma.$transaction((tx) =>
+      changeDefaultServiceProvider(tx, {
+        tamboId,
+        serviceProviderId: body.data.serviceProviderId,
+        startedById: auth.userId,
+      }),
+    );
 
-    const item = await prisma.tambo.update({
-      where: { id: tamboId },
-      data: { defaultServiceProviderId: provider.id },
-      select: {
-        id: true,
-        name: true,
-        defaultServiceProviderId: true,
+    res.json({
+      item: {
+        id: item.id,
+        name: item.name,
+        defaultServiceProviderId: item.defaultServiceProviderId,
       },
     });
-
-    res.json({ item });
   },
 );
 

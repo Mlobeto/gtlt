@@ -1,6 +1,6 @@
 # Reglas de negocio — capa aplicación / API
 
-**Última actualización:** 2026-10-11
+**Última actualización:** 2026-10-11 (alta de cuenta)
 
 Validaciones que **no** se expresan como constraint de PostgreSQL (dependen de otra tabla o de lógica de dominio). Implementar en servicios antes de dar por cerrado el CRUD/sync.
 
@@ -115,6 +115,27 @@ Aplica a `MilkingSession`, `ControlLechero` (header) y `MilkDelivery`:
 - `DUENIO`/`ADMIN` + `TAMBERO`: supervisión **y** las listas de acción de "Hoy", más el menú operativo.
 - Tambero o veterinario solos: el menú operativo como hasta ahora (el veterinario no se cambia). Técnico: sin cambios.
 - Interruptor **Yo también ordeño** (`PATCH /memberships/me/tambero-role`): solo dueño/admin, sobre la membresía propia. Agrega o quita `TAMBERO` y reemite el JWT. No toca `DUENIO`/`ADMIN` ni otros roles.
+
+### Alta de cuenta (desarrolladora)
+
+- Una cuenta nueva y su primer tambo **solo los crea la desarrolladora** (`POST /admin/tenants` con bloque `tambo`). El dueño no crea cuentas ni tambos. Contraseña inicial: mínimo 8 caracteres, `mustChangePassword = true`.
+- El tambo **nunca queda sin proveedor predeterminado**. Tiene que ser una **empresa socia** (`ServiceProvider.tenantId` nulo y `active`). Un proveedor privado o inactivo se rechaza (`400`).
+- Si `equipmentProductIds` tiene equipos: nace **en instalación** (`activatedAt` nulo), no se cobra hasta activarlo. Si va vacío: nace **activo**. La corriente (`powerSupply`) es obligatoria si hay equipos.
+- El presupuesto se calcula con `computeHardwareBudget` (R1) y se guarda una copia en `Tambo.plannedEquipment` (`productId`, `code`, `name`, `deviceKind`, `quantity`, `unitPrice` nulo si no tenía, `currency`). Un cambio posterior de precios no altera lo presupuestado.
+- Agregar un tambo a una cuenta: `POST /admin/tenants/:tenantId/tambos` (mismo bloque; `requestId` opcional para convertir un pedido existente). `POST /admin/tambos` sigue convirtiendo desde un pedido.
+- Restablecer clave: `POST /admin/users/:id/reset-password` (desarrolladora). Genera una temporaria de 12 caracteres (o recibe una) y marca `mustChangePassword`. Se muestra **una sola vez**. No hay "olvidé mi clave" por mail.
+
+### Períodos de proveedor
+
+- Cada vez que un tambo nace, se abre un `TamboServiceProviderPeriod` (`startedAt` = ahora). Los tambos que ya existían con proveedor quedaron con un período abierto desde `Tambo.createdAt`.
+- Al cambiar `defaultServiceProviderId` (dueño o desarrolladora), una transacción cierra el período abierto (`endedAt` = ahora) y abre uno nuevo. Si elige el mismo proveedor, no se hace nada. Un solo período abierto por tambo (índice parcial).
+- Esto habilita la regla de historia: una socia ve el tambo solo en los períodos en que fue proveedora (si el dueño cambia y vuelve, ve esos dos tramos, no el medio). La consulta de historia todavía no filtra; el dato ya está.
+- `PATCH /admin/tambos/:id/service-provider` y `GET /admin/tambos/:id/service-provider-periods`.
+
+### Clave obligatoria
+
+- El JWT lleva `mustChangePassword`. Un middleware global responde `403` `{ code: "PASSWORD_CHANGE_REQUIRED" }` a toda ruta autenticada salvo `POST /auth/change-password`, `GET /auth/me` y cierre de sesión.
+- `POST /auth/change-password` valida la actual, exige 8 caracteres distinta de la actual, limpia la marca y devuelve un token nuevo. Sirve también para el cambio voluntario.
 
 ### Tambos (pedido / cotización / instalación / activación)
 

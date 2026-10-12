@@ -19,6 +19,7 @@ type LoginResponse = {
   tenant: { id: string; name: string };
   roles: string[];
   tamboIds: string[] | null;
+  mustChangePassword?: boolean;
 };
 
 async function request<T>(
@@ -51,6 +52,14 @@ export function login(email: string, password: string, tenantId?: string) {
   return request<LoginResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password, ...(tenantId ? { tenantId } : {}) }),
+  });
+}
+
+export function changePassword(token: string, currentPassword: string, newPassword: string) {
+  return request<LoginResponse>("/auth/change-password", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ currentPassword, newPassword }),
   });
 }
 

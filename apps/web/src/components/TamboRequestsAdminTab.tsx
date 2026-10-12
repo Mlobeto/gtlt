@@ -379,6 +379,15 @@ export function TamboRequestsAdminTab({ auth }: { auth: AuthToken }) {
                   {t.tenant.name} · {t.activeDevices} dispositivo{t.activeDevices === 1 ? '' : 's'} ·{' '}
                   {t.connectedDevices} conectado{t.connectedDevices === 1 ? '' : 's'}
                 </p>
+                {(t.installationProgress ?? []).length > 0 ? (
+                  <ul className="text-sm text-ink space-y-1">
+                    {t.installationProgress!.map((row) => (
+                      <li key={row.deviceKind}>
+                        {row.name}: {row.installed} de {row.planned} instalados
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 <ul className="text-sm text-ink-muted space-y-1">
                   {t.devices.length === 0 ? (
                     <li>Todavía no hay dispositivos.</li>
