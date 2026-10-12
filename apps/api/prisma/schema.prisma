@@ -156,6 +156,14 @@ enum DeviceKind {
   FLOW_METER
   RFID_READER
   VACUUM_PUMP_SENSOR
+  /// Solo registro: no hay endpoints /device/* de datos para este tipo.
+  GATE_SENSOR
+}
+
+enum QuantityRule {
+  PER_BAJADA
+  PER_PUMP
+  FIXED
 }
 
 enum PumpStatus {
@@ -524,6 +532,11 @@ model Sire {
   @@map("sires")
 }
 
+/// Unicidad de no retirados (índices parciales en SQL):
+/// FLOW_METER / RFID_READER → un activo por (tambo, kind, bajadaNumber)
+/// VACUUM_PUMP_SENSOR / GATE_SENSOR → un activo por (tambo, kind, label normalizado)
+/// El primer sensor de bomba o tranquera puede no tener nombre; el siguiente sí.
+/// GATE_SENSOR es solo registro: no hay endpoints /device/* de datos.
 model Device {
   id           String     @id @default(uuid()) @db.Uuid
   tenantId     String     @map("tenant_id") @db.Uuid
@@ -545,6 +558,26 @@ model Device {
 
   @@index([tenantId, tamboId, bajadaNumber])
   @@map("devices")
+}
+
+/// Catálogo de equipos de la desarrolladora. Una sola lista de precios;
+/// el presupuesto es informativo (no factura). Sin precio cargado = unitPrice nulo.
+model HardwareProduct {
+  id            String       @id @default(uuid()) @db.Uuid
+  code          String       @unique
+  name          String
+  description   String?
+  deviceKind    DeviceKind?  @map("device_kind")
+  quantityRule  QuantityRule @map("quantity_rule")
+  fixedQuantity Int?         @map("fixed_quantity")
+  unitPrice     Decimal?     @map("unit_price") @db.Decimal(10, 2)
+  currency      String       @default("USD")
+  active        Boolean      @default(true)
+  sortOrder     Int          @default(0) @map("sort_order")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  @@map("hardware_products")
 }
 
 model PumpStatusEvent {

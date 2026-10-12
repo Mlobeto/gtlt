@@ -18,6 +18,7 @@ const KIND_LABEL: Record<DeviceKind, string> = {
   VACUUM_PUMP_SENSOR: 'Sensor de bomba de vacío',
   FLOW_METER: 'Caudalímetro',
   RFID_READER: 'Lector de caravanas',
+  GATE_SENSOR: 'Sensor de tranquera',
 }
 
 const REQUEST_STATUS: Record<TamboRequestStatus, string> = {

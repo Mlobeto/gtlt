@@ -7,6 +7,7 @@ import {
   type TamboRequestStatus,
 } from '../lib/api'
 import type { AuthToken } from '../types/auth'
+import { DevicesSection } from './DevicesSection'
 import { Badge, Button, Card, EmptyState, ErrorBanner, Field, SelectField, TextareaField } from './ui'
 
 const REQUEST_STATUS: Record<TamboRequestStatus, string> = {
@@ -389,6 +390,7 @@ export function TamboRequestsAdminTab({ auth }: { auth: AuthToken }) {
                     ))
                   )}
                 </ul>
+                <DevicesSection token={auth.token} tamboId={t.id} admin />
                 <Button disabled={busy} onClick={() => void activate(t.id)}>
                   Activar
                 </Button>

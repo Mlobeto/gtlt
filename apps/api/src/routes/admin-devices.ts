@@ -24,7 +24,7 @@ const tamboQuerySchema = z.object({
 
 const createSchema = z.object({
   tamboId: z.string().uuid(),
-  kind: z.enum(["VACUUM_PUMP_SENSOR", "FLOW_METER", "RFID_READER"]),
+  kind: z.enum(["VACUUM_PUMP_SENSOR", "FLOW_METER", "RFID_READER", "GATE_SENSOR"]),
   bajadaNumber: z.number().int().min(1).optional().nullable(),
   label: z.string().trim().min(1).max(120).optional().nullable(),
 });

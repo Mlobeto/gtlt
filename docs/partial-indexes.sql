@@ -45,3 +45,21 @@ CREATE UNIQUE INDEX animals_unique_ear_tag_active
 --    la corrección es append-only (status + corrects_*_id). Sin índice parcial
 --    de unicidad adicional en Fase 1.
 -- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- 5) Device: un solo dispositivo no retirado
+--    FLOW_METER / RFID_READER → (tambo, kind, bajada_number)
+--    VACUUM_PUMP_SENSOR / GATE_SENSOR → (tambo, kind, label normalizado)
+--    El primer sensor de bomba o tranquera puede no tener nombre ('').
+-- ---------------------------------------------------------------------------
+
+CREATE UNIQUE INDEX devices_one_active_per_bajada
+  ON devices (tambo_id, kind, bajada_number)
+  WHERE retired_at IS NULL
+    AND bajada_number IS NOT NULL;
+
+CREATE UNIQUE INDEX devices_one_active_per_label
+  ON devices (tambo_id, kind, (COALESCE(lower(btrim(label)), '')))
+  WHERE retired_at IS NULL
+    AND bajada_number IS NULL;
+

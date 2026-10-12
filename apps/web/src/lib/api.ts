@@ -145,7 +145,38 @@ export type InstallingTambo = {
   devices: { id: string; kind: DeviceKind; label: string | null; lastSeenAt: string | null; connected: boolean }[]
 }
 
-export type DeviceKind = 'VACUUM_PUMP_SENSOR' | 'FLOW_METER' | 'RFID_READER'
+export type DeviceKind = 'VACUUM_PUMP_SENSOR' | 'FLOW_METER' | 'RFID_READER' | 'GATE_SENSOR'
+
+export type QuantityRule = 'PER_BAJADA' | 'PER_PUMP' | 'FIXED'
+
+export type HardwareProductItem = {
+  id: string
+  code: string
+  name: string
+  description: string | null
+  deviceKind: DeviceKind | null
+  quantityRule: QuantityRule
+  fixedQuantity: number | null
+  unitPrice: number | null
+  currency: string
+  active: boolean
+  sortOrder: number
+}
+
+export type HardwareBudgetLine = {
+  productId: string
+  name: string
+  quantity: number
+  unitPrice: number | null
+  subtotal: number | null
+  currency: string
+}
+
+export type HardwareBudget = {
+  lines: HardwareBudgetLine[]
+  totalsByCurrency: Record<string, number>
+  missingPrices: boolean
+}
 
 export type PartLifeStatus = 'OK' | 'SOON' | 'OVERDUE'
 
@@ -1356,5 +1387,140 @@ export const api = {
     })
     if (!res.ok) throw await toApiError(res, 'No se pudieron marcar las piezas como cambiadas')
     return res.json() as Promise<{ item: WorkReportItem; parts: PartInstanceItem[] }>
+  },
+
+  async getAdminHardwareProducts(token: string) {
+    const res = await fetch(`${API_URL}/admin/hardware-products`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo cargar el catálogo de equipos')
+    return res.json() as Promise<{ items: HardwareProductItem[] }>
+  },
+
+  async createAdminHardwareProduct(
+    token: string,
+    data: {
+      name: string
+      description?: string | null
+      deviceKind?: DeviceKind | null
+      quantityRule: QuantityRule
+      fixedQuantity?: number | null
+      unitPrice?: number | null
+      currency?: 'USD' | 'ARS'
+      sortOrder?: number
+    },
+  ) {
+    const res = await fetch(`${API_URL}/admin/hardware-products`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo crear el equipo')
+    return res.json() as Promise<{ item: HardwareProductItem }>
+  },
+
+  async updateAdminHardwareProduct(
+    token: string,
+    id: string,
+    data: Partial<{
+      name: string
+      description: string | null
+      deviceKind: DeviceKind | null
+      quantityRule: QuantityRule
+      fixedQuantity: number | null
+      unitPrice: number | null
+      currency: 'USD' | 'ARS'
+      sortOrder: number
+      active: boolean
+    }>,
+  ) {
+    const res = await fetch(`${API_URL}/admin/hardware-products/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo actualizar el equipo')
+    return res.json() as Promise<{ item: HardwareProductItem }>
+  },
+
+  async previewHardwareBudget(
+    token: string,
+    data: { selectedProductIds: string[]; bajadaCount: number; pumpCount: number },
+  ) {
+    const res = await fetch(`${API_URL}/admin/hardware-products/budget`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo calcular el presupuesto')
+    return res.json() as Promise<HardwareBudget>
+  },
+
+  async getAdminDevices(token: string, tamboId: string) {
+    const res = await fetch(`${API_URL}/admin/devices?tamboId=${encodeURIComponent(tamboId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los dispositivos')
+    return res.json() as Promise<{
+      items: DeviceItem[]
+      canManage: boolean
+      tambo: { id: string; bajadaCount: number } | null
+    }>
+  },
+
+  async createAdminDevice(
+    token: string,
+    data: {
+      tamboId: string
+      kind: DeviceKind
+      bajadaNumber?: number | null
+      label?: string | null
+    },
+  ) {
+    const res = await fetch(`${API_URL}/admin/devices`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo instalar el dispositivo')
+    return res.json() as Promise<{ item: DeviceItem; deviceToken: string }>
+  },
+
+  async rotateAdminDeviceToken(token: string, id: string) {
+    const res = await fetch(`${API_URL}/admin/devices/${id}/rotate-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: '{}',
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo generar la clave nueva')
+    return res.json() as Promise<{ item: DeviceItem; deviceToken: string }>
+  },
+
+  async retireAdminDevice(token: string, id: string) {
+    const res = await fetch(`${API_URL}/admin/devices/${id}/retire`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: '{}',
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo retirar el dispositivo')
+    return res.json() as Promise<{ item: DeviceItem }>
   },
 }

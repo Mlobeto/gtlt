@@ -468,6 +468,69 @@ async function seedServiceProviders() {
   });
 }
 
+async function seedHardwareProducts() {
+  const products: Array<{
+    code: string;
+    name: string;
+    deviceKind: "FLOW_METER" | "RFID_READER" | "VACUUM_PUMP_SENSOR" | "GATE_SENSOR";
+    quantityRule: "PER_BAJADA" | "PER_PUMP" | "FIXED";
+    fixedQuantity: number | null;
+    sortOrder: number;
+  }> = [
+    {
+      code: "FLOW_METER",
+      name: "Caudalímetro",
+      deviceKind: "FLOW_METER",
+      quantityRule: "PER_BAJADA",
+      fixedQuantity: null,
+      sortOrder: 10,
+    },
+    {
+      code: "RFID_READER",
+      name: "Lector de caravanas",
+      deviceKind: "RFID_READER",
+      quantityRule: "PER_BAJADA",
+      fixedQuantity: null,
+      sortOrder: 20,
+    },
+    {
+      code: "PUMP_MONITOR",
+      name: "Monitoreo de bomba de vacío",
+      deviceKind: "VACUUM_PUMP_SENSOR",
+      quantityRule: "PER_PUMP",
+      fixedQuantity: null,
+      sortOrder: 30,
+    },
+    {
+      code: "GATE_SENSOR",
+      name: "Sensor de tranquera",
+      deviceKind: "GATE_SENSOR",
+      quantityRule: "FIXED",
+      fixedQuantity: 4,
+      sortOrder: 40,
+    },
+  ];
+
+  for (const product of products) {
+    await prisma.hardwareProduct.upsert({
+      where: { code: product.code },
+      create: {
+        ...product,
+        unitPrice: null,
+        currency: "USD",
+        active: true,
+      },
+      update: {
+        name: product.name,
+        deviceKind: product.deviceKind,
+        quantityRule: product.quantityRule,
+        fixedQuantity: product.fixedQuantity,
+        sortOrder: product.sortOrder,
+      },
+    });
+  }
+}
+
 async function seedPlans() {
   await prisma.plan.upsert({
     where: { code: "STANDARD" },
@@ -953,6 +1016,7 @@ async function seedProdTenant(defaultProvider: { id: string }) {
 async function main() {
   await seedPartTypes();
   await seedPartTypeFields();
+  await seedHardwareProducts();
   await seedPlans();
   const defaultProvider = await seedServiceProviders();
 

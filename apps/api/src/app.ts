@@ -14,6 +14,7 @@ import { membershipsRouter } from "./routes/memberships.js";
 import { partInstancesRouter } from "./routes/part-instances.js";
 import { partTypeConfigRouter } from "./routes/part-type-config.js";
 import { adminPartTypesRouter } from "./routes/admin-part-types.js";
+import { adminHardwareProductsRouter } from "./routes/admin-hardware-products.js";
 import { serviceRequestsRouter } from "./routes/service-requests.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { supportTicketsRouter } from "./routes/support-tickets.js";
@@ -84,6 +85,7 @@ export function createApp() {
   app.use("/admin", adminTamboRequestsRouter);
   app.use("/admin", adminTambosRouter);
   app.use("/admin", adminPartTypesRouter);
+  app.use("/admin", adminHardwareProductsRouter);
   app.use("/uploads", uploadsRouter);
 
   app.use(

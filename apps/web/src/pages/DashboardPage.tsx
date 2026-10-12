@@ -5,6 +5,7 @@ import { AccountsTab } from '../components/AccountsTab'
 import { TamboRequestsAdminTab } from '../components/TamboRequestsAdminTab'
 import { PartTypesAdminTab } from '../components/PartTypesAdminTab'
 import { PlansTab } from '../components/PlansTab'
+import { HardwareProductsAdminTab } from '../components/HardwareProductsAdminTab'
 import { TodayTab } from '../components/TodayTab'
 import { AnimalsTab } from '../components/AnimalsTab'
 import { TeamTab } from '../components/TeamTab'
@@ -20,7 +21,7 @@ interface DashboardPageProps {
   onLogout: () => void
 }
 
-type Tab = 'today' | 'works' | 'tickets' | 'prototype' | 'accounts' | 'tambo-requests' | 'part-types' | 'plans' | 'animals' | 'team' | 'settings'
+type Tab = 'today' | 'works' | 'tickets' | 'prototype' | 'accounts' | 'tambo-requests' | 'part-types' | 'hardware' | 'plans' | 'animals' | 'team' | 'settings'
 
 export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
   const isOwner = auth.roles.includes('DUENIO') || auth.roles.includes('ADMIN')
@@ -39,6 +40,7 @@ export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
         { id: 'accounts', label: 'Cuentas' },
         { id: 'tambo-requests', label: 'Pedidos de tambo' },
         { id: 'part-types', label: 'Catálogo de piezas' },
+        { id: 'hardware', label: 'Equipos y precios' },
         { id: 'plans', label: 'Planes' },
       ]
 
@@ -108,6 +110,7 @@ export function DashboardPage({ auth, onLogout }: DashboardPageProps) {
           {activeTab === 'accounts' && isDeveloper && <AccountsTab auth={auth} />}
           {activeTab === 'tambo-requests' && isDeveloper && <TamboRequestsAdminTab auth={auth} />}
           {activeTab === 'part-types' && isDeveloper && <PartTypesAdminTab auth={auth} />}
+          {activeTab === 'hardware' && isDeveloper && <HardwareProductsAdminTab auth={auth} />}
           {activeTab === 'plans' && isDeveloper && <PlansTab auth={auth} />}
           {activeTab === 'animals' && isOwner && <AnimalsTab auth={auth} />}
           {activeTab === 'team' && isOwner && <TeamTab auth={auth} />}

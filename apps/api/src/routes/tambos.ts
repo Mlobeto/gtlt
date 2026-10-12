@@ -32,6 +32,7 @@ const DEVICE_KIND_LABEL: Record<string, string> = {
   VACUUM_PUMP_SENSOR: "Sensor de bomba de vacío",
   FLOW_METER: "Caudalímetro",
   RFID_READER: "Lector de caravanas",
+  GATE_SENSOR: "Sensor de tranquera",
 };
 
 const DEVICE_REMOVAL_DESCRIPTION =

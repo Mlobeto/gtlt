@@ -6,6 +6,7 @@ const KIND_LABEL: Record<DeviceKind, string> = {
   VACUUM_PUMP_SENSOR: 'Sensor de bomba de vacío',
   FLOW_METER: 'Caudalímetro',
   RFID_READER: 'Lector de caravanas',
+  GATE_SENSOR: 'Sensor de tranquera',
 }
 
 const TOKEN_NOTICE = 'Cargá esta clave en el dispositivo. Esta pantalla no la va a volver a mostrar.'
@@ -35,7 +36,19 @@ function needsBajada(kind: DeviceKind) {
   return kind === 'FLOW_METER' || kind === 'RFID_READER'
 }
 
-export function DevicesSection({ token, tamboId }: { token: string; tamboId: string }) {
+function needsName(kind: DeviceKind) {
+  return kind === 'VACUUM_PUMP_SENSOR' || kind === 'GATE_SENSOR'
+}
+
+export function DevicesSection({
+  token,
+  tamboId,
+  admin = false,
+}: {
+  token: string
+  tamboId: string
+  admin?: boolean
+}) {
   const [items, setItems] = useState<DeviceItem[]>([])
   const [canManage, setCanManage] = useState(false)
   const [bajadaCount, setBajadaCount] = useState(1)
@@ -54,7 +67,7 @@ export function DevicesSection({ token, tamboId }: { token: string; tamboId: str
       try {
         if (!silent) setLoading(true)
         setError('')
-        const result = await api.getDevices(token, tamboId)
+        const result = admin ? await api.getAdminDevices(token, tamboId) : await api.getDevices(token, tamboId)
         setItems(result.items || [])
         setCanManage(Boolean(result.canManage))
         if (result.tambo?.bajadaCount) setBajadaCount(result.tambo.bajadaCount)
@@ -64,7 +77,7 @@ export function DevicesSection({ token, tamboId }: { token: string; tamboId: str
         if (!silent) setLoading(false)
       }
     },
-    [token, tamboId],
+    [token, tamboId, admin],
   )
 
   useEffect(() => {
@@ -90,12 +103,19 @@ export function DevicesSection({ token, tamboId }: { token: string; tamboId: str
         setError(`La bajada tiene que estar entre 1 y ${bajadaCount}.`)
         return
       }
-      const result = await api.createDevice(token, {
-        tamboId,
-        kind,
-        bajadaNumber: bajada,
-        label: label.trim() || null,
-      })
+      const result = admin
+        ? await api.createAdminDevice(token, {
+            tamboId,
+            kind,
+            bajadaNumber: bajada,
+            label: label.trim() || null,
+          })
+        : await api.createDevice(token, {
+            tamboId,
+            kind,
+            bajadaNumber: bajada,
+            label: label.trim() || null,
+          })
       setRevealedToken(result.deviceToken)
       setShowForm(false)
       setLabel('')
@@ -112,7 +132,7 @@ export function DevicesSection({ token, tamboId }: { token: string; tamboId: str
     try {
       setBusy(true)
       setError('')
-      const result = await api.rotateDeviceToken(token, id)
+      const result = admin ? await api.rotateAdminDeviceToken(token, id) : await api.rotateDeviceToken(token, id)
       setRevealedToken(result.deviceToken)
       await load(true)
     } catch (err) {
@@ -127,7 +147,7 @@ export function DevicesSection({ token, tamboId }: { token: string; tamboId: str
     try {
       setBusy(true)
       setError('')
-      await api.retireDevice(token, id)
+      admin ? await api.retireAdminDevice(token, id) : await api.retireDevice(token, id)
       if (revealedToken) setRevealedToken(null)
       await load(true)
     } catch (err) {
@@ -221,10 +241,17 @@ export function DevicesSection({ token, tamboId }: { token: string; tamboId: str
                 />
               ) : null}
               <Field
-                label="Etiqueta"
+                label={needsName(kind) ? 'Nombre' : 'Etiqueta'}
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
-                placeholder="Opcional"
+                placeholder={
+                  kind === 'GATE_SENSOR' ? 'Tranquera 3' : kind === 'VACUUM_PUMP_SENSOR' ? 'Bomba 2' : 'Opcional'
+                }
+                hint={
+                  needsName(kind)
+                    ? 'Obligatorio si el tambo ya tiene otro del mismo tipo. El primero puede quedar sin nombre.'
+                    : 'Opcional'
+                }
               />
               <div className="flex flex-wrap gap-2">
                 <Button disabled={busy} onClick={() => void install()}>

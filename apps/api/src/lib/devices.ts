@@ -8,6 +8,11 @@ import type { AuthContext } from "../types/express.js";
 export const DEVICE_CONNECTED_WINDOW_MS = 5 * 60 * 1000;
 
 const KIND_NEEDS_BAJADA: DeviceKind[] = ["FLOW_METER", "RFID_READER"];
+const KIND_LABELED: DeviceKind[] = ["VACUUM_PUMP_SENSOR", "GATE_SENSOR"];
+
+export function normalizeDeviceLabel(label: string | null | undefined): string {
+  return (label ?? "").trim().toLowerCase();
+}
 
 export type PublicDevice = {
   id: string;
@@ -65,9 +70,14 @@ export function normalizeBajadaNumber(
   kind: DeviceKind,
   bajadaNumber: number | null | undefined,
 ): number | null {
-  if (kind === "VACUUM_PUMP_SENSOR") {
+  if (KIND_LABELED.includes(kind)) {
     if (bajadaNumber != null) {
-      throw new HttpError(400, "El sensor de bomba de vacío no usa número de bajada.");
+      throw new HttpError(
+        400,
+        kind === "GATE_SENSOR"
+          ? "El sensor de tranquera no usa número de bajada."
+          : "El sensor de bomba de vacío no usa número de bajada.",
+      );
     }
     return null;
   }
@@ -84,8 +94,10 @@ export async function assertDeviceInstallRules(
   tambo: Pick<Tambo, "id" | "bajadaCount">,
   kind: DeviceKind,
   bajadaNumber: number | null | undefined,
-): Promise<number | null> {
+  label?: string | null,
+): Promise<{ bajadaNumber: number | null; label: string | null }> {
   const bajada = normalizeBajadaNumber(kind, bajadaNumber);
+  const trimmed = label?.trim() ? label.trim() : null;
 
   if (bajada != null && (bajada < 1 || bajada > tambo.bajadaCount)) {
     throw new HttpError(
@@ -94,17 +106,28 @@ export async function assertDeviceInstallRules(
     );
   }
 
-  if (kind === "VACUUM_PUMP_SENSOR") {
-    const existing = await prisma.device.findFirst({
+  if (KIND_LABELED.includes(kind)) {
+    const existing = await prisma.device.findMany({
       where: { tamboId: tambo.id, kind, retiredAt: null },
     });
-    if (existing) {
+    if (existing.length > 0 && !trimmed) {
       throw new HttpError(
-        409,
-        "Este tambo ya tiene un sensor de bomba de vacío. Retiralo antes de instalar otro.",
+        400,
+        kind === "GATE_SENSOR"
+          ? "El nombre es obligatorio cuando el tambo ya tiene otro sensor de tranquera."
+          : "El nombre es obligatorio cuando el tambo ya tiene otro sensor de bomba.",
       );
     }
-    return null;
+    const normalized = normalizeDeviceLabel(trimmed);
+    if (existing.some((d) => normalizeDeviceLabel(d.label) === normalized)) {
+      throw new HttpError(
+        409,
+        kind === "GATE_SENSOR"
+          ? "Ya hay un sensor de tranquera con ese nombre en el tambo."
+          : "Ya hay un sensor de bomba con ese nombre en el tambo.",
+      );
+    }
+    return { bajadaNumber: null, label: trimmed };
   }
 
   const existing = await prisma.device.findFirst({
@@ -116,7 +139,7 @@ export async function assertDeviceInstallRules(
       `Ya hay un dispositivo ${kind} activo en la bajada ${bajada}. Retiralo antes de instalar otro.`,
     );
   }
-  return bajada;
+  return { bajadaNumber: bajada, label: trimmed };
 }
 
 export async function createInstalledDevice(input: {
@@ -130,10 +153,11 @@ export async function createInstalledDevice(input: {
     throw new HttpError(400, "No se puede instalar un dispositivo en un tambo archivado.");
   }
 
-  const bajadaNumber = await assertDeviceInstallRules(
+  const rules = await assertDeviceInstallRules(
     input.tambo,
     input.kind,
     input.bajadaNumber,
+    input.label,
   );
   const deviceToken = newDeviceToken();
   const device = await prisma.device.create({
@@ -141,8 +165,8 @@ export async function createInstalledDevice(input: {
       tenantId: input.tambo.tenantId,
       tamboId: input.tambo.id,
       kind: input.kind,
-      bajadaNumber,
-      label: input.label?.trim() ? input.label.trim() : null,
+      bajadaNumber: rules.bajadaNumber,
+      label: rules.label,
       deviceToken,
       createdById: input.createdById,
     },
