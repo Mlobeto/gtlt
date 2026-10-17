@@ -28,7 +28,7 @@ export function AppShell<K extends string>({
       <aside className="print-hide bg-brand-dark text-white md:fixed md:inset-y-0 md:left-0 md:w-[220px] md:flex md:flex-col">
         <div className="flex items-center justify-between gap-3 px-5 py-4 md:block md:py-6">
           <div className="min-w-0">
-            <img src="/cal-logo-white.svg" alt="CAL" className="h-7 w-auto" />
+          <img src="/cal-logo-blanco.png" alt="CAL" className="h-9 w-auto" />
             {subtitle && <p className="mt-1 text-sm text-[color-mix(in_srgb,var(--color-brand-blue)_35%,white)] truncate">{subtitle}</p>}
           </div>
           <button

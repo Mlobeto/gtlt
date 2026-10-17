@@ -2232,12 +2232,12 @@ function AppContent() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            <Image
-              source={require("./assets/cal-logo-navy.png")}
-              style={{ width: 96, height: 37 }}
-              resizeMode="contain"
-              accessibilityLabel="CAL"
-            />
+          <Image
+  source={require("./assets/cal-logo-azul.png")}
+  style={{ width: 88, height: 40 }}
+  resizeMode="contain"
+  accessibilityLabel="CAL"
+/>
             <View style={[styles.chip, online ? styles.chipOk : styles.chipWarn]}>
               <Text style={[styles.chipText, !online && styles.chipTextWarn]}>
                 {online ? "Con señal" : "Sin señal"}
