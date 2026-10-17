@@ -170,7 +170,7 @@ export function TeamTab({ auth }: TeamTabProps) {
               href={`https://wa.me/?text=${encodeURIComponent(shareMessages(inviteResult.token, inviteResult.role).intro)}`}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center min-h-10 px-4 rounded-lg bg-primary text-white font-semibold hover:bg-primary-deep"
+              className="inline-flex items-center min-h-10 px-4 rounded-lg bg-primary text-on-primary font-semibold hover:bg-primary-deep"
             >
               WhatsApp: invitación
             </a>
@@ -178,14 +178,14 @@ export function TeamTab({ auth }: TeamTabProps) {
               href={`https://wa.me/?text=${encodeURIComponent(shareMessages(inviteResult.token, inviteResult.role).code)}`}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center min-h-10 px-4 rounded-lg border border-primary text-primary-deep bg-surface hover:bg-primary-soft font-semibold"
+              className="inline-flex items-center min-h-10 px-4 rounded-lg border border-primary text-ink bg-surface hover:bg-primary-soft font-semibold"
             >
               WhatsApp: solo el código
             </a>
           </div>
         </div>
       ) : inviteResult ? (
-        <div className="bg-primary-soft border border-primary/30 text-primary-deep px-4 py-3 rounded-lg text-sm">
+        <div className="bg-success-soft border border-success/30 text-success-text px-4 py-3 rounded-lg text-sm">
           Ya era miembro: se le dio acceso a este tambo
         </div>
       ) : null}

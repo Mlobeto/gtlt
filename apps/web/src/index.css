@@ -1,29 +1,36 @@
 @import "tailwindcss";
 
 @theme {
-  --color-surface: #FFFFFF;
-  --color-subtle: #F2F4F5;
-  --color-line: #E1E5E8;
-  --color-ink: #33383D;
-  --color-ink-muted: #6B7278;
+  --color-surface: #FFFEFD;
+  --color-subtle: #EFE8E2;
+  --color-line: #E3DAD2;
+  --color-ink: #222222;
+  --color-ink-muted: #5E5750;
 
-  --color-primary: #3D7D57;        /* botones y texto verde (contraste 4.9:1 sobre blanco) */
-  --color-primary-deep: #2F6A47;   /* hover/pressed y texto sobre fondo verde pálido */
-  --color-primary-light: #4C9A6A;  /* decorativo: puntos, barras, bordes (no para texto) */
-  --color-primary-soft: #E8F2EC;
+  --color-primary: #222222;
+  --color-primary-deep: #000000;
+  --color-primary-light: #3A3A3A;
+  --color-primary-soft: #FBEBB8;
 
-  --color-brand-dark: #123B4F;
-  --color-brand-blue: #1F6F8B;
+  --color-brand-dark: #222222;
+  --color-brand-blue: #5E5750;
 
-  --color-accent: #F0C419;
-  --color-accent-soft: #FFF6CC;
-  --color-accent-text: #6B5400;
+  --color-accent: #F8D05F;
+  --color-accent-soft: #FBEBB8;
+  --color-accent-text: #5B4300;
 
-  --color-danger: #B42318;
-  --color-danger-soft: #FCEBEA;
+  --color-danger: #B3261E;
+  --color-danger-soft: #F9DEDC;
+
+  --color-on-primary: #F8D05F;
+  --color-success: #2F7D4A;
+  --color-success-soft: #DDF0E3;
+  --color-success-text: #1E5B35;
+  --color-warning: #E3A800;
+  --color-dark-surface: #333333;
 
   --font-sans: "DM Sans", system-ui, sans-serif;
-  --font-brand: "Fraunces", Georgia, serif;
+  --font-brand: "DM Sans", system-ui, sans-serif;
 }
 
 :root {

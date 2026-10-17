@@ -162,7 +162,7 @@ export function ReplaceBatchScreen({ token, online, parts, preselectedIds, onSta
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     padding: space.lg,
     gap: space.md,
     borderWidth: 1,
@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
   choice: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
   },
@@ -203,11 +203,11 @@ const styles = StyleSheet.create({
   button: {
     backgroundColor: colors.primary,
     paddingVertical: space.lg,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     alignItems: "center",
     minHeight: touch.min,
     justifyContent: "center",
   },
-  buttonText: { color: colors.bg, fontWeight: "700", fontSize: font.button },
+  buttonText: { color: colors.onPrimary, fontWeight: "700", fontSize: font.button },
   disabled: { opacity: 0.6 },
 });

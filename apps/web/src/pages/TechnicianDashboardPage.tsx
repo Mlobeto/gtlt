@@ -32,7 +32,7 @@ function TamboDirections({
           href={mapsUrl(lat, lng)}
           target="_blank"
           rel="noreferrer"
-          className="text-primary-deep font-semibold hover:underline"
+          className="text-ink font-semibold hover:underline"
           onClick={(e) => e.stopPropagation()}
         >
           Cómo llegar
@@ -292,7 +292,7 @@ export function TechnicianDashboardPage({
       <div className="space-y-6">
         {error && <ErrorBanner>{error}</ErrorBanner>}
         {statusMsg && (
-          <div className="bg-primary-soft border border-primary/30 text-primary-deep px-4 py-3 rounded-lg text-sm">
+          <div className="bg-success-soft border border-success/30 text-success-text px-4 py-3 rounded-lg text-sm">
             {statusMsg}
           </div>
         )}

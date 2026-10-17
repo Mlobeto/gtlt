@@ -164,7 +164,7 @@ export function HardwareProductsAdminTab({ auth }: { auth: AuthToken }) {
     <div className="space-y-4">
       {error ? <ErrorBanner>{error}</ErrorBanner> : null}
       {status ? (
-        <div className="bg-primary-soft border border-primary/30 text-primary-deep px-4 py-3 rounded-lg text-sm">
+        <div className="bg-success-soft border border-success/30 text-success-text px-4 py-3 rounded-lg text-sm">
           {status}
         </div>
       ) : null}

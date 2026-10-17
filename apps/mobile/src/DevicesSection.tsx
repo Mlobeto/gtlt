@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
   button: {
     backgroundColor: colors.primary,
     paddingVertical: space.lg,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     alignItems: "center",
     minHeight: touch.min,
     justifyContent: "center",
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
   buttonSecondary: {
     backgroundColor: colors.primarySoft,
     paddingVertical: space.lg,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     alignItems: "center",
     borderWidth: 1,
     borderColor: colors.primary,
@@ -328,14 +328,14 @@ const styles = StyleSheet.create({
   buttonDanger: {
     backgroundColor: colors.dangerSoft,
     paddingVertical: space.lg,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     alignItems: "center",
     borderWidth: 1,
     borderColor: colors.danger,
     minHeight: touch.min,
     justifyContent: "center",
   },
-  buttonText: { color: colors.bg, fontWeight: "700", fontSize: font.button },
+  buttonText: { color: colors.onPrimary, fontWeight: "700", fontSize: font.button },
   buttonSecondaryText: {
     color: colors.primary,
     fontWeight: "700",
@@ -371,7 +371,7 @@ const styles = StyleSheet.create({
   kindChip: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     paddingVertical: space.md,
     paddingHorizontal: space.md,
     backgroundColor: colors.surface,

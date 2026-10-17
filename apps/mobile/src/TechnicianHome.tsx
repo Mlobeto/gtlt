@@ -349,7 +349,7 @@ const styles = StyleSheet.create({
   wrap: { gap: space.md },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     padding: space.lg,
     gap: space.md,
     borderWidth: 1,
@@ -366,7 +366,7 @@ const styles = StyleSheet.create({
   button: {
     backgroundColor: colors.primary,
     paddingVertical: space.lg,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     alignItems: "center",
     minHeight: touch.min,
     justifyContent: "center",
@@ -374,14 +374,14 @@ const styles = StyleSheet.create({
   buttonSecondary: {
     backgroundColor: colors.primarySoft,
     paddingVertical: space.lg,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     alignItems: "center",
     borderWidth: 1,
     borderColor: colors.primary,
     minHeight: touch.min,
     justifyContent: "center",
   },
-  buttonText: { color: colors.bg, fontWeight: "700", fontSize: font.button },
+  buttonText: { color: colors.onPrimary, fontWeight: "700", fontSize: font.button },
   buttonSecondaryText: {
     color: colors.primary,
     fontWeight: "700",

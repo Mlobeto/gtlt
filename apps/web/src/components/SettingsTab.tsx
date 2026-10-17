@@ -186,7 +186,7 @@ export function SettingsTab({ auth, onSessionChange }: SettingsTabProps) {
           )}
           {error && <ErrorBanner>{error}</ErrorBanner>}
           {status && (
-            <div className="bg-primary-soft border border-primary/30 text-primary-deep px-4 py-3 rounded-lg text-sm">
+            <div className="bg-success-soft border border-success/30 text-success-text px-4 py-3 rounded-lg text-sm">
               {status}
             </div>
           )}
@@ -256,7 +256,7 @@ export function SettingsTab({ auth, onSessionChange }: SettingsTabProps) {
                   <div>
                     <p className="font-semibold text-ink">{p.name}</p>
                     <div className="flex flex-wrap gap-2 mt-1">
-                      <Badge tone={p.isPrivate ? 'info' : 'ok'}>
+                      <Badge tone={p.isPrivate ? 'info' : 'neutral'}>
                         {p.isPrivate ? 'Privada' : 'Socia'}
                       </Badge>
                       {!p.active ? <Badge tone="neutral">Inactiva</Badge> : null}

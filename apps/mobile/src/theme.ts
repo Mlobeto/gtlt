@@ -1,25 +1,36 @@
 /**
- * Tokens de diseño GTLT — espejo de docs/diseno.md
- * Fondo blanco; acciones en verde; avisos en amarillo.
+ * Tokens de diseño CAL — espejo de docs/diseno.md
+ * Fondo crema; acciones en negro; acento amarillo; verde solo para éxito.
  */
 export const colors = {
-  bg: "#FFFFFF",
-  bgSubtle: "#F2F4F5",
-  surface: "#FFFFFF",
-  border: "#E1E5E8",
-  text: "#33383D",
-  textMuted: "#6B7278",
-  primary: "#3D7D57",
-  primaryPressed: "#2F6A47",
-  primaryLight: "#4C9A6A",
-  primarySoft: "#E8F2EC",
-  brandDark: "#123B4F",
-  brandBlue: "#1F6F8B",
-  accent: "#F0C419",
-  accentSoft: "#FFF6CC",
-  accentText: "#6B5400",
-  danger: "#B42318",
-  dangerSoft: "#FCEBEA",
+  bg: "#EFE8E2",
+  bgSubtle: "#F3EEE9",
+  surface: "#FFFEFD",
+  border: "#E3DAD2",
+  text: "#222222",
+  textMuted: "#5E5750",
+  primary: "#222222",
+  primaryPressed: "#000000",
+  primaryLight: "#3A3A3A",
+  primarySoft: "#FBEBB8",
+  onPrimary: "#F8D05F",
+  brandDark: "#222222",
+  brandBlue: "#5E5750",
+  accent: "#F8D05F",
+  accentSoft: "#FBEBB8",
+  accentText: "#5B4300",
+  success: "#2F7D4A",
+  successSoft: "#DDF0E3",
+  successText: "#1E5B35",
+  danger: "#B3261E",
+  dangerSoft: "#F9DEDC",
+  dangerText: "#8C1D18",
+  warning: "#E3A800",
+  dark: "#222222",
+  darkSurface: "#333333",
+  darkSurfaceHigh: "#3A3A3A",
+  onDark: "#FFFFFF",
+  onDarkMuted: "#D9D2C8",
 } as const;
 
 export const space = {
@@ -31,9 +42,10 @@ export const space = {
 } as const;
 
 export const radius = {
-  sm: 8,
-  md: 12,
-  lg: 16,
+  sm: 12,
+  md: 20,
+  lg: 28,
+  pill: 999,
 } as const;
 
 export const font = {

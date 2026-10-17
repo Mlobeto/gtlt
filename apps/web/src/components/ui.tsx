@@ -37,8 +37,8 @@ export function Card({
 type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost'
 
 const buttonVariants: Record<ButtonVariant, string> = {
-  primary: 'bg-primary text-white hover:bg-primary-deep',
-  secondary: 'border border-primary text-primary-deep bg-surface hover:bg-primary-soft',
+  primary: 'bg-primary text-on-primary hover:bg-primary-deep',
+  secondary: 'border border-primary text-ink bg-surface hover:bg-primary-soft',
   danger: 'bg-danger text-white hover:opacity-90',
   ghost: 'text-ink-muted hover:text-ink hover:bg-subtle',
 }
@@ -65,7 +65,7 @@ export function Button({
 export type BadgeTone = 'ok' | 'warn' | 'danger' | 'info' | 'neutral'
 
 const badgeTones: Record<BadgeTone, string> = {
-  ok: 'bg-primary-soft text-primary-deep',
+  ok: 'bg-success-soft text-success-text',
   warn: 'bg-accent-soft text-accent-text',
   danger: 'bg-danger-soft text-danger',
   info: 'bg-brand-blue/10 text-brand-blue',
@@ -172,7 +172,7 @@ export function StatCard({
 }) {
   const valueColor =
     tone === 'ok'
-      ? 'text-primary-deep'
+      ? 'text-success-text'
       : tone === 'warn'
         ? 'text-accent-text'
         : tone === 'danger'

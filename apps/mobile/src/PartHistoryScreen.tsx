@@ -83,7 +83,7 @@ export function PartHistoryScreen({ token, tamboId, part, onStatus }: Props) {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     padding: space.lg,
     gap: space.md,
     borderWidth: 1,

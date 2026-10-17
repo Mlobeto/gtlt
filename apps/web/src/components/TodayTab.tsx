@@ -349,7 +349,7 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
             <span className="inline-flex items-center gap-2">
               <span
                 aria-hidden
-                className={`h-2.5 w-2.5 rounded-full ${pumpStatus === 'ON' ? 'bg-primary-light' : 'bg-ink-muted'}`}
+                className={`h-2.5 w-2.5 rounded-full ${pumpStatus === 'ON' ? 'bg-success' : 'bg-ink-muted'}`}
               />
               {isLoading ? '—' : statusLabel}
             </span>

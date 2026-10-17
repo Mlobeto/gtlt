@@ -4,18 +4,18 @@ Documento vivo de **colores, tipografía, formularios y componentes**.
 Toda pantalla de producto (mobile y web) debe alinearse acá.  
 Complementa [ux-usuario.md](./ux-usuario.md) (idioma y simplicidad).
 
-**Última actualización:** 2026-09-29
+**Última actualización:** 2026-10-17
 
 ---
 
 ## 1. Principios visuales
 
-1. **Fondo claro / blanco** — legible a la intemperie y con poco brillo.
-2. **Verde** = acción principal, marca, confirmación.
-3. **Amarillo** = aviso, pendiente, atención (sin alarmar).
+1. **Fondo crema** — `#EFE8E2`, legible a la intemperie y con poco brillo.
+2. **Negro** = acción principal y marca. El verde queda **solo para éxito**.
+3. **Amarillo** = acento de marca (fondos, texto sobre negro) y avisos suaves.
 4. **Pocas pantallas, mucho aire** — no saturar.
 5. **Controles grandes** — dedos / apuro / posible uso con guantes mentales.
-6. **Sin jerga visual de “dashboard SaaS”** — evitar púrpura, glows, pills infinitos, sombras pesadas.
+6. **Sin jerga visual de “dashboard SaaS”** — evitar púrpura, glows y sombras pesadas.
 
 ---
 
@@ -25,30 +25,46 @@ Complementa [ux-usuario.md](./ux-usuario.md) (idioma y simplicidad).
 
 | Token | Hex | Uso |
 |---|---|---|
-| `color.bg` | `#FFFFFF` | Fondo de pantalla |
-| `color.bgSubtle` | `#F2F4F5` | Fondos secundarios / listas |
-| `color.surface` | `#FFFFFF` | Cards, formularios |
-| `color.border` | `#E1E5E8` | Bordes de inputs y separadores |
-| `color.text` | `#33383D` | Texto principal |
-| `color.textMuted` | `#6B7278` | Ayudas, meta |
-| `color.primary` | `#3D7D57` | Botón principal, links fuertes, éxito (contraste 4.9:1 con blanco) |
-| `color.primaryPressed` | `#2F6A47` | Pressed / active del verde; texto verde sobre `primarySoft` |
-| `color.primaryLight` | `#4C9A6A` | Verde de marca del PDF — **solo decorativo** (puntos, barras, bordes), nunca texto: con blanco da 3.4:1 |
-| `color.primarySoft` | `#E8F2EC` | Fondo de botón secundario / chips ok — **pálido, no saturado** |
-| `color.brandDark` | `#123B4F` | Headers, nav, superficies oscuras de marca (nuevo) |
-| `color.brandBlue` | `#1F6F8B` | Acentos secundarios, eyebrows, links de apoyo (nuevo) |
-| `color.accent` | `#F0C419` | Amarillo — avisos, "falta enviar" (sin cambios) |
-| `color.accentSoft` | `#FFF6CC` | Fondo de alerta suave — **pálido, no saturado** |
-| `color.accentText` | `#6B5400` | Texto sobre amarillo suave (sin cambios) |
-| `color.danger` | `#B42318` | Error / destructivo (sin cambios) |
-| `color.dangerSoft` | `#FCEBEA` | Fondo error (sin cambios) |
+| `color.bg` / `--color-subtle` | `#EFE8E2` | Fondo de pantalla (crema) |
+| `color.bgSubtle` | `#F3EEE9` | Relleno suave dentro de tarjetas |
+| `color.surface` | `#FFFEFD` | Cards, formularios |
+| `color.border` / `--color-line` | `#E3DAD2` | Bordes y separadores |
+| `color.text` / `--color-ink` | `#222222` | Texto principal |
+| `color.textMuted` / `--color-ink-muted` | `#5E5750` | Ayudas, meta |
+| `color.primary` | `#222222` | Acción principal, selección, links |
+| `color.primaryPressed` / `--color-primary-deep` | `#000000` | Pressed del botón negro |
+| `color.primaryLight` | `#3A3A3A` | Negro suave decorativo |
+| `color.primarySoft` | `#FBEBB8` | Seleccionado, hover de secundario |
+| `color.onPrimary` | `#F8D05F` | Texto sobre botón negro (amarillo) |
+| `color.brandDark` | `#222222` | Barra lateral, paneles oscuros |
+| `color.brandBlue` | `#5E5750` | Acentos secundarios (ya no es azul) |
+| `color.accent` | `#F8D05F` | Amarillo de marca: **solo como fondo** o como texto sobre negro |
+| `color.accentSoft` | `#FBEBB8` | Fondo de aviso |
+| `color.accentText` | `#5B4300` | Texto sobre amarillo suave |
+| `color.success` | `#2F7D4A` | Éxito (conectado, activo, “Con señal”) |
+| `color.successSoft` | `#DDF0E3` | Fondo de éxito |
+| `color.successText` | `#1E5B35` | Texto sobre `successSoft` |
+| `color.warning` | `#E3A800` | Advertencia (por vencer) |
+| `color.danger` | `#B3261E` | Error / destructivo |
+| `color.dangerSoft` | `#F9DEDC` | Fondo error |
+| `color.dangerText` | `#8C1D18` | Texto sobre `dangerSoft` (mobile) |
+| `color.darkSurface` | `#333333` | Superficie oscura (reservado; etapas 2–4) |
+| `color.onDark` | `#FFFFFF` | Texto sobre negro |
+| `color.onDarkMuted` | `#D9D2C8` | Texto atenuado sobre negro |
+
+### Contraste (no negociable)
+
+- El amarillo **nunca** es color de texto sobre crema o blanco. Va como fondo (con texto negro / `accentText`) o como texto sobre negro (`onPrimary`).
+- El verde **no es de marca**. Solo estados de éxito: conectado, activo, “Con señal”, guardado.
 
 ### Semántica rápida
 
-- **Entrar / Guardar / Confirmar** → verde (`primary`)
-- **Enviar / Actualizar / secundario** → borde verde + fondo `primarySoft`, o outline
-- **Sin señal / Falta enviar** → amarillo (`accent` / `accentSoft`)
-- **Error** → rojo solo cuando bloquea la acción
+- **Entrar / Guardar / Confirmar** → negro (`primary`) + texto `onPrimary`
+- **Secundario** → borde negro + texto `ink` + hover `primarySoft`
+- **Seleccionado** → fondo `primarySoft`, borde/texto `primary`
+- **Sin señal / Falta enviar** → `accentSoft` + `accentText`
+- **Éxito** → `success` / `successSoft` / `successText`
+- **Error** → `danger` / `dangerSoft`
 
 ### CSS variables (web)
 
@@ -56,29 +72,30 @@ Definidas con `@theme` (Tailwind v4) en `apps/web/src/index.css`. Cada variable 
 
 ```css
 @theme {
-  --color-surface: #FFFFFF;
-  --color-subtle: #F2F4F5;
-  --color-line: #E1E5E8;
-  --color-ink: #33383D;
-  --color-ink-muted: #6B7278;
-
-  --color-primary: #3D7D57;
-  --color-primary-deep: #2F6A47;
-  --color-primary-light: #4C9A6A;
-  --color-primary-soft: #E8F2EC;
-
-  --color-brand-dark: #123B4F;
-  --color-brand-blue: #1F6F8B;
-
-  --color-accent: #F0C419;
-  --color-accent-soft: #FFF6CC;
-  --color-accent-text: #6B5400;
-
-  --color-danger: #B42318;
-  --color-danger-soft: #FCEBEA;
-
+  --color-surface: #FFFEFD;
+  --color-subtle: #EFE8E2;
+  --color-line: #E3DAD2;
+  --color-ink: #222222;
+  --color-ink-muted: #5E5750;
+  --color-primary: #222222;
+  --color-primary-deep: #000000;
+  --color-primary-light: #3A3A3A;
+  --color-primary-soft: #FBEBB8;
+  --color-on-primary: #F8D05F;
+  --color-brand-dark: #222222;
+  --color-brand-blue: #5E5750;
+  --color-accent: #F8D05F;
+  --color-accent-soft: #FBEBB8;
+  --color-accent-text: #5B4300;
+  --color-success: #2F7D4A;
+  --color-success-soft: #DDF0E3;
+  --color-success-text: #1E5B35;
+  --color-warning: #E3A800;
+  --color-dark-surface: #333333;
+  --color-danger: #B3261E;
+  --color-danger-soft: #F9DEDC;
   --font-sans: "DM Sans", system-ui, sans-serif;
-  --font-brand: "Fraunces", Georgia, serif;
+  --font-brand: "DM Sans", system-ui, sans-serif;
 }
 ```
 
@@ -91,8 +108,9 @@ Utilidades del web:
 | `border-line` | Bordes y separadores |
 | `bg-surface` | Cards, formularios |
 | `bg-subtle` | Fondo de la app, filas hover |
-| `bg-primary` / `hover:bg-primary-deep` | Botón principal |
-| `bg-primary-soft` | Fondo ok / botón secundario hover |
+| `bg-primary` / `text-on-primary` / `hover:bg-primary-deep` | Botón principal (negro + amarillo) |
+| `bg-primary-soft` | Selección / hover de secundario |
+| `bg-success-soft` / `text-success-text` | Éxito |
 | `text-brand-dark` / `text-brand-blue` | Marca, acentos de apoyo |
 | `bg-accent-soft` / `text-accent-text` | Avisos |
 | `bg-danger` / `bg-danger-soft` | Error / destructivo |
@@ -110,9 +128,9 @@ Tokens RN: `apps/mobile/src/theme.ts`.
 | Rol | Mobile (RN) | Web |
 |---|---|---|
 | UI / cuerpo | System default (San Francisco / Roboto) — legible y familiar | `"DM Sans", system-ui, sans-serif` |
-| Títulos (opcional marca) | Misma familia, peso bold | `"Fraunces", Georgia, serif` solo en brand/landing; **no** en formularios del tambero |
+| Títulos | Misma familia, peso bold | `"DM Sans", system-ui, sans-serif` (`--font-brand` = la misma familia; el diseño no usa Fraunces) |
 
-> En la app operativa del tambero priorizar **sans del sistema**: máxima claridad. La serif de marca queda para web/marketing.
+> En la app operativa del tambero priorizar **sans del sistema**: máxima claridad.
 
 ### Escala (mobile operativa)
 
@@ -143,9 +161,10 @@ Tokens RN: `apps/mobile/src/theme.ts`.
 | `space.md` | 12 |
 | `space.lg` | 16 |
 | `space.xl` | 24 |
-| `radius.sm` | 8 |
-| `radius.md` | 12 |
-| `radius.lg` | 16 |
+| `radius.sm` | 12 |
+| `radius.md` | 20 |
+| `radius.lg` | 28 |
+| `radius.pill` | 999 (botones principales y chips) |
 | `touch.min` | 48 (altura mínima de botón/input) |
 
 ---
@@ -173,13 +192,13 @@ Tokens RN: `apps/mobile/src/theme.ts`.
 
 | Tipo | Estilo |
 |---|---|
-| Primario | fondo `primary`, texto blanco, full-width en mobile |
-| Secundario | fondo `primarySoft` o blanco + borde `primary`, texto `primary` |
-| Aviso | fondo `accent` / texto oscuro — solo para CTAs de atención |
-| Texto / link | sin borde, color `primary` o `textMuted` |
+| Primario | fondo `primary`, texto `onPrimary`, full-width en mobile, radio `pill` |
+| Secundario | fondo `primarySoft` o superficie + borde `primary`, texto `ink` / `primary` |
+| Aviso | fondo `accentSoft` / texto `accentText` |
+| Texto / link | sin borde, color `primary` o `textMuted` (nunca amarillo sobre claro) |
 
 - Un **primario** por pantalla.
-- Separación clara entre “Guardar” (verde) y “Enviar” (secundario).
+- Separación clara entre “Guardar” (negro) y “Enviar” (secundario).
 
 ---
 
@@ -189,7 +208,7 @@ Tokens RN: `apps/mobile/src/theme.ts`.
 |---|---|
 | Sin señal | chip/banner amarillo suave: “Sin señal” |
 | Falta enviar | badge amarillo: “Falta enviar” |
-| Éxito | mensaje breve verde/oscuro: “Listo.” |
+| Éxito | mensaje breve con `successSoft` / `successText`: “Listo.” |
 | Error | caja `dangerSoft` + frase accionable |
 
 Mensajes de feedback **dentro del formulario**, arriba de los botones — nunca tapar “Guardar” / “Enviar” con un toast fijo abajo.
@@ -217,7 +236,7 @@ Mensajes de feedback **dentro del formulario**, arriba de los botones — nunca 
 ## 9. Qué falta definir (abierto)
 
 - [ ] Logo final Lobeto / GTLT y variantes
-- [ ] Confirmar tipografía web de marca (¿Fraunces u otra?)
+- [x] Tipografía web de marca: DM Sans (sin Fraunces)
 - [ ] Ilustraciones / foto hero si hay landing
 - [ ] Modo “alta visibilidad” (texto aún más grande) si entrevistas lo piden
 
@@ -235,5 +254,6 @@ Mensajes de feedback **dentro del formulario**, arriba de los botones — nunca 
 
 ## Changelog
 
+- **2026-10-17** — Paleta amarillo/negro/crema (etapa 1 del rediseño). `primary` es negro; `onPrimary` amarillo sobre negro; verde solo en tokens de éxito. Radios: sm 12 / md 20 / lg 28 / pill. `--font-brand` = DM Sans.
 - **2026-10-03** — Contraste: `primary` pasa a `#3D7D57` (4.9:1 con blanco); el verde del PDF `#4C9A6A` queda como `primaryLight`, solo decorativo. Web: tokens con `@theme` en `index.css` (Tailwind v4 no cargaba `tailwind.config.ts`, que se borró).
 - **2026-09-29** — Paleta alineada a la identidad usada en la presentación para socios — antes verde/amarillo saturado, ahora verde/azul oscuro con tintes pálidos. Colores de advertencia/error sin cambios.

@@ -3897,7 +3897,7 @@ function AppContent() {
                                         ? colors.danger
                                         : p.life.status === "SOON"
                                           ? colors.accent
-                                          : colors.primary,
+                                          : colors.success,
                                   },
                                 ]}
                               />
@@ -4867,15 +4867,15 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
-    borderRadius: radius.sm,
+    borderRadius: radius.pill,
   },
-  chipOk: { backgroundColor: colors.primarySoft },
+  chipOk: { backgroundColor: colors.successSoft },
   chipWarn: { backgroundColor: colors.accentSoft },
-  chipText: { color: colors.primaryPressed, fontWeight: "700", fontSize: font.meta },
+  chipText: { color: colors.successText, fontWeight: "700", fontSize: font.meta },
   chipTextWarn: { color: colors.accentText },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     padding: space.lg,
     gap: space.md,
     borderWidth: 1,
@@ -4909,7 +4909,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
     borderWidth: 1,
     borderColor: colors.primary,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     paddingVertical: space.lg,
     paddingHorizontal: space.lg,
     minHeight: 72,
@@ -4933,14 +4933,14 @@ const styles = StyleSheet.create({
   todayItemText: { flex: 1, gap: 2 },
   todayItemTitle: { fontSize: font.body, fontWeight: "700", color: colors.text },
   backRow: { paddingVertical: space.sm },
-  backText: { fontSize: font.body, color: colors.primaryPressed, fontWeight: "600" },
+  backText: { fontSize: font.body, color: colors.primary, fontWeight: "600" },
   row: { flexDirection: "row", gap: space.sm },
   wrapRow: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   choice: {
     flex: 1,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     paddingVertical: space.lg,
     alignItems: "center",
     backgroundColor: colors.bg,
@@ -4948,7 +4948,7 @@ const styles = StyleSheet.create({
   choiceSmall: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     paddingVertical: space.md,
     paddingHorizontal: space.md,
     alignItems: "center",
@@ -4959,11 +4959,11 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   choiceText: { fontSize: font.body, color: colors.textMuted, fontWeight: "600" },
-  choiceTextOn: { color: colors.primaryPressed },
+  choiceTextOn: { color: colors.primary },
   button: {
     backgroundColor: colors.primary,
     paddingVertical: space.lg,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     alignItems: "center",
     minHeight: touch.min,
     justifyContent: "center",
@@ -4971,7 +4971,7 @@ const styles = StyleSheet.create({
   buttonSecondary: {
     backgroundColor: colors.primarySoft,
     paddingVertical: space.lg,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     alignItems: "center",
     borderWidth: 1,
     borderColor: colors.primary,
@@ -4979,9 +4979,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: colors.bg, fontWeight: "700", fontSize: font.button },
+  buttonText: { color: colors.onPrimary, fontWeight: "700", fontSize: font.button },
   buttonSecondaryText: {
-    color: colors.primaryPressed,
+    color: colors.primary,
     fontWeight: "700",
     fontSize: font.button,
   },
@@ -5029,13 +5029,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     paddingHorizontal: space.md,
     paddingVertical: space.xs,
-    borderRadius: radius.sm,
+    borderRadius: radius.pill,
     fontWeight: "700",
     fontSize: 13,
   },
   lifeChipOk: {
-    backgroundColor: colors.primarySoft,
-    color: colors.primaryPressed,
+    backgroundColor: colors.successSoft,
+    color: colors.successText,
   },
   lifeChipSoon: {
     backgroundColor: colors.accentSoft,
@@ -5043,7 +5043,7 @@ const styles = StyleSheet.create({
   },
   lifeChipOverdue: {
     backgroundColor: colors.dangerSoft,
-    color: colors.danger,
+    color: colors.dangerText,
   },
   pendingBadge: {
     marginTop: space.sm,
@@ -5053,7 +5053,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     paddingHorizontal: space.md,
     paddingVertical: space.xs,
-    borderRadius: radius.sm,
+    borderRadius: radius.pill,
     fontWeight: "700",
     fontSize: 13,
   },

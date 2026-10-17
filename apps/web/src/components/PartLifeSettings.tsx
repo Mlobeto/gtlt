@@ -73,7 +73,7 @@ export function PartLifeSettings({ token }: { token: string }) {
       </p>
       {error ? <ErrorBanner>{error}</ErrorBanner> : null}
       {status ? (
-        <div className="mb-3 bg-primary-soft border border-primary/30 text-primary-deep px-4 py-3 rounded-lg text-sm">
+        <div className="mb-3 bg-success-soft border border-success/30 text-success-text px-4 py-3 rounded-lg text-sm">
           {status}
         </div>
       ) : null}

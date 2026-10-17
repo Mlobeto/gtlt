@@ -156,7 +156,7 @@ export function PrototypeTab({ auth }: PrototypeTabProps) {
                       href={config.codeUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-primary-deep hover:text-primary underline"
+                      className="text-ink hover:text-primary underline"
                     >
                       Ver código
                     </a>
@@ -168,7 +168,7 @@ export function PrototypeTab({ auth }: PrototypeTabProps) {
                       href={config.prototypeUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-primary-deep hover:text-primary underline"
+                      className="text-ink hover:text-primary underline"
                     >
                       Abrir prototipo
                     </a>
