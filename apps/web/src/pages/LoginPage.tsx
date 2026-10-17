@@ -174,9 +174,7 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
         </h1>
         <p className="mt-2 md:mt-4 text-base md:text-2xl font-semibold">Gestión tambera</p>
         <p className="hidden md:block mt-3 text-lg text-white/70">El tambo, ordenado y a la vista</p>
-        <p className="hidden md:block absolute bottom-6 inset-x-12 lg:inset-x-20 text-xs text-white/60">
-          En memoria de Carlos Alberto Lobeto, fundador de Lobeto Tambos.
-        </p>
+        
       </div>
 
       <div className="flex items-start md:items-center justify-center p-4 py-8 md:p-8">

@@ -12,5 +12,6 @@ Punto de entrada: **[arquitectura.md](./arquitectura.md)** (documento canónico)
 | [partial-indexes.sql](./partial-indexes.sql) | SQL de índices parciales (referencia) |
 | [ux-usuario.md](./ux-usuario.md) | Idioma y UX para usuario poco familiarizado con apps |
 | [diseno.md](./diseno.md) | Colores, tipografía, formularios, componentes |
+| [hoja-de-ruta.md](./hoja-de-ruta.md) | Próximos prompts, rediseño, operación y decisiones |
 
 Schema vivo: `apps/api/prisma/schema.prisma`.
