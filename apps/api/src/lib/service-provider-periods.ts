@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { HttpError } from "./http-error.js";
 import { prisma } from "./prisma.js";
+import { assertVisibleActiveProvider } from "./service-providers.js";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -47,9 +48,13 @@ export async function changeDefaultServiceProvider(
     startedById?: string | null;
   },
 ) {
-  const provider = await assertPartnerProvider(db, input.serviceProviderId);
   const tambo = await db.tambo.findUnique({ where: { id: input.tamboId } });
   if (!tambo) throw new HttpError(404, "Tambo not found");
+  const provider = await assertVisibleActiveProvider(
+    db,
+    tambo.tenantId,
+    input.serviceProviderId,
+  );
   if (tambo.defaultServiceProviderId === provider.id) {
     return tambo;
   }

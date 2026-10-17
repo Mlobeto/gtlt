@@ -646,6 +646,25 @@ export function fetchControlLecheros(token: string, tamboId: string) {
   );
 }
 
+export type VisibleServiceProvider = {
+  id: string;
+  name: string;
+  active: boolean;
+  isPrivate: boolean;
+  hasPanel: boolean;
+  isDefaultForTambo?: boolean;
+  contactName?: string | null;
+  contactPhone?: string | null;
+};
+
+export type ServiceRequestProvider = {
+  id: string;
+  name: string;
+  isPrivate: boolean;
+  hasPanel: boolean;
+  hasPhone: boolean;
+};
+
 export type ServiceRequestItem = {
   id: string;
   tamboId: string;
@@ -659,6 +678,10 @@ export type ServiceRequestItem = {
   createdAt: string;
   resolvedAt: string | null;
   approvedAt?: string | null;
+  performedBy?: string | null;
+  resolutionNotes?: string | null;
+  providerNotifiedAt?: string | null;
+  serviceProvider?: ServiceRequestProvider | null;
   relatedPartInstance?: {
     id: string;
     bajadaNumber: number | null;
@@ -822,9 +845,41 @@ export function inviteTechnician(
 
 export function fetchTamboServiceProvider(token: string, tamboId: string) {
   return request<{
-    catalog: { id: string; name: string; isDefault: boolean; active: boolean }[];
+    catalog: VisibleServiceProvider[];
     selectedId: string | null;
+    selected: VisibleServiceProvider | null;
   }>(`/tambos/${encodeURIComponent(tamboId)}/service-provider`, { token });
+}
+
+export function fetchServiceProviders(token: string, tamboId?: string) {
+  const q = tamboId ? `?tamboId=${encodeURIComponent(tamboId)}` : "";
+  return request<{ items: VisibleServiceProvider[] }>(`/service-providers${q}`, {
+    token,
+  });
+}
+
+export function createServiceProvider(
+  token: string,
+  payload: { name: string; contactName?: string; contactPhone?: string },
+) {
+  return request<{ item: VisibleServiceProvider }>("/service-providers", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getServiceRequestWhatsappLink(token: string, id: string) {
+  return request<{ url: string }>(`/service-requests/${id}/whatsapp-link`, {
+    token,
+  });
+}
+
+export function markServiceRequestNotified(token: string, id: string) {
+  return request<{ item: ServiceRequestItem }>(
+    `/service-requests/${id}/mark-notified`,
+    { method: "POST", token, body: "{}" },
+  );
 }
 
 export function fetchTechnicianWorkspace(token: string, tamboId: string) {
@@ -855,6 +910,8 @@ export function createServiceRequest(
     description: string;
     urgency?: "NORMAL" | "URGENT";
     relatedPartInstanceId?: string | null;
+    serviceProviderId?: string;
+    makeDefault?: boolean;
   },
 ) {
   return request<{ item: ServiceRequestItem }>("/service-requests", {
@@ -870,6 +927,8 @@ export function updateServiceRequest(
   payload: {
     status?: "OPEN" | "ACKNOWLEDGED" | "IN_PROGRESS" | "RESOLVED" | "CANCELLED";
     assignedTechnicianUserId?: string | null;
+    performedBy?: string | null;
+    resolutionNotes?: string | null;
   },
 ) {
   return request<{ item: ServiceRequestItem }>(`/service-requests/${id}`, {

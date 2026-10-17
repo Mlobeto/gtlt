@@ -41,6 +41,36 @@ export type AdminInstaller = {
   serviceProvider: { id: string; name: string } | null
 }
 
+export type VisibleServiceProvider = {
+  id: string
+  name: string
+  active: boolean
+  isPrivate: boolean
+  hasPanel: boolean
+  isDefaultForTambo?: boolean
+  contactName?: string | null
+  contactPhone?: string | null
+}
+
+export type AdminServiceProvider = {
+  id: string
+  name: string
+  active: boolean
+  isDefault: boolean
+  tenantId: string | null
+  hasPanel: boolean
+  contactName: string | null
+  contactPhone: string | null
+}
+
+export type ServiceRequestProvider = {
+  id: string
+  name: string
+  isPrivate: boolean
+  hasPanel: boolean
+  hasPhone: boolean
+}
+
 export type BillingSummary = {
   activeTambos: number
   installingTambos: number
@@ -970,6 +1000,73 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error('Failed to fetch service provider')
+    return res.json() as Promise<{
+      catalog: VisibleServiceProvider[]
+      selectedId: string | null
+      selected: VisibleServiceProvider | null
+    }>
+  },
+
+  async getServiceProviders(token: string, tamboId?: string) {
+    const q = tamboId ? `?tamboId=${encodeURIComponent(tamboId)}` : ''
+    const res = await fetch(`${API_URL}/service-providers${q}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudieron cargar las empresas de service')
+    return res.json() as Promise<{ items: VisibleServiceProvider[] }>
+  },
+
+  async createServiceProvider(
+    token: string,
+    data: { name: string; contactName?: string; contactPhone?: string },
+  ) {
+    const res = await fetch(`${API_URL}/service-providers`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo crear la empresa')
+    return res.json() as Promise<{ item: VisibleServiceProvider }>
+  },
+
+  async updateServiceProvider(
+    token: string,
+    id: string,
+    data: { name?: string; contactName?: string | null; contactPhone?: string | null; active?: boolean },
+  ) {
+    const res = await fetch(`${API_URL}/service-providers/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo guardar la empresa')
+    return res.json() as Promise<{ item: VisibleServiceProvider }>
+  },
+
+  async getServiceRequestWhatsappLink(token: string, id: string) {
+    const res = await fetch(`${API_URL}/service-requests/${id}/whatsapp-link`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo armar el aviso de WhatsApp')
+    return res.json() as Promise<{ url: string }>
+  },
+
+  async markServiceRequestNotified(token: string, id: string) {
+    const res = await fetch(`${API_URL}/service-requests/${id}/mark-notified`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: '{}',
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo marcar el aviso')
     return res.json()
   },
 
@@ -991,7 +1088,31 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error('Failed to fetch service providers')
-    return res.json()
+    return res.json() as Promise<{ items: AdminServiceProvider[] }>
+  },
+
+  async updateAdminServiceProvider(
+    token: string,
+    id: string,
+    data: {
+      name?: string
+      active?: boolean
+      isDefault?: boolean
+      contactName?: string | null
+      contactPhone?: string | null
+      hasPanel?: boolean
+    },
+  ) {
+    const res = await fetch(`${API_URL}/admin/service-providers/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo guardar el proveedor')
+    return res.json() as Promise<{ item: AdminServiceProvider }>
   },
 
   async getTechnicianWorkspace(token: string, tamboId: string) {
@@ -1009,7 +1130,11 @@ export const api = {
   async updateServiceRequest(
     token: string,
     id: string,
-    data: { status?: 'OPEN' | 'ACKNOWLEDGED' | 'IN_PROGRESS' | 'RESOLVED' | 'CANCELLED' },
+    data: {
+      status?: 'OPEN' | 'ACKNOWLEDGED' | 'IN_PROGRESS' | 'RESOLVED' | 'CANCELLED'
+      performedBy?: string | null
+      resolutionNotes?: string | null
+    },
   ) {
     const res = await fetch(`${API_URL}/service-requests/${id}`, {
       method: 'PATCH',

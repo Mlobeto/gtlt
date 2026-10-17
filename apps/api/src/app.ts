@@ -16,6 +16,7 @@ import { partTypeConfigRouter } from "./routes/part-type-config.js";
 import { adminPartTypesRouter } from "./routes/admin-part-types.js";
 import { adminHardwareProductsRouter } from "./routes/admin-hardware-products.js";
 import { serviceRequestsRouter } from "./routes/service-requests.js";
+import { serviceProvidersRouter } from "./routes/service-providers.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { supportTicketsRouter } from "./routes/support-tickets.js";
 import { appPrototypeConfigRouter } from "./routes/app-prototype-config.js";
@@ -63,6 +64,7 @@ export function createApp() {
   app.use("/part-instances", partInstancesRouter);
   app.use("/part-type-config", partTypeConfigRouter);
   app.use("/service-requests", serviceRequestsRouter);
+  app.use("/service-providers", serviceProvidersRouter);
   app.use("/work-reports", workReportsRouter);
   app.use("/notifications", notificationsRouter);
   app.use("/support-tickets", supportTicketsRouter);

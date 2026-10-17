@@ -9,6 +9,13 @@ import { workReportListSummary, workReportOnServiceSelect } from "../lib/work-re
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
 import { hasAllTamboAccess } from "../lib/access.js";
+import { changeDefaultServiceProvider } from "../lib/service-provider-periods.js";
+import {
+  assertVisibleActiveProvider,
+  requestProviderSelect,
+  serializeRequestProvider,
+} from "../lib/service-providers.js";
+import { whatsappChatUrl } from "../lib/phone.js";
 import type { AuthContext } from "../types/express.js";
 
 export const serviceRequestsRouter = Router();
@@ -38,6 +45,8 @@ const createSchema = z.object({
   urgency: urgencySchema.optional().default("NORMAL"),
   relatedPartInstanceId: z.string().uuid().optional().nullable(),
   assignedTechnicianUserId: z.string().uuid().optional().nullable(),
+  serviceProviderId: z.string().uuid().optional(),
+  makeDefault: z.boolean().optional(),
 });
 
 const listSchema = z.object({
@@ -51,6 +60,8 @@ const patchSchema = z.object({
     .optional(),
   assignedTechnicianUserId: z.string().uuid().optional().nullable(),
   description: z.string().trim().min(1).max(4000).optional(),
+  performedBy: z.string().trim().max(200).optional().nullable(),
+  resolutionNotes: z.string().trim().max(1000).optional().nullable(),
 });
 
 const CATEGORY_ES: Record<string, string> = {
@@ -73,6 +84,34 @@ function isTecnicoOnly(auth: AuthContext) {
 function technicianProviderWhere(auth: AuthContext) {
   if (!isTecnicoOnly(auth) || !auth.serviceProviderId) return {};
   return { serviceProviderId: auth.serviceProviderId };
+}
+
+const requestInclude = {
+  relatedPartInstance: {
+    include: { partType: true, coldDetail: true },
+  },
+  assignedTechnician: {
+    select: { id: true, name: true, email: true, phone: true },
+  },
+  createdBy: { select: { id: true, name: true } },
+  serviceProvider: { select: requestProviderSelect },
+  workReports: workReportOnServiceSelect,
+} as const;
+
+function shapeRequest<
+  T extends {
+    serviceProvider?: Parameters<typeof serializeRequestProvider>[0];
+    workReports?: Parameters<typeof workReportListSummary>[0];
+  },
+>(row: T) {
+  const { workReports, serviceProvider, ...item } = row;
+  return {
+    ...item,
+    serviceProvider: serializeRequestProvider(serviceProvider ?? null),
+    ...(workReports !== undefined
+      ? { workReport: workReportListSummary(workReports) }
+      : {}),
+  };
 }
 
 /** Crear solicitud — tambero/dueño. Ticket: mal → CANCELLED + nueva. */
@@ -108,24 +147,61 @@ serviceRequestsRouter.post(
     }
 
     const ownerCreates = hasAllTamboAccess(auth.roles);
+    if (
+      !ownerCreates &&
+      (data.serviceProviderId != null || data.makeDefault != null)
+    ) {
+      throw new HttpError(
+        403,
+        "Solo el dueño o administrador puede pedir a otro proveedor.",
+      );
+    }
+    if (data.makeDefault && !data.serviceProviderId) {
+      throw new HttpError(
+        400,
+        "Para dejarla como predeterminada hay que elegir un proveedor.",
+      );
+    }
+
     const needsApproval =
       tambo.serviceRequiresOwnerApproval && !ownerCreates;
     const status = needsApproval ? "PENDING_APPROVAL" : "OPEN";
 
-    const item = await prisma.serviceRequest.create({
-      data: {
-        tenantId: auth.tenantId,
-        tamboId: data.tamboId,
-        category: data.category,
-        description: data.description,
-        urgency: data.urgency,
-        relatedPartInstanceId: data.relatedPartInstanceId ?? null,
-        assignedTechnicianUserId: data.assignedTechnicianUserId ?? null,
-        serviceProviderId: tambo.defaultServiceProviderId,
-        createdById: auth.userId,
-        status,
-      },
+    const created = await prisma.$transaction(async (tx) => {
+      let providerId = tambo.defaultServiceProviderId;
+      if (data.serviceProviderId) {
+        const provider = await assertVisibleActiveProvider(
+          tx,
+          auth.tenantId,
+          data.serviceProviderId,
+        );
+        providerId = provider.id;
+        if (data.makeDefault) {
+          await changeDefaultServiceProvider(tx, {
+            tamboId: data.tamboId,
+            serviceProviderId: provider.id,
+            startedById: auth.userId,
+          });
+        }
+      }
+
+      return tx.serviceRequest.create({
+        data: {
+          tenantId: auth.tenantId,
+          tamboId: data.tamboId,
+          category: data.category,
+          description: data.description,
+          urgency: data.urgency,
+          relatedPartInstanceId: data.relatedPartInstanceId ?? null,
+          assignedTechnicianUserId: data.assignedTechnicianUserId ?? null,
+          serviceProviderId: providerId,
+          createdById: auth.userId,
+          status,
+        },
+        include: { serviceProvider: { select: requestProviderSelect } },
+      });
     });
+    const item = shapeRequest(created);
 
     const cat = CATEGORY_ES[item.category] ?? item.category;
     const urg = urgencyLabel(item.urgency);
@@ -185,25 +261,13 @@ serviceRequestsRouter.get(
             ? { status: { notIn: ["CANCELLED", "PENDING_APPROVAL"] } }
             : {}),
       },
-      include: {
-        relatedPartInstance: {
-          include: { partType: true, coldDetail: true },
-        },
-        assignedTechnician: {
-          select: { id: true, name: true, email: true, phone: true },
-        },
-        createdBy: { select: { id: true, name: true } },
-        workReports: workReportOnServiceSelect,
-      },
+      include: requestInclude,
       orderBy: [{ urgency: "desc" }, { createdAt: "desc" }],
       take: 100,
     });
 
     res.json({
-      items: items.map(({ workReports, ...item }) => ({
-        ...item,
-        workReport: workReportListSummary(workReports),
-      })),
+      items: items.map((row) => shapeRequest(row)),
     });
   },
 );
@@ -246,16 +310,7 @@ serviceRequestsRouter.get(
             ? { notIn: ["CANCELLED", "PENDING_APPROVAL"] }
             : { not: "CANCELLED" },
         },
-        include: {
-          relatedPartInstance: {
-            include: { partType: true, coldDetail: true },
-          },
-          assignedTechnician: {
-            select: { id: true, name: true, email: true },
-          },
-          createdBy: { select: { id: true, name: true } },
-          workReports: workReportOnServiceSelect,
-        },
+        include: requestInclude,
         orderBy: [{ urgency: "desc" }, { createdAt: "desc" }],
       }),
       prisma.tambo.findFirst({
@@ -282,10 +337,7 @@ serviceRequestsRouter.get(
           }
         : null,
       partInstances: await withPartLife(auth.tenantId, parts),
-      serviceRequests: requests.map(({ workReports, ...item }) => ({
-        ...item,
-        workReport: workReportListSummary(workReports),
-      })),
+      serviceRequests: requests.map((row) => shapeRequest(row)),
     });
   },
 );
@@ -379,6 +431,70 @@ serviceRequestsRouter.post(
   },
 );
 
+serviceRequestsRouter.get(
+  "/:id/whatsapp-link",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN", "TAMBERO"),
+  async (req, res) => {
+    const auth = req.auth!;
+    const existing = await prisma.serviceRequest.findFirst({
+      where: { id: String(req.params.id), tenantId: auth.tenantId },
+      include: {
+        tambo: {
+          select: { name: true, latitude: true, longitude: true },
+        },
+        serviceProvider: { select: { contactPhone: true, name: true } },
+      },
+    });
+    if (!existing) throw new HttpError(404, "Service request not found");
+    await requireTamboInTenant(auth, existing.tamboId);
+
+    const phone = existing.serviceProvider?.contactPhone;
+    if (!phone) {
+      throw new HttpError(404, "Esta empresa no tiene teléfono.");
+    }
+
+    const cat = CATEGORY_ES[existing.category] ?? existing.category;
+    const urg = urgencyLabel(existing.urgency);
+    const lat =
+      existing.tambo.latitude == null ? null : Number(existing.tambo.latitude);
+    const lng =
+      existing.tambo.longitude == null ? null : Number(existing.tambo.longitude);
+    const location =
+      lat != null && lng != null
+        ? `\nUbicación: https://maps.google.com/?q=${lat},${lng}`
+        : "";
+    const text = `Pedido de service en CAL · ${existing.tambo.name}\n${cat} · ${urg}\n${existing.description}${location}`;
+
+    res.json({ url: whatsappChatUrl(phone, text) });
+  },
+);
+
+serviceRequestsRouter.post(
+  "/:id/mark-notified",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN", "TAMBERO"),
+  async (req, res) => {
+    const auth = req.auth!;
+    const existing = await prisma.serviceRequest.findFirst({
+      where: { id: String(req.params.id), tenantId: auth.tenantId },
+    });
+    if (!existing) throw new HttpError(404, "Service request not found");
+    await requireTamboInTenant(auth, existing.tamboId);
+
+    const item = await prisma.serviceRequest.update({
+      where: { id: existing.id },
+      data: {
+        providerNotifiedAt: new Date(),
+        providerNotifyChannel: "WHATSAPP",
+      },
+      include: requestInclude,
+    });
+
+    res.json({ item: shapeRequest(item) });
+  },
+);
+
 serviceRequestsRouter.patch(
   "/:id",
   authenticate,
@@ -397,6 +513,7 @@ serviceRequestsRouter.patch(
         tenantId: auth.tenantId,
         ...technicianProviderWhere(auth),
       },
+      include: { serviceProvider: { select: requestProviderSelect } },
     });
     if (!existing) throw new HttpError(404, "Service request not found");
     await requireTamboInTenant(auth, existing.tamboId);
@@ -413,6 +530,36 @@ serviceRequestsRouter.patch(
       throw new HttpError(403, "Technician cannot edit description");
     }
 
+    const ownerAdmin = hasAllTamboAccess(auth.roles);
+    const hasPanel = existing.serviceProvider?.hasPanel ?? false;
+
+    if (data.performedBy !== undefined || data.resolutionNotes !== undefined) {
+      if (!ownerAdmin) {
+        throw new HttpError(
+          403,
+          "Solo el dueño o administrador puede anotar quién hizo el servicio.",
+        );
+      }
+    }
+
+    if (data.status != null) {
+      if (!hasPanel) {
+        if (!ownerAdmin) {
+          throw new HttpError(
+            403,
+            "Solo el dueño o administrador puede actualizar el estado de este pedido.",
+          );
+        }
+      } else if (ownerAdmin) {
+        if (data.status !== "CANCELLED" || existing.createdById !== auth.userId) {
+          throw new HttpError(
+            403,
+            "Esta empresa gestiona el pedido en su panel. Solo podés cancelar los pedidos que creaste.",
+          );
+        }
+      }
+    }
+
     const item = await prisma.serviceRequest.update({
       where: { id: existing.id },
       data: {
@@ -426,15 +573,16 @@ serviceRequestsRouter.patch(
           ? { assignedTechnicianUserId: data.assignedTechnicianUserId }
           : {}),
         ...(data.description != null ? { description: data.description } : {}),
+        ...(data.performedBy !== undefined
+          ? { performedBy: data.performedBy?.trim() || null }
+          : {}),
+        ...(data.resolutionNotes !== undefined
+          ? { resolutionNotes: data.resolutionNotes?.trim() || null }
+          : {}),
       },
-      include: {
-        relatedPartInstance: { include: { partType: true, coldDetail: true } },
-        assignedTechnician: {
-          select: { id: true, name: true, email: true },
-        },
-      },
+      include: requestInclude,
     });
 
-    res.json({ item });
+    res.json({ item: shapeRequest(item) });
   },
 );

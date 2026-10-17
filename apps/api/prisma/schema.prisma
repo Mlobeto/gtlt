@@ -400,6 +400,7 @@ model User {
   tamboRequestsQuoted     TamboRequest[]    @relation("TamboRequestQuotedBy")
   workReportsAuthored     WorkReport[]      @relation("WorkReportAuthor")
   serviceProviderPeriodsStarted TamboServiceProviderPeriod[] @relation("PeriodStartedBy")
+  serviceProvidersCreated       ServiceProvider[]            @relation("ServiceProviderCreatedBy")
 
   @@map("users")
 }
@@ -1077,15 +1078,20 @@ model PartInstance {
 /// Catálogo global de proveedores de service (Lobeto, Omega, etc.).
 /// Solo un registro puede tener isDefault=true a la vez — se valida en API, no en DB.
 model ServiceProvider {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  isDefault Boolean  @default(false) @map("is_default")
-  active    Boolean  @default(true)
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  isDefault    Boolean  @default(false) @map("is_default")
+  active       Boolean  @default(true)
   /// Nulo = empresa socia (catálogo global). Con tenant = proveedor privado de esa cuenta.
-  tenantId  String?  @map("tenant_id") @db.Uuid
-  createdAt DateTime @default(now())
+  tenantId     String?  @map("tenant_id") @db.Uuid
+  hasPanel     Boolean  @default(false) @map("has_panel")
+  contactName  String?  @map("contact_name")
+  contactPhone String?  @map("contact_phone")
+  createdById  String?  @map("created_by_id") @db.Uuid
+  createdAt    DateTime @default(now())
 
-  tenant          Tenant?          @relation(fields: [tenantId], references: [id])
+  tenant          Tenant?          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdBy       User?            @relation("ServiceProviderCreatedBy", fields: [createdById], references: [id])
   tambos          Tambo[]
   serviceRequests ServiceRequest[]
   memberships     Membership[]
@@ -1112,6 +1118,10 @@ model ServiceRequest {
   approvedById            String?                @map("approved_by_id") @db.Uuid
   approvedAt              DateTime?              @map("approved_at")
   resolvedAt              DateTime?              @map("resolved_at")
+  performedBy             String?                @map("performed_by")
+  resolutionNotes         String?                @map("resolution_notes")
+  providerNotifiedAt      DateTime?              @map("provider_notified_at")
+  providerNotifyChannel   String?                @map("provider_notify_channel")
   createdAt               DateTime               @default(now())
   updatedAt               DateTime               @updatedAt
 

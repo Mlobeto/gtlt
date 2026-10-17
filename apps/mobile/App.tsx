@@ -5,10 +5,10 @@ import {
   AppState,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Switch,
   Text,
@@ -38,7 +38,10 @@ import {
   fetchPendingPhotos,
   fetchPumpStatus,
   fetchTambos,
-  inviteTechnician,
+  fetchServiceProviders,
+  createServiceProvider,
+  getServiceRequestWhatsappLink,
+  markServiceRequestNotified,
   reviewPhoto,
   updateMyTamberoRole,
   type PendingConsultPhoto,
@@ -51,15 +54,16 @@ import {
   markNotificationRead,
   rejectServiceRequest,
   replacePartInstance,
+  updateServiceRequest,
   updateTamboSettings,
   updateTamboLocation,
   uploadPhoto,
   photoSource,
-  fetchTamboServiceProvider,
   type AppNotification,
   type PartInstanceItem,
   type PartTypeItem,
   type ServiceRequestItem,
+  type VisibleServiceProvider,
 } from "./src/api";
 import { TechnicianHome } from "./src/TechnicianHome";
 import { WorkReportScreen } from "./src/WorkReportScreen";
@@ -72,8 +76,6 @@ import {
   type AttributeDraft,
 } from "./src/part-fields";
 import { ownerOnly } from "./src/roles";
-import { WEB_URL } from "./src/config";
-import { buildInviteMessages } from "./src/inviteMessages";
 import { TambosScreen } from "./src/TambosScreen";
 import { buildActionLists, type ActionLists } from "./src/animals/actionLists";
 import {
@@ -248,6 +250,22 @@ const SERVICE_STATUS_ES: Record<string, string> = {
   RESOLVED: "Resuelto",
   CANCELLED: "Cancelado",
 };
+
+const PRIVATE_COMPANY_WARNING =
+  "Esta empresa no usa CAL. Solo las empresas socias (Lobeto Tambos, Omega) pueden gestionar el pedido y enviarte informes desde la aplicación.";
+
+function formatNotifiedAt(iso: string) {
+  const d = new Date(iso);
+  const day = d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
+  const time = d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  return `${day} ${time}`;
+}
+
+function providerTransparency(p: { name: string; hasPanel: boolean } | null) {
+  if (!p) return "";
+  if (p.hasPanel) return "Lo ve en su panel.";
+  return `${p.name} todavía no ve los pedidos en CAL: avisale por WhatsApp después de pedir.`;
+}
 
 function tipoLegible(type: string): string {
   switch (type) {
@@ -463,17 +481,24 @@ function AppContent() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
-  const [inviteResult, setInviteResult] = useState<{ token: string | null } | null>(null);
   const [serviceCategory, setServiceCategory] =
     useState<ServiceCategory>("VACUUM_PUMP");
   const [serviceDescription, setServiceDescription] = useState("");
-  const [inviteTechEmail, setInviteTechEmail] = useState("");
-  const [inviteTechName, setInviteTechName] = useState("");
-  const [inviteCompany, setInviteCompany] = useState("");
-  const [inviteProviderId, setInviteProviderId] = useState<string | null>(null);
-  const [serviceProviders, setServiceProviders] = useState<
-    { id: string; name: string }[]
-  >([]);
+  const [serviceProviders, setServiceProviders] = useState<VisibleServiceProvider[]>(
+    [],
+  );
+  const [defaultServiceProvider, setDefaultServiceProvider] =
+    useState<VisibleServiceProvider | null>(null);
+  const [pickOtherProvider, setPickOtherProvider] = useState(false);
+  const [otherProviderId, setOtherProviderId] = useState<string | null>(null);
+  const [makeOtherDefault, setMakeOtherDefault] = useState(false);
+  const [showCreateCompany, setShowCreateCompany] = useState(false);
+  const [newCompanyName, setNewCompanyName] = useState("");
+  const [newCompanyContact, setNewCompanyContact] = useState("");
+  const [newCompanyPhone, setNewCompanyPhone] = useState("");
+  const [resolveDraft, setResolveDraft] = useState<
+    Record<string, { performedBy: string; notes: string }>
+  >({});
   const [serviceUrgent, setServiceUrgent] = useState(false);
   const [requiresOwnerApproval, setRequiresOwnerApproval] = useState(false);
   const [tamboLocation, setTamboLocation] = useState<{
@@ -648,7 +673,7 @@ function AppContent() {
           if (isOwnerOrAdmin(existing.roles ?? [])) {
             void loadNotifications(existing);
             void loadSupervision(existing);
-            void loadInviteProviders(existing.token, existing.tamboId);
+            void loadServiceProviders(existing.token, existing.tamboId);
           }
         }
       }
@@ -720,7 +745,7 @@ function AppContent() {
       if (isOwnerOrAdmin(res.roles)) {
         void loadNotifications(next);
         void loadSupervision(next);
-        void loadInviteProviders(next.token, next.tamboId);
+        void loadServiceProviders(next.token, next.tamboId);
       }
       setStatus(
         techOnly
@@ -828,7 +853,7 @@ function AppContent() {
       if (isOwnerOrAdmin(next.roles)) {
         void loadNotifications(next);
         void loadSupervision(next);
-        void loadInviteProviders(next.token, next.tamboId);
+        void loadServiceProviders(next.token, next.tamboId);
       }
       setScreen("home");
       setStatus(`Listo. Estás en ${tambo.name}.`);
@@ -922,6 +947,7 @@ function AppContent() {
   useEffect(() => {
     if (screen !== "service" || !session) return;
     void loadMyServiceRequests(session);
+    void loadServiceProviders(session.token, session.tamboId);
   }, [screen, session]);
 
   async function handleCreateServiceRequest() {
@@ -936,22 +962,36 @@ function AppContent() {
     }
     setBusy(true);
     try {
+      const ownerAdmin = isOwnerOrAdmin(session.roles);
       const { item } = await createServiceRequest(session.token, {
         tamboId: session.tamboId,
         category: serviceCategory,
         description: serviceDescription.trim(),
         urgency: serviceUrgent ? "URGENT" : "NORMAL",
+        ...(ownerAdmin && otherProviderId
+          ? {
+              serviceProviderId: otherProviderId,
+              makeDefault: makeOtherDefault,
+            }
+          : {}),
       });
       setServiceDescription("");
       setServiceUrgent(false);
+      if (makeOtherDefault && otherProviderId) {
+        void loadServiceProviders(session.token, session.tamboId);
+      }
+      setPickOtherProvider(false);
+      setOtherProviderId(null);
+      setMakeOtherDefault(false);
+      setShowCreateCompany(false);
       if (item.status === "PENDING_APPROVAL") {
         setStatus(
           "Pedido enviado. Espera la autorización del dueño antes de que lo vea el técnico.",
         );
-      } else if (isOwnerOrAdmin(session.roles)) {
-        const providerName = serviceProviders.find(
-          (p) => p.id === item.serviceProviderId,
-        )?.name;
+      } else if (ownerAdmin) {
+        const providerName =
+          item.serviceProvider?.name ??
+          serviceProviders.find((p) => p.id === item.serviceProviderId)?.name;
         setStatus(providerName ? `Pedido enviado a ${providerName}` : "Pedido enviado");
       } else {
         setStatus(
@@ -1107,46 +1147,97 @@ function AppContent() {
     }
   }
 
-  async function loadInviteProviders(token: string, tamboId: string) {
+  async function loadServiceProviders(token: string, tamboId: string) {
     try {
-      const result = await fetchTamboServiceProvider(token, tamboId);
-      setServiceProviders(result.catalog || []);
+      const result = await fetchServiceProviders(token, tamboId);
+      const items = result.items || [];
+      setServiceProviders(items);
+      setDefaultServiceProvider(
+        items.find((p) => p.isDefaultForTambo) ??
+          items.find((p) => p.active) ??
+          null,
+      );
     } catch {
       setServiceProviders([]);
+      setDefaultServiceProvider(null);
     }
   }
 
-  async function handleInviteTechnician() {
+  async function handleCreatePrivateCompany() {
     if (!session) return;
-    if (!online) {
-      setStatus("Para invitar hace falta señal.");
-      return;
-    }
-    if (!inviteTechEmail.trim()) {
-      setStatus("Poné el correo del técnico.");
+    const name = newCompanyName.trim();
+    if (name.length < 2) {
+      setStatus("El nombre de la empresa tiene que tener entre 2 y 80 caracteres.");
       return;
     }
     setBusy(true);
     try {
-      const res = await inviteTechnician(session.token, {
-        tamboId: session.tamboId,
-        email: inviteTechEmail.trim(),
-        name: inviteTechName.trim() || undefined,
-        companyName: inviteCompany.trim() || undefined,
-        serviceProviderId: inviteProviderId || undefined,
+      const { item } = await createServiceProvider(session.token, {
+        name,
+        contactName: newCompanyContact.trim() || undefined,
+        contactPhone: newCompanyPhone.trim() || undefined,
       });
-      setInviteTechEmail("");
-      setInviteTechName("");
-      setInviteCompany("");
-      setInviteProviderId(null);
-      setInviteResult({ token: res.inviteToken });
+      setNewCompanyName("");
+      setNewCompanyContact("");
+      setNewCompanyPhone("");
+      setShowCreateCompany(false);
+      setOtherProviderId(item.id);
+      await loadServiceProviders(session.token, session.tamboId);
+      setStatus("Empresa creada. Este pedido puede ir a ella.");
+    } catch (err) {
       setStatus(
-        res.inviteToken
-          ? "Invitación creada. Compartile el código."
-          : "Ya era miembro: se le dio acceso a este tambo",
+        apiFailureStatus(err, "No se pudo crear la empresa", "No se pudo crear la empresa."),
       );
-    } catch {
-      setStatus("No se pudo invitar. Revisá el correo y la señal.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleWhatsappNotify(id: string) {
+    if (!session) return;
+    setBusy(true);
+    try {
+      const { url } = await getServiceRequestWhatsappLink(session.token, id);
+      const opened = await Linking.openURL(url);
+      if (opened !== false) {
+        const { item } = await markServiceRequestNotified(session.token, id);
+        setMyServiceRequests((prev) => prev.map((r) => (r.id === id ? item : r)));
+      }
+    } catch (err) {
+      setStatus(
+        apiFailureStatus(err, "No se pudo abrir WhatsApp", "No se pudo avisar por WhatsApp."),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleAdvanceService(id: string, status: "ACKNOWLEDGED" | "IN_PROGRESS" | "RESOLVED" | "CANCELLED") {
+    if (!session) return;
+    const draft = resolveDraft[id] ?? { performedBy: "", notes: "" };
+    setBusy(true);
+    try {
+      const { item } = await updateServiceRequest(session.token, id, {
+        status,
+        ...(status === "RESOLVED"
+          ? {
+              performedBy: draft.performedBy.trim() || null,
+              resolutionNotes: draft.notes.trim() || null,
+            }
+          : {}),
+      });
+      setMyServiceRequests((prev) => prev.map((r) => (r.id === id ? item : r)));
+      setStatus(
+        status === "RESOLVED"
+          ? "Pedido resuelto."
+          : status === "CANCELLED"
+            ? "Pedido cancelado."
+            : `Pedido: ${SERVICE_STATUS_ES[status] ?? status}.`,
+      );
+    } catch (err) {
+      setStatus(
+        apiFailureStatus(err, "No se pudo actualizar el pedido", "No se pudo actualizar el pedido."),
+      );
     } finally {
       setBusy(false);
     }
@@ -1154,7 +1245,6 @@ function AppContent() {
 
   async function handleLogout() {
     await clearSession();
-    setInviteResult(null);
     setSession(null);
     setAvailableTambos([]);
     setScreen("home");
@@ -2105,6 +2195,14 @@ function AppContent() {
     setScreen("home");
   }
 
+  const requestTargetProvider =
+    (pickOtherProvider && otherProviderId
+      ? serviceProviders.find((p) => p.id === otherProviderId)
+      : null) ?? defaultServiceProvider;
+  const otherVisibleProviders = serviceProviders.filter(
+    (p) => p.active && p.id !== defaultServiceProvider?.id,
+  );
+
   if (!ready) {
   return (
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
@@ -2810,12 +2908,157 @@ function AppContent() {
                 <View style={styles.card}>
                   <Text style={styles.cardTitle}>🔧 Service</Text>
                   <Text style={styles.help}>
-                    Pedí un técnico o invitalo al tambo. Hace falta señal.
+                    {defaultServiceProvider
+                      ? `Se pide a ${defaultServiceProvider.name}`
+                      : "Este tambo todavía no tiene proveedor predeterminado."}
                     {requiresOwnerApproval &&
                     !isOwnerOrAdmin(session.roles ?? [])
                       ? " En este tambo el dueño tiene que autorizar el pedido."
                       : ""}
                   </Text>
+                  {requestTargetProvider ? (
+                    <Text style={styles.help}>
+                      {providerTransparency(requestTargetProvider)}
+                    </Text>
+                  ) : null}
+
+                  {isOwnerOrAdmin(session.roles ?? []) ? (
+                    <>
+                      <Pressable
+                        onPress={() => {
+                          setPickOtherProvider((open) => {
+                            const next = !open;
+                            if (!next) {
+                              setOtherProviderId(null);
+                              setMakeOtherDefault(false);
+                              setShowCreateCompany(false);
+                            }
+                            return next;
+                          });
+                        }}
+                      >
+                        <Text style={styles.linkText}>
+                          Pedir service a otro proveedor
+                        </Text>
+                      </Pressable>
+                      {pickOtherProvider ? (
+                        <>
+                          <View style={styles.wrapRow}>
+                            {otherVisibleProviders.map((p) => (
+                              <Pressable
+                                key={p.id}
+                                style={[
+                                  styles.choiceSmall,
+                                  otherProviderId === p.id && styles.choiceOn,
+                                ]}
+                                onPress={() => {
+                                  setOtherProviderId(p.id);
+                                  setShowCreateCompany(false);
+                                }}
+                              >
+                                <Text
+                                  style={[
+                                    styles.choiceText,
+                                    otherProviderId === p.id && styles.choiceTextOn,
+                                  ]}
+                                >
+                                  {p.name}
+                                  {p.isPrivate ? " · privada" : ""}
+                                </Text>
+                              </Pressable>
+                            ))}
+                            <Pressable
+                              style={[
+                                styles.choiceSmall,
+                                showCreateCompany && styles.choiceOn,
+                              ]}
+                              onPress={() => {
+                                setShowCreateCompany(true);
+                                setOtherProviderId(null);
+                              }}
+                            >
+                              <Text
+                                style={[
+                                  styles.choiceText,
+                                  showCreateCompany && styles.choiceTextOn,
+                                ]}
+                              >
+                                + Crear otra
+                              </Text>
+                            </Pressable>
+                          </View>
+                          {showCreateCompany ? (
+                            <>
+                              <Text style={styles.help}>{PRIVATE_COMPANY_WARNING}</Text>
+                              <Text style={styles.label}>Nombre</Text>
+                              <TextInput
+                                style={styles.input}
+                                value={newCompanyName}
+                                onChangeText={setNewCompanyName}
+                                placeholder="Ej. Taller del pueblo"
+                              />
+                              <Text style={styles.label}>Contacto (opcional)</Text>
+                              <TextInput
+                                style={styles.input}
+                                value={newCompanyContact}
+                                onChangeText={setNewCompanyContact}
+                              />
+                              <Text style={styles.label}>Teléfono (opcional)</Text>
+                              <TextInput
+                                style={styles.input}
+                                value={newCompanyPhone}
+                                onChangeText={setNewCompanyPhone}
+                                keyboardType="phone-pad"
+                                placeholder="Ej. 11 1234-5678"
+                              />
+                              <Pressable
+                                style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                                onPress={() => void handleCreatePrivateCompany()}
+                                disabled={busy}
+                              >
+                                <Text style={styles.buttonSecondaryText}>Crear empresa</Text>
+                              </Pressable>
+                            </>
+                          ) : null}
+                          <Text style={styles.sectionInCard}>Para este pedido</Text>
+                          <View style={styles.row}>
+                            <Pressable
+                              style={[
+                                styles.choice,
+                                !makeOtherDefault && styles.choiceOn,
+                              ]}
+                              onPress={() => setMakeOtherDefault(false)}
+                            >
+                              <Text
+                                style={[
+                                  styles.choiceText,
+                                  !makeOtherDefault && styles.choiceTextOn,
+                                ]}
+                              >
+                                Solo esta vez
+                              </Text>
+                            </Pressable>
+                            <Pressable
+                              style={[
+                                styles.choice,
+                                makeOtherDefault && styles.choiceOn,
+                              ]}
+                              onPress={() => setMakeOtherDefault(true)}
+                            >
+                              <Text
+                                style={[
+                                  styles.choiceText,
+                                  makeOtherDefault && styles.choiceTextOn,
+                                ]}
+                              >
+                                Dejarla como predeterminada de este tambo
+                              </Text>
+                            </Pressable>
+                          </View>
+                        </>
+                      ) : null}
+                    </>
+                  ) : null}
 
                   <Text style={styles.sectionInCard}>Qué pasó</Text>
                   <View style={styles.wrapRow}>
@@ -2895,23 +3138,129 @@ function AppContent() {
                   {myServiceRequests.length === 0 ? (
                     <Text style={styles.empty}>Todavía no hay pedidos.</Text>
                   ) : (
-                    myServiceRequests.map((r) => (
-                      <View key={r.id} style={styles.item}>
-                        <Text style={styles.itemTitle}>
-                          {SERVICE_CATEGORIES.find((c) => c.key === r.category)?.label ??
-                            r.category}
-                        </Text>
-                        <Text style={styles.itemMeta} numberOfLines={1}>
-                          {r.description}
-                        </Text>
-                        <Text style={styles.itemMeta}>
-                          {new Date(r.createdAt).toLocaleString("es-AR")}
-                        </Text>
-                        <Text style={styles.itemMeta}>
-                          {SERVICE_STATUS_ES[r.status] ?? r.status}
-                        </Text>
-                      </View>
-                    ))
+                    myServiceRequests.map((r) => {
+                      const nextStatus =
+                        r.status === "OPEN"
+                          ? "ACKNOWLEDGED"
+                          : r.status === "ACKNOWLEDGED"
+                            ? "IN_PROGRESS"
+                            : r.status === "IN_PROGRESS"
+                              ? "RESOLVED"
+                              : null;
+                      const nextLabel =
+                        nextStatus === "ACKNOWLEDGED"
+                          ? "Marcar recibido"
+                          : nextStatus === "IN_PROGRESS"
+                            ? "En curso"
+                            : nextStatus === "RESOLVED"
+                              ? "Resolver"
+                              : "";
+                      const canManage =
+                        isOwnerOrAdmin(session.roles ?? []) &&
+                        r.serviceProvider &&
+                        !r.serviceProvider.hasPanel &&
+                        r.status !== "PENDING_APPROVAL" &&
+                        r.status !== "RESOLVED" &&
+                        r.status !== "CANCELLED";
+                      const draft = resolveDraft[r.id] ?? { performedBy: "", notes: "" };
+                      return (
+                        <View key={r.id} style={styles.item}>
+                          <Text style={styles.itemTitle}>
+                            {SERVICE_CATEGORIES.find((c) => c.key === r.category)?.label ??
+                              r.category}
+                          </Text>
+                          {r.serviceProvider ? (
+                            <Text style={styles.itemMeta}>
+                              {r.serviceProvider.name}
+                              {r.serviceProvider.isPrivate ? " · privada" : ""}
+                            </Text>
+                          ) : null}
+                          <Text style={styles.itemMeta} numberOfLines={2}>
+                            {r.description}
+                          </Text>
+                          <Text style={styles.itemMeta}>
+                            {new Date(r.createdAt).toLocaleString("es-AR")}
+                          </Text>
+                          <Text style={styles.itemMeta}>
+                            {SERVICE_STATUS_ES[r.status] ?? r.status}
+                          </Text>
+                          {r.performedBy ? (
+                            <Text style={styles.itemMeta}>
+                              Hizo el servicio: {r.performedBy}
+                            </Text>
+                          ) : null}
+                          {r.serviceProvider?.hasPhone ? (
+                            r.providerNotifiedAt ? (
+                              <Text style={styles.itemMeta}>
+                                Avisado el {formatNotifiedAt(r.providerNotifiedAt)}
+                              </Text>
+                            ) : (
+                              <Pressable
+                                style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                                onPress={() => void handleWhatsappNotify(r.id)}
+                                disabled={busy}
+                              >
+                                <Text style={styles.buttonSecondaryText}>
+                                  Avisar por WhatsApp
+                                </Text>
+                              </Pressable>
+                            )
+                          ) : null}
+                          {canManage && nextStatus === "RESOLVED" ? (
+                            <>
+                              <Text style={styles.label}>Quién lo hizo</Text>
+                              <TextInput
+                                style={styles.input}
+                                value={draft.performedBy}
+                                onChangeText={(v) =>
+                                  setResolveDraft((prev) => ({
+                                    ...prev,
+                                    [r.id]: { ...draft, performedBy: v },
+                                  }))
+                                }
+                                placeholder="Nombre o empresa"
+                              />
+                              <Text style={styles.label}>Notas</Text>
+                              <TextInput
+                                style={[styles.input, { minHeight: 64, textAlignVertical: "top" }]}
+                                multiline
+                                value={draft.notes}
+                                onChangeText={(v) =>
+                                  setResolveDraft((prev) => ({
+                                    ...prev,
+                                    [r.id]: { ...draft, notes: v },
+                                  }))
+                                }
+                              />
+                            </>
+                          ) : null}
+                          {canManage ? (
+                            <View style={styles.row}>
+                              {nextStatus ? (
+                                <Pressable
+                                  style={[styles.button, { flex: 1 }, busy && styles.buttonDisabled]}
+                                  onPress={() => void handleAdvanceService(r.id, nextStatus)}
+                                  disabled={busy}
+                                >
+                                  <Text style={styles.buttonText}>{nextLabel}</Text>
+                                </Pressable>
+                              ) : null}
+                              <Pressable
+                                style={[
+                                  styles.buttonSecondary,
+                                  { flex: 1 },
+                                  busy && styles.buttonDisabled,
+                                ]}
+                                onPress={() => void handleAdvanceService(r.id, "CANCELLED")}
+                                disabled={busy}
+                              >
+                                <Text style={styles.buttonSecondaryText}>Cancelar</Text>
+                              </Pressable>
+                            </View>
+                          ) : null}
+                        </View>
+                      );
+                    })
                   )}
 
                   {isOwnerOrAdmin(session.roles ?? []) ? (
@@ -2957,135 +3306,6 @@ function AppContent() {
                     </>
                   ) : null}
 
-                  {isOwnerOrAdmin(session.roles ?? []) ? (
-                    <>
-                      <View style={styles.divider} />
-                      <Text style={styles.sectionInCard}>Invitar técnico</Text>
-                      <Text style={styles.help}>
-                        Al invitar te damos un código para compartirle. Vence en 7 días.
-                      </Text>
-                      <Text style={styles.label}>Correo del técnico</Text>
-                      <TextInput
-                        style={styles.input}
-                        autoCapitalize="none"
-                        value={inviteTechEmail}
-                        onChangeText={setInviteTechEmail}
-                      />
-                      <Text style={styles.label}>Nombre (opcional)</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={inviteTechName}
-                        onChangeText={setInviteTechName}
-                      />
-                      <Text style={styles.label}>Empresa (opcional)</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={inviteCompany}
-                        onChangeText={setInviteCompany}
-                      />
-                      <Text style={styles.label}>Proveedor de service</Text>
-                      <View style={styles.wrapRow}>
-                        <Pressable
-                          style={[
-                            styles.choice,
-                            inviteProviderId == null && styles.choiceOn,
-                          ]}
-                          onPress={() => setInviteProviderId(null)}
-                        >
-                          <Text
-                            style={[
-                              styles.choiceText,
-                              inviteProviderId == null && styles.choiceTextOn,
-                            ]}
-                          >
-                            Independiente
-                          </Text>
-                        </Pressable>
-                        {serviceProviders.map((p) => (
-                          <Pressable
-                            key={p.id}
-                            style={[
-                              styles.choice,
-                              inviteProviderId === p.id && styles.choiceOn,
-                            ]}
-                            onPress={() => setInviteProviderId(p.id)}
-                          >
-                            <Text
-                              style={[
-                                styles.choiceText,
-                                inviteProviderId === p.id && styles.choiceTextOn,
-                              ]}
-                            >
-                              {p.name}
-                            </Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                      <Pressable
-                        style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
-                        onPress={() => void handleInviteTechnician()}
-                        disabled={busy}
-                      >
-                        <Text style={styles.buttonSecondaryText}>Invitar</Text>
-                      </Pressable>
-                      {inviteResult ? (
-                        <View style={styles.feedback}>
-                          {inviteResult.token ? (
-                            <>
-                              <Text style={styles.label}>Código de invitación</Text>
-                              <Text style={styles.feedbackText} selectable>
-                                {inviteResult.token}
-                              </Text>
-                              <Text style={styles.help}>
-                                Mandalos en ese orden. El segundo es para copiar el código si el
-                                enlace no abre.
-                              </Text>
-                              <Pressable
-                                style={styles.button}
-                                onPress={() => {
-                                  const token = inviteResult.token;
-                                  if (!token) return;
-                                  const { intro } = buildInviteMessages({
-                                    inviterName: session.userName,
-                                    tamboName: session.tamboName,
-                                    role: "TECNICO",
-                                    token,
-                                    webUrl: WEB_URL,
-                                  });
-                                  void Share.share({ message: intro });
-                                }}
-                              >
-                                <Text style={styles.buttonText}>1. Compartir invitación</Text>
-                              </Pressable>
-                              <Pressable
-                                style={styles.buttonSecondary}
-                                onPress={() => {
-                                  const token = inviteResult.token;
-                                  if (!token) return;
-                                  const { code } = buildInviteMessages({
-                                    inviterName: session.userName,
-                                    tamboName: session.tamboName,
-                                    role: "TECNICO",
-                                    token,
-                                    webUrl: WEB_URL,
-                                  });
-                                  void Share.share({ message: code });
-                                }}
-                              >
-                                <Text style={styles.buttonSecondaryText}>
-                                  2. Compartir solo el código
-                                </Text>
-                              </Pressable>
-                            </>
-                          ) : (
-                            <Text style={styles.feedbackText}>
-                              Ya era miembro: se le dio acceso a este tambo
-                            </Text>
-                          )}
-                        </View>
-                      ) : null}
-                    </>
-                  ) : null}
                 </View>
               ) : null}
 
@@ -4663,6 +4883,13 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontSize: font.title, fontWeight: "700", color: colors.text },
   help: { color: colors.textMuted, fontSize: font.body, lineHeight: 24 },
+  linkText: {
+    color: colors.primary,
+    fontSize: font.body,
+    lineHeight: 24,
+    textDecorationLine: "underline",
+    marginTop: 8,
+  },
   label: { fontSize: font.label, fontWeight: "600", color: colors.text },
   input: {
     borderWidth: 1,

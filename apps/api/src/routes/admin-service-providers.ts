@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { HttpError } from "../lib/http-error.js";
+import { normalizeWhatsAppPhone } from "../lib/phone.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
 
@@ -51,6 +52,9 @@ adminServiceProvidersRouter.patch(
         name: z.string().trim().min(1).max(200).optional(),
         active: z.boolean().optional(),
         isDefault: z.boolean().optional(),
+        contactName: z.string().trim().max(80).optional().nullable(),
+        contactPhone: z.string().trim().max(30).optional().nullable(),
+        hasPanel: z.boolean().optional(),
       })
       .safeParse(req.body);
     if (!parsed.success) {
@@ -77,6 +81,13 @@ adminServiceProvidersRouter.patch(
           ...(parsed.data.name != null ? { name: parsed.data.name } : {}),
           ...(parsed.data.active != null ? { active: parsed.data.active } : {}),
           ...(parsed.data.isDefault != null ? { isDefault: parsed.data.isDefault } : {}),
+          ...(parsed.data.contactName !== undefined
+            ? { contactName: parsed.data.contactName?.trim() || null }
+            : {}),
+          ...(parsed.data.contactPhone !== undefined
+            ? { contactPhone: normalizeWhatsAppPhone(parsed.data.contactPhone) }
+            : {}),
+          ...(parsed.data.hasPanel != null ? { hasPanel: parsed.data.hasPanel } : {}),
         },
       });
     });

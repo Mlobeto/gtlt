@@ -119,7 +119,7 @@ Aplica a `MilkingSession`, `ControlLechero` (header) y `MilkDelivery`:
 ### Alta de cuenta (desarrolladora)
 
 - Una cuenta nueva y su primer tambo **solo los crea la desarrolladora** (`POST /admin/tenants` con bloque `tambo`). El dueño no crea cuentas ni tambos. Contraseña inicial: mínimo 8 caracteres, `mustChangePassword = true`.
-- El tambo **nunca queda sin proveedor predeterminado**. Tiene que ser una **empresa socia** (`ServiceProvider.tenantId` nulo y `active`). Un proveedor privado o inactivo se rechaza (`400`).
+- El tambo **nunca queda sin proveedor predeterminado**. Al **crear** el tambo tiene que ser una **empresa socia** (`ServiceProvider.tenantId` nulo y `active`). Un proveedor privado o inactivo se rechaza (`400`). Después el dueño o administrador puede dejar como predeterminada una empresa visible de su cuenta (otra socia o una privada propia).
 - Si `equipmentProductIds` tiene equipos: nace **en instalación** (`activatedAt` nulo), no se cobra hasta activarlo. Si va vacío: nace **activo**. La corriente (`powerSupply`) es obligatoria si hay equipos.
 - El presupuesto se calcula con `computeHardwareBudget` (R1) y se guarda una copia en `Tambo.plannedEquipment` (`productId`, `code`, `name`, `deviceKind`, `quantity`, `unitPrice` nulo si no tenía, `currency`). Un cambio posterior de precios no altera lo presupuestado.
 - Agregar un tambo a una cuenta: `POST /admin/tenants/:tenantId/tambos` (mismo bloque; `requestId` opcional para convertir un pedido existente). `POST /admin/tambos` sigue convirtiendo desde un pedido.
@@ -128,7 +128,7 @@ Aplica a `MilkingSession`, `ControlLechero` (header) y `MilkDelivery`:
 ### Períodos de proveedor
 
 - Cada vez que un tambo nace, se abre un `TamboServiceProviderPeriod` (`startedAt` = ahora). Los tambos que ya existían con proveedor quedaron con un período abierto desde `Tambo.createdAt`.
-- Al cambiar `defaultServiceProviderId` (dueño o desarrolladora), una transacción cierra el período abierto (`endedAt` = ahora) y abre uno nuevo. Si elige el mismo proveedor, no se hace nada. Un solo período abierto por tambo (índice parcial).
+- Al cambiar `defaultServiceProviderId` (dueño, administrador o desarrolladora), una transacción cierra el período abierto (`endedAt` = ahora) y abre uno nuevo. Si elige el mismo proveedor, no se hace nada. Un solo período abierto por tambo (índice parcial). El dueño no puede elegir una privada de otro tenant.
 - Esto habilita la regla de historia: una socia ve el tambo solo en los períodos en que fue proveedora (si el dueño cambia y vuelve, ve esos dos tramos, no el medio). La consulta de historia todavía no filtra; el dato ya está.
 - `PATCH /admin/tambos/:id/service-provider` y `GET /admin/tambos/:id/service-provider-periods`.
 
@@ -190,6 +190,36 @@ Falta definir: modelo de datos de "tarea asignada", si limita o no la lectura ge
 
 - Modelo de datos (`Plan`, `Subscription`, `Payment`) documentado en [pricing-model.md](./pricing-model.md).
 - **Pendiente:** bloquear/degradar acceso de un tenant cuando su `Subscription.status` no sea `ACTIVE` (por ejemplo `PAST_DUE` o `CANCELED`). No hay ningún guard de este tipo implementado aún; hoy todos los tenants tienen acceso pleno independientemente del estado de pago.
+
+## Empresas de service
+
+- **Socias:** catálogo global (`ServiceProvider.tenantId` nulo). Las crea la desarrolladora. El dueño ve nombre, si están activas y si `hasPanel`; **no** ve teléfono ni contacto.
+- **Privadas:** las crea el dueño o administrador para su tenant (`POST /service-providers`: nombre 2–80, contacto y teléfono opcionales). Solo las ve esa cuenta. **No tienen cuentas ni panel.** Al crearlas se avisa que no usan CAL; solo las socias (Lobeto Tambos, Omega) pueden gestionar el pedido y enviar informes desde la app.
+- `hasPanel` es `false` por defecto. Lo cambia la desarrolladora (`PATCH /admin/service-providers/:id`).
+- Un tenant nunca ve ni elige una privada de otro. No se puede desactivar una privada que sea predeterminada de algún tambo (`409` con la lista).
+
+## Cómo se pide el service
+
+- Cada tambo tiene un **proveedor predeterminado**. El pedido va ahí **sin selector**, salvo que un dueño/admin elija otro.
+- En el celular, debajo del título: “Se pide a {predeterminada}” y una línea de transparencia (con panel: “Lo ve en su panel.”; sin panel: avisale por WhatsApp).
+- Solo `DUENIO`/`ADMIN`: enlace **Pedir service a otro proveedor** (otras socias, privadas propias, “+ Crear otra”). **Solo esta vez** (default) o **Dejarla como predeterminada de este tambo**. El tambero siempre pide al predeterminado; si manda `serviceProviderId` o `makeDefault` en el `POST`, `403`.
+- En la web, cambiar el proveedor de un tambo es siempre el predeterminado. “Solo esta vez” existe únicamente al pedir desde el celular.
+- `POST /service-requests` acepta `serviceProviderId?` y `makeDefault?`. El proveedor tiene que ser visible y activo (`400` si no). Si `makeDefault` es verdadero, se reutiliza `changeDefaultServiceProvider` en la misma transacción.
+
+## Quién gestiona el estado
+
+- Si `hasPanel` es verdadero: la empresa gestiona el pedido. El dueño/admin **solo puede cancelar los propios**.
+- Si `hasPanel` es falso (privadas, y socias hasta el prompt K2): el dueño/admin lleva el pedido por `ACKNOWLEDGED` → `IN_PROGRESS` → `RESOLVED` / `CANCELLED` y anota **quién hizo el servicio** (`performedBy`, texto libre hasta 200) y `resolutionNotes`.
+- **Pendiente (prompt K2):** cuentas y panel de las empresas socias.
+
+## Aviso por WhatsApp
+
+- Sin mail. `GET /service-requests/:id/whatsapp-link` arma `https://wa.me/{telefono}?text=...` con tambo, categoría, urgencia, detalle y Maps si hay coordenadas. `404` si la empresa no tiene teléfono.
+- `POST /service-requests/:id/mark-notified` guarda `providerNotifiedAt` y `providerNotifyChannel = WHATSAPP`.
+
+## Técnicos individuales
+
+- **Ya no se invitan** desde la pantalla Service. El bloque “Invitar técnico” se sacó de las pantallas. Los endpoints `/memberships/invite-technician` quedan como **legado**, sin borrar.
 
 ## ServiceRequest
 

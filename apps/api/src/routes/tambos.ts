@@ -9,6 +9,10 @@ import {
 } from "../lib/tambo-billing.js";
 import { tamboLifecycleState } from "../lib/tambo-state.js";
 import { changeDefaultServiceProvider } from "../lib/service-provider-periods.js";
+import {
+  listVisibleProviders,
+  serializeVisibleProvider,
+} from "../lib/service-providers.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
 
@@ -262,15 +266,16 @@ tambosRouter.get("/:tamboId/service-provider", authenticate, async (req, res) =>
       where: { id: tamboId, tenantId: auth.tenantId },
       select: { defaultServiceProviderId: true },
     }),
-    prisma.serviceProvider.findMany({
-      where: { active: true, tenantId: null },
-      orderBy: [{ isDefault: "desc" }, { name: "asc" }],
-    }),
+    listVisibleProviders(prisma, auth.tenantId),
   ]);
 
+  const selectedId = tambo?.defaultServiceProviderId ?? null;
+  const selected = catalog.find((p) => p.id === selectedId) ?? null;
+
   res.json({
-    catalog,
-    selectedId: tambo?.defaultServiceProviderId ?? null,
+    catalog: catalog.map((p) => serializeVisibleProvider(p, selectedId)),
+    selectedId,
+    selected: selected ? serializeVisibleProvider(selected, selectedId) : null,
   });
 });
 

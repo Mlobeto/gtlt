@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, photoFileUrl, type PartInstanceItem } from '../lib/api'
+import { api, photoFileUrl, type PartInstanceItem, type ServiceRequestProvider } from '../lib/api'
 import type { AuthToken } from '../types/auth'
 import { TamboPicker, useTamboId } from './TamboPicker'
 import { Badge, Button, Card, EmptyState, ErrorBanner, Field, StatCard } from './ui'
@@ -19,6 +19,15 @@ type PumpInterval = {
   ongoing: boolean
 }
 
+const SERVICE_STATUS_ES: Record<string, string> = {
+  PENDING_APPROVAL: 'Esperando tu OK',
+  OPEN: 'Enviado',
+  ACKNOWLEDGED: 'Recibido',
+  IN_PROGRESS: 'En curso',
+  RESOLVED: 'Resuelto',
+  CANCELLED: 'Cancelado',
+}
+
 type PendingService = {
   id: string
   category: string
@@ -26,6 +35,18 @@ type PendingService = {
   urgency: string
   createdAt: string
   createdBy?: { name: string }
+}
+
+type OpenService = {
+  id: string
+  category: string
+  description: string
+  urgency: string
+  status: string
+  createdAt: string
+  performedBy?: string | null
+  providerNotifiedAt?: string | null
+  serviceProvider?: ServiceRequestProvider | null
 }
 
 type PendingPhoto = {
@@ -104,6 +125,9 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
   const [lastChangeAt, setLastChangeAt] = useState<string | null>(null)
   const [intervals, setIntervals] = useState<PumpInterval[]>([])
   const [pendingServices, setPendingServices] = useState<PendingService[]>([])
+  const [openNoPanel, setOpenNoPanel] = useState<OpenService[]>([])
+  const [resolveWho, setResolveWho] = useState<Record<string, string>>({})
+  const [resolveNotes, setResolveNotes] = useState<Record<string, string>>({})
   const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([])
   const [dueParts, setDueParts] = useState<PartInstanceItem[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -118,6 +142,7 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
       setLastChangeAt(null)
       setIntervals([])
       setPendingServices([])
+      setOpenNoPanel([])
       setPendingPhotos([])
       setDueParts([])
       setLoading(false)
@@ -131,10 +156,11 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
         setError('')
         const from = startOfLocalDay(new Date()).toISOString()
         const to = endOfLocalDay(new Date()).toISOString()
-        const [statusRes, historyRes, servicesRes, photosRes, partsRes] = await Promise.all([
+        const [statusRes, historyRes, servicesRes, allServicesRes, photosRes, partsRes] = await Promise.all([
           api.getPumpStatus(auth.token, tamboId),
           api.getPumpStatusHistory(auth.token, tamboId, from, to),
           api.getServiceRequests(auth.token, tamboId, 'PENDING_APPROVAL'),
+          api.getServiceRequests(auth.token, tamboId),
           api.getPendingPhotos(auth.token, tamboId),
           api.getPartInstances(auth.token, tamboId),
         ])
@@ -143,6 +169,14 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
         setLastChangeAt(statusRes.item?.occurredAt ?? null)
         setIntervals(historyRes.intervals || [])
         setPendingServices(servicesRes.items || [])
+        setOpenNoPanel(
+          ((allServicesRes.items || []) as OpenService[]).filter(
+            (r) =>
+              r.serviceProvider &&
+              !r.serviceProvider.hasPanel &&
+              ['OPEN', 'ACKNOWLEDGED', 'IN_PROGRESS'].includes(r.status),
+          ),
+        )
         setPendingPhotos(photosRes.items || [])
         const due = (partsRes.items || []).filter(
           (p) => p.life?.kind === 'USAGE_BASED' && (p.life.status === 'SOON' || p.life.status === 'OVERDUE'),
@@ -156,6 +190,7 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
         setLastChangeAt(null)
         setIntervals([])
         setPendingServices([])
+        setOpenNoPanel([])
         setPendingPhotos([])
         setDueParts([])
       } finally {
@@ -170,11 +205,20 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
 
   const refreshLists = async () => {
     if (!tamboId) return
-    const [servicesRes, photosRes] = await Promise.all([
+    const [servicesRes, allServicesRes, photosRes] = await Promise.all([
       api.getServiceRequests(auth.token, tamboId, 'PENDING_APPROVAL'),
+      api.getServiceRequests(auth.token, tamboId),
       api.getPendingPhotos(auth.token, tamboId),
     ])
     setPendingServices(servicesRes.items || [])
+    setOpenNoPanel(
+      ((allServicesRes.items || []) as OpenService[]).filter(
+        (r) =>
+          r.serviceProvider &&
+          !r.serviceProvider.hasPanel &&
+          ['OPEN', 'ACKNOWLEDGED', 'IN_PROGRESS'].includes(r.status),
+      ),
+    )
     setPendingPhotos(photosRes.items || [])
   }
 
@@ -206,6 +250,52 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
       setSelectedIds(Object.fromEntries(due.map((p) => [p.id, true])))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudieron marcar las piezas')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const nextStatusOf = (status: string) => {
+    if (status === 'OPEN') return 'ACKNOWLEDGED' as const
+    if (status === 'ACKNOWLEDGED') return 'IN_PROGRESS' as const
+    if (status === 'IN_PROGRESS') return 'RESOLVED' as const
+    return null
+  }
+
+  const actOpenService = async (
+    id: string,
+    status: 'ACKNOWLEDGED' | 'IN_PROGRESS' | 'RESOLVED' | 'CANCELLED',
+  ) => {
+    try {
+      setBusyId(id)
+      setError('')
+      await api.updateServiceRequest(auth.token, id, {
+        status,
+        ...(status === 'RESOLVED'
+          ? {
+              performedBy: resolveWho[id]?.trim() || null,
+              resolutionNotes: resolveNotes[id]?.trim() || null,
+            }
+          : {}),
+      })
+      await refreshLists()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo actualizar el pedido')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const notifyWhatsapp = async (id: string) => {
+    try {
+      setBusyId(id)
+      setError('')
+      const { url } = await api.getServiceRequestWhatsappLink(auth.token, id)
+      window.open(url, '_blank', 'noopener,noreferrer')
+      await api.markServiceRequestNotified(auth.token, id)
+      await refreshLists()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo avisar por WhatsApp')
     } finally {
       setBusyId(null)
     }
@@ -354,6 +444,95 @@ export function TodayTab({ auth }: { auth: AuthToken }) {
           </p>
           </div>
         ) : null}
+      </Card>
+
+      <Card title="Pedidos de empresas sin panel">
+        {isLoading ? (
+          <EmptyState>Cargando...</EmptyState>
+        ) : openNoPanel.length === 0 ? (
+          <EmptyState>No hay pedidos en curso de empresas sin panel</EmptyState>
+        ) : (
+          <ul className="space-y-3">
+            {openNoPanel.map((r) => {
+              const next = nextStatusOf(r.status)
+              const nextLabel =
+                next === 'ACKNOWLEDGED'
+                  ? 'Marcar recibido'
+                  : next === 'IN_PROGRESS'
+                    ? 'En curso'
+                    : next === 'RESOLVED'
+                      ? 'Resolver'
+                      : ''
+              return (
+                <li key={r.id} className="border border-line rounded-lg p-4 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone={r.urgency === 'URGENT' ? 'danger' : 'neutral'}>
+                        {r.urgency === 'URGENT' ? 'URGENTE' : 'Normal'}
+                      </Badge>
+                      <p className="font-semibold text-ink">{CATEGORY_LABEL[r.category] ?? r.category}</p>
+                    </div>
+                    <p className="text-xs text-ink-muted">{SERVICE_STATUS_ES[r.status] ?? r.status}</p>
+                  </div>
+                  <p className="text-sm text-ink-muted">{r.serviceProvider?.name}</p>
+                  <p className="text-sm text-ink">{r.description}</p>
+                  {r.performedBy ? (
+                    <p className="text-sm text-ink-muted">Hizo el servicio: {r.performedBy}</p>
+                  ) : null}
+                  {r.serviceProvider?.hasPhone ? (
+                    r.providerNotifiedAt ? (
+                      <p className="text-xs text-ink-muted">
+                        Avisado el{' '}
+                        {new Date(r.providerNotifiedAt).toLocaleString('es-AR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </p>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        disabled={busyId === r.id}
+                        onClick={() => void notifyWhatsapp(r.id)}
+                      >
+                        Avisar por WhatsApp
+                      </Button>
+                    )
+                  ) : null}
+                  {next === 'RESOLVED' ? (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <Field
+                        label="Quién lo hizo"
+                        value={resolveWho[r.id] ?? ''}
+                        onChange={(e) => setResolveWho((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                      />
+                      <Field
+                        label="Notas"
+                        value={resolveNotes[r.id] ?? ''}
+                        onChange={(e) => setResolveNotes((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                      />
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {next ? (
+                      <Button disabled={busyId === r.id} onClick={() => void actOpenService(r.id, next)}>
+                        {nextLabel}
+                      </Button>
+                    ) : null}
+                    <Button
+                      variant="secondary"
+                      disabled={busyId === r.id}
+                      onClick={() => void actOpenService(r.id, 'CANCELLED')}
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
       </Card>
 
       <Card title="Service pendiente de tu OK">
