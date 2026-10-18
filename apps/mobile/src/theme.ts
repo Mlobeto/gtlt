@@ -31,6 +31,7 @@ export const colors = {
   darkSurfaceHigh: "#3A3A3A",
   onDark: "#FFFFFF",
   onDarkMuted: "#D9D2C8",
+  track: "#EEE6DD",
 } as const;
 
 export const space = {
@@ -43,7 +44,7 @@ export const space = {
 
 export const radius = {
   sm: 12,
-  md: 20,
+  md: 24,
   lg: 28,
   pill: 999,
 } as const;

@@ -25,7 +25,7 @@ Diseño aprobado en el lienzo "CAL · Estilo amarillo y negro" (celular: Hoy del
 | 1 | Paleta, radios y estados (`theme.ts` e `index.css`) | Aplicado |
 | 2 | Componentes: tarjetas, chips, anillos de progreso, pestañas con solapa, tarjetas oscuras | Se escribe con el código de la etapa 1 aplicado |
 | 3 | Celular: barra inferior con botón central (Service para el dueño, Dictar para el tambero) | Pendiente |
-| 4 | Web: navegación arriba en vez de la barra lateral, y "Hoy" con todo a la vista | Pendiente |
+| 4 | Web: navegación arriba en vez de la barra lateral, y "Hoy" con todo a la vista | Marco aplicado (navegación arriba). "Hoy" a la vista: pendiente |
 | APK | Ícono nuevo (negro sobre amarillo), pantalla de inicio y fuente DM Sans en el celular | Junto al próximo APK |
 
 **Lo que muestra el diseño y todavía no existe como función:** las notas de los animales (tambero y veterinaria), las tareas de la veterinaria, el botón de dictar con voz y la línea de tiempo del tambo. En las etapas 2 a 4 solo se muestra lo que ya existe; esas tarjetas se suman cuando se construyan esas funciones.

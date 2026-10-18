@@ -37,12 +37,12 @@ export function DashboardPage({ auth, onLogout, onSessionChange }: DashboardPage
         { id: 'settings', label: 'Configuración' },
       ]
     : [
-        { id: 'tickets', label: 'Tickets de Soporte' },
-        { id: 'prototype', label: 'Configuración del Prototipo' },
+        { id: 'tickets', label: 'Tickets' },
+        { id: 'prototype', label: 'Prototipo' },
         { id: 'accounts', label: 'Cuentas' },
-        { id: 'tambo-requests', label: 'Pedidos de tambo' },
-        { id: 'part-types', label: 'Catálogo de piezas' },
-        { id: 'hardware', label: 'Equipos y precios' },
+        { id: 'tambo-requests', label: 'Pedidos' },
+        { id: 'part-types', label: 'Catálogo' },
+        { id: 'hardware', label: 'Equipos' },
         { id: 'providers', label: 'Proveedores' },
         { id: 'plans', label: 'Planes' },
       ]

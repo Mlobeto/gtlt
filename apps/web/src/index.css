@@ -72,10 +72,6 @@ body {
     display: block !important;
   }
 
-  .md\:ml-\[220px\] {
-    margin-left: 0 !important;
-  }
-
   .work-report-print {
     border: none;
     box-shadow: none;

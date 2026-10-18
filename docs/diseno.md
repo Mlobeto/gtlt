@@ -162,7 +162,7 @@ Tokens RN: `apps/mobile/src/theme.ts`.
 | `space.lg` | 16 |
 | `space.xl` | 24 |
 | `radius.sm` | 12 |
-| `radius.md` | 20 |
+| `radius.md` | 24 |
 | `radius.lg` | 28 |
 | `radius.pill` | 999 (botones principales y chips) |
 | `touch.min` | 48 (altura mínima de botón/input) |
@@ -220,7 +220,9 @@ Mensajes de feedback **dentro del formulario**, arriba de los botones — nunca 
 - Íconos simples, trazo medio; preferir pocos.
 - Fotos de animales/piezas: ratio claro, esquinas `radius.md`.
 - No depender solo del color (acompañar con texto).
-- **Menú mobile (provisional):** emoji nativo en botones grandes (`🐄` Ordeñe, `💊` Tratamiento, `❌` Retiros = leche que no se mezcla) + texto claro. En el celular, las piezas de ordeñe y frío se llaman **Máquinas** (no "Equipo": en el web "Equipo" son las personas). Se puede cambiar después a vector icons o ilustraciones propias.
+- **Íconos mobile (`src/Icon.tsx`):** PNG blancos en `assets/icons/ic-<nombre>.png`, coloreados con `tintColor`. Nombres: `home`, `vacas`, `ordene`, `sanidad`, `repro`, `entrega`, `control`, `service`, `maquinas`, `cuenta`, `campana`, `microfono`, `flecha-abajo`, `flecha-derecha`, `flecha-izquierda`, `check`, `camara`, `cerrar`, `ubicacion`, `bomba`, `alerta`, `frio`. Uso: `Icon({ name, size, color })`. No usar librerías de íconos ni emojis en el menú de inicio.
+- **Anillos de vida útil (`src/Ring.tsx`):** pista `ring-track.png` + avance `ring-005`…`ring-100` (de 5 en 5). Color según estado: OK → `success`, SOON → `warning`, OVERDUE → `danger`. El chip al lado lleva siempre el texto (OK / Cambiar pronto / Para cambiar).
+- En el celular, las piezas de ordeñe y frío se llaman **Máquinas** (no "Equipo": en el web "Equipo" son las personas).
 
 ---
 
@@ -254,6 +256,7 @@ Mensajes de feedback **dentro del formulario**, arriba de los botones — nunca 
 
 ## Changelog
 
-- **2026-10-17** — Paleta amarillo/negro/crema (etapa 1 del rediseño). `primary` es negro; `onPrimary` amarillo sobre negro; verde solo en tokens de éxito. Radios: sm 12 / md 20 / lg 28 / pill. `--font-brand` = DM Sans.
+- **2026-10-17** — Celular etapa 3: franja amarilla, `Icon`/`Ring`, mosaicos de inicio y anillos en Máquinas. `radius.md` 24.
+- **2026-10-17** — Paleta amarillo/negro/crema (etapa 1 del rediseño). `primary` es negro; `onPrimary` amarillo sobre negro; verde solo en tokens de éxito. Radios: sm 12 / md 24 / lg 28 / pill. `--font-brand` = DM Sans.
 - **2026-10-03** — Contraste: `primary` pasa a `#3D7D57` (4.9:1 con blanco); el verde del PDF `#4C9A6A` queda como `primaryLight`, solo decorativo. Web: tokens con `@theme` en `index.css` (Tailwind v4 no cargaba `tailwind.config.ts`, que se borró).
 - **2026-09-29** — Paleta alineada a la identidad usada en la presentación para socios — antes verde/amarillo saturado, ahora verde/azul oscuro con tintes pálidos. Colores de advertencia/error sin cambios.

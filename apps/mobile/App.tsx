@@ -15,7 +15,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
@@ -66,6 +66,8 @@ import {
   type VisibleServiceProvider,
 } from "./src/api";
 import { TechnicianHome } from "./src/TechnicianHome";
+import { Icon, type IconName } from "./src/Icon";
+import { Ring, ringColorForLife } from "./src/Ring";
 import { WorkReportScreen } from "./src/WorkReportScreen";
 import { ReplaceBatchScreen } from "./src/ReplaceBatchScreen";
 import { PartHistoryScreen } from "./src/PartHistoryScreen";
@@ -158,11 +160,11 @@ type Screen =
 
 type TodaySectionKey = keyof ActionLists;
 
-const TODAY_SECTIONS: { key: TodaySectionKey; emoji: string; label: string }[] = [
-  { key: "calvingSoon", emoji: "🐄", label: "Partos próximos" },
-  { key: "dryOff", emoji: "🌾", label: "Para secar" },
-  { key: "withdrawals", emoji: "❌", label: "Retiros de leche" },
-  { key: "pregnancyCheck", emoji: "🔍", label: "Para tacto (revisar preñez)" },
+const TODAY_SECTIONS: { key: TodaySectionKey; icon: IconName; label: string }[] = [
+  { key: "calvingSoon", icon: "repro", label: "Partos próximos" },
+  { key: "dryOff", icon: "ordene", label: "Para secar" },
+  { key: "withdrawals", icon: "alerta", label: "Retiros de leche" },
+  { key: "pregnancyCheck", icon: "control", label: "Para tacto (revisar preñez)" },
 ];
 
 type ServiceCategory =
@@ -182,33 +184,33 @@ type AnimalHistoryItem = {
 };
 
 const MENU = [
-  { key: "milking" as const, emoji: "🐄", label: "Ordeñe", hint: "Turno, litros y carga rápida" },
-  { key: "animals" as const, emoji: "📒", label: "Vacas", hint: "Ficha, foto e historial" },
-  { key: "treatment" as const, emoji: "💊", label: "Sanidad", hint: "Mastitis, tratamiento y retiro" },
-  { key: "repro" as const, emoji: "🔔", label: "Repro", hint: "Celo, servicio, parto" },
-  { key: "delivery" as const, emoji: "🚛", label: "Entrega", hint: "Tanque vs camión" },
-  { key: "control" as const, emoji: "📋", label: "Control lechero", hint: "Litros por vaca / bajada" },
+  { key: "milking" as const, icon: "ordene" as const, label: "Ordeñe", hint: "Turno, litros y carga rápida" },
+  { key: "animals" as const, icon: "vacas" as const, label: "Vacas", hint: "Ficha, foto e historial" },
+  { key: "treatment" as const, icon: "sanidad" as const, label: "Sanidad", hint: "Mastitis, tratamiento y retiro" },
+  { key: "repro" as const, icon: "repro" as const, label: "Repro", hint: "Celo, servicio, parto" },
+  { key: "delivery" as const, icon: "entrega" as const, label: "Entrega", hint: "Tanque vs camión" },
+  { key: "control" as const, icon: "control" as const, label: "Control lechero", hint: "Litros por vaca / bajada" },
   {
     key: "withdrawals" as const,
-    emoji: "❌",
+    icon: "alerta" as const,
     label: "Retiros",
     hint: "Leche que no se puede mezclar",
   },
   {
     key: "parts" as const,
-    emoji: "⚙️",
+    icon: "maquinas" as const,
     label: "Máquinas",
     hint: "Ordeñadora y equipo de frío",
   },
   {
     key: "service" as const,
-    emoji: "🔧",
+    icon: "service" as const,
     label: "Service",
     hint: "Pedir técnico o invitar",
   },
   {
     key: "notifications" as const,
-    emoji: "🔔",
+    icon: "campana" as const,
     label: "Avisos",
     hint: "Pedidos y aprobaciones",
   },
@@ -348,6 +350,25 @@ function lifeChipLabel(status: string) {
   return "OK";
 }
 
+function lifePercentShown(life: {
+  percent?: number;
+  byUsage?: { percent: number } | null;
+  byTime?: { percent: number } | null;
+}) {
+  const usage = life.byUsage?.percent ?? 0;
+  const time = life.byTime?.percent ?? 0;
+  const base = life.percent ?? 0;
+  return Math.min(100, Math.max(0, Math.round(Math.max(usage, time, base) * 100)));
+}
+
+function pumpTimeLabel(changedAt: string | null) {
+  if (!changedAt) return "";
+  return new Date(changedAt).toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function daysOverdue(p: PartInstanceItem): number | null {
   if (p.life?.kind !== "USAGE_BASED" || p.life.status !== "OVERDUE") return null;
   if (p.life.estimatedReplacementDate) {
@@ -409,6 +430,7 @@ function addDaysISO(days: number): string {
 }
 
 function AppContent() {
+  const insets = useSafeAreaInsets();
   const [ready, setReady] = useState(false);
   const [screen, setScreen] = useState<Screen>("home");
   const [session, setSession] = useState<Session | null>(null);
@@ -2205,8 +2227,8 @@ function AppContent() {
 
   if (!ready) {
   return (
-      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-      <View style={styles.center}>
+      <SafeAreaView style={styles.safe} edges={["bottom"]}>
+      <View style={[styles.center, { paddingTop: insets.top }]}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Cargando...</Text>
     </View>
@@ -2220,7 +2242,7 @@ function AppContent() {
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+    <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <StatusBar style="dark" />
       <KeyboardAvoidingView
         style={styles.flex}
@@ -2228,12 +2250,12 @@ function AppContent() {
       >
         <ScrollView
           ref={scrollRef}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingTop: 0 }]}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.header}>
+          <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
           <Image
-  source={require("./assets/cal-logo-azul.png")}
+  source={require("./assets/cal-logo-negro.png")}
   style={{ width: 88, height: 40 }}
   resizeMode="contain"
   accessibilityLabel="CAL"
@@ -2246,7 +2268,7 @@ function AppContent() {
             </View>
             {session ? (
               <View>
-                <Text style={styles.meta}>
+                <Text style={styles.headerMeta}>
                   {session.userName} · {session.tamboName}
                   {isTechnicianOnly(session.roles ?? []) ? " · técnico" : ""}
                 </Text>
@@ -2467,86 +2489,113 @@ function AppContent() {
               ) : null}
 
               {screen === "home" && showOwnerSupervision(session.roles ?? []) ? (
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>Hoy</Text>
-                  <View style={styles.todayRow}>
-                    <View style={styles.todayItemText}>
-                      <Text style={styles.todayRowLabel}>Bomba de vacío</Text>
-                      <Text style={styles.meta}>
-                        {supervisionOffline || !online
-                          ? "Sin conexión"
-                          : pumpStatus === "ON"
-                            ? `Encendida${pumpChangedAt ? ` · ${new Date(pumpChangedAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}` : ""}`
-                            : pumpStatus === "OFF"
-                              ? `Apagada${pumpChangedAt ? ` · ${new Date(pumpChangedAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}` : ""}`
-                              : "Sin datos"}
-                      </Text>
-                    </View>
-                  </View>
-                  <Pressable
-                    style={styles.todayRow}
-                    onPress={() => {
-                      setStatus("");
-                      setScreen("notifications");
-                      void loadNotifications(session);
-                    }}
-                  >
-                    <Text style={styles.todayRowLabel}>
-                      Service por aprobar ·{" "}
-                      {supervisionOffline || !online ? "Sin conexión" : pendingApprovals.length}
-                    </Text>
-                    <Text style={styles.todayRowArrow}>›</Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.todayRow}
-                    onPress={() => {
-                      setStatus("");
-                      setScreen("photosReview");
-                      void loadSupervision(session);
-                    }}
-                  >
-                    <Text style={styles.todayRowLabel}>
-                      Fotos por revisar ·{" "}
-                      {supervisionOffline || !online ? "Sin conexión" : pendingPhotos.length}
-                    </Text>
-                    <Text style={styles.todayRowArrow}>›</Text>
-                  </Pressable>
-                  {online && dueParts.length > 0 ? (
+                <View style={styles.hoyCard}>
+                  <View style={styles.hoyStats}>
                     <Pressable
-                      style={styles.todayRow}
+                      style={styles.hoyStat}
+                      onPress={() => {
+                        setStatus("");
+                        setScreen("notifications");
+                        void loadNotifications(session);
+                      }}
+                    >
+                      <Text style={styles.hoyStatNum}>
+                        {supervisionOffline || !online ? "–" : pendingApprovals.length}
+                      </Text>
+                      <Text style={styles.hoyStatLabel}>Esperan tu OK</Text>
+                    </Pressable>
+                    <View style={styles.hoyStatDivider} />
+                    <Pressable
+                      style={styles.hoyStat}
+                      onPress={() => {
+                        setStatus("");
+                        setScreen("photosReview");
+                        void loadSupervision(session);
+                      }}
+                    >
+                      <Text style={styles.hoyStatNum}>
+                        {supervisionOffline || !online ? "–" : pendingPhotos.length}
+                      </Text>
+                      <Text style={styles.hoyStatLabel}>Fotos por revisar</Text>
+                    </Pressable>
+                    <View style={styles.hoyStatDivider} />
+                    <Pressable
+                      style={styles.hoyStat}
                       onPress={() => {
                         setStatus("");
                         openPartsScreen();
                       }}
                     >
-                      <View style={styles.todayItemText}>
-                        <Text style={styles.todayRowLabel}>
-                          Piezas por cambiar · {dueParts.length}
-                        </Text>
-                        {dueParts.slice(0, 3).map((p) => (
-                          <Text key={p.id} style={styles.meta}>
-                            {duePartLine(p)}
-                            {daysOverdue(p) != null && daysOverdue(p)! > 14
-                              ? " · ¿Ya se cambió? Registralo para que la cuenta de vida útil quede al día."
-                              : ""}
-                          </Text>
-                        ))}
-                        {dueParts.some((p) => (daysOverdue(p) ?? 0) > 14) ? (
-                          <Pressable
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              openReplaceBatch(
-                                dueParts.filter((p) => (daysOverdue(p) ?? 0) > 14).map((p) => p.id),
-                              );
-                            }}
-                          >
-                            <Text style={styles.todayRowLabel}>Ya las cambié</Text>
-                          </Pressable>
-                        ) : null}
-                      </View>
-                      <Text style={styles.todayRowArrow}>›</Text>
+                      <Text style={styles.hoyStatNum}>
+                        {supervisionOffline || !online ? "–" : dueParts.length}
+                      </Text>
+                      <Text style={styles.hoyStatLabel}>Piezas por cambiar</Text>
                     </Pressable>
+                  </View>
+                  {online && dueParts.length > 0 ? (
+                    <View style={styles.hoyDueBlock}>
+                      {dueParts.slice(0, 3).map((p) => (
+                        <Text key={p.id} style={styles.meta}>
+                          {duePartLine(p)}
+                          {daysOverdue(p) != null && daysOverdue(p)! > 14
+                            ? " · ¿Ya se cambió? Registralo para que la cuenta de vida útil quede al día."
+                            : ""}
+                        </Text>
+                      ))}
+                      {dueParts.some((p) => (daysOverdue(p) ?? 0) > 14) ? (
+                        <Pressable
+                          onPress={() => {
+                            openReplaceBatch(
+                              dueParts.filter((p) => (daysOverdue(p) ?? 0) > 14).map((p) => p.id),
+                            );
+                          }}
+                        >
+                          <Text style={styles.todayRowLabel}>Ya las cambié</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
                   ) : null}
+                  <View style={styles.hoyDivider} />
+                  <View style={styles.hoyPumpRow}>
+                    <View style={styles.iconCircle}>
+                      <Icon name="bomba" size={24} />
+                    </View>
+                    <View style={styles.hoyPumpText}>
+                      <Text style={styles.hoyPumpTitle}>Bomba de vacío</Text>
+                      {!(supervisionOffline || !online) && pumpChangedAt ? (
+                        <Text style={styles.meta}>{pumpTimeLabel(pumpChangedAt)}</Text>
+                      ) : null}
+                    </View>
+                    <View
+                      style={[
+                        styles.chip,
+                        supervisionOffline || !online
+                          ? styles.chipWarn
+                          : pumpStatus === "ON"
+                            ? styles.chipOk
+                            : styles.chipNeutral,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          supervisionOffline || !online
+                            ? styles.chipTextWarn
+                            : pumpStatus === "ON"
+                              ? null
+                              : styles.chipNeutralText,
+                        ]}
+                      >
+                        {supervisionOffline || !online
+                          ? "Sin conexión"
+                          : pumpStatus === "ON"
+                            ? "Encendida"
+                            : pumpStatus === "OFF"
+                              ? "Apagada"
+                              : "Sin datos"}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
               ) : null}
 
@@ -2565,9 +2614,12 @@ function AppContent() {
                           openPartsScreen();
                         }}
                       >
+                        <View style={styles.iconCircleSm}>
+                          <Icon name="maquinas" size={20} />
+                        </View>
                         <View style={styles.todayItemText}>
                           <Text style={styles.todayRowLabel}>
-                            Piezas por cambiar · {dueParts.length}
+                            Piezas por cambiar
                           </Text>
                         {dueParts.slice(0, 3).map((p) => (
                           <Text key={p.id} style={styles.meta}>
@@ -2578,7 +2630,9 @@ function AppContent() {
                           </Text>
                         ))}
                         </View>
-                        <Text style={styles.todayRowArrow}>›</Text>
+                        <View style={styles.chipNeutral}>
+                          <Text style={styles.chipNeutralText}>{dueParts.length}</Text>
+                        </View>
                       </Pressable>
                     ) : null}
                     {TODAY_SECTIONS.filter((s) => actionLists[s.key].length > 0).map((s) => (
@@ -2587,10 +2641,13 @@ function AppContent() {
                         style={styles.todayRow}
                         onPress={() => openToday(s.key)}
                       >
-                        <Text style={styles.todayRowLabel}>
-                          {s.emoji} {s.label} · {actionLists[s.key].length}
-                        </Text>
-                        <Text style={styles.todayRowArrow}>›</Text>
+                        <View style={styles.iconCircleSm}>
+                          <Icon name={s.icon} size={20} />
+                        </View>
+                        <Text style={styles.todayRowLabel}>{s.label}</Text>
+                        <View style={styles.chipNeutral}>
+                          <Text style={styles.chipNeutralText}>{actionLists[s.key].length}</Text>
+                        </View>
                       </Pressable>
                     ))}
                     </>
@@ -2616,9 +2673,12 @@ function AppContent() {
                         scrollToPendingTodaySection();
                       }}
                     >
-                      <Text style={styles.sectionInCard}>
-                        {s.emoji} {s.label}
-                      </Text>
+                      <View style={styles.todaySectionHead}>
+                        <View style={styles.iconCircleSm}>
+                          <Icon name={s.icon} size={20} />
+                        </View>
+                        <Text style={styles.sectionInCard}>{s.label}</Text>
+                      </View>
                       {actionLists[s.key].length === 0 ? (
                         <Text style={styles.meta}>Nada por acá.</Text>
                       ) : (
@@ -2650,59 +2710,60 @@ function AppContent() {
               ) : null}
 
               {screen === "home" ? (
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>¿Qué querés hacer?</Text>
-                  <Text style={styles.help}>Tocá un botón grande.</Text>
-                  {[
-                    ...MENU.filter(
-                      (item) =>
-                        !ownerOnly(session.roles ?? []) ||
-                        !OWNER_ONLY_HIDDEN.has(item.key),
-                    ),
-                    ...(isOwnerOrAdmin(session.roles ?? [])
-                      ? [
-                          {
-                            key: "tambos" as const,
-                            emoji: "🏠",
-                            label: "Mis tambos",
-                            hint: "Crear, archivar y cambiar",
-                          },
-                        ]
-                      : []),
-                    {
-                      key: "account" as const,
-                      emoji: "👤",
-                      label: "Cuenta",
-                      hint: "Tu perfil y cómo usás CAL",
-                    },
-                  ].map((item) => (
-                    <Pressable
-                      key={item.key}
-                      style={styles.menuButton}
-                      onPress={() => {
-                        setStatus("");
-                        setScreen(item.key);
-                        if (item.key === "notifications" && session) {
-                          void loadNotifications(session);
-                        }
-                        if (item.key === "parts" && session) {
-                          void loadParts();
-                        }
-                      }}
-                    >
-                      <Text style={styles.menuEmoji}>{item.emoji}</Text>
-                      <View style={styles.menuTextWrap}>
-                        <Text style={styles.menuLabel}>
-                          {item.label}
-                          {item.key === "notifications" &&
-                          unreadNotifications > 0
-                            ? ` (${unreadNotifications})`
-                            : ""}
-                        </Text>
-                        <Text style={styles.menuHint}>{item.hint}</Text>
-                      </View>
-                    </Pressable>
-                  ))}
+                <View style={styles.homeMenu}>
+                  <Text style={styles.sectionLabel}>¿Qué querés hacer?</Text>
+                  <View style={styles.menuGrid}>
+                    {[
+                      ...MENU.filter(
+                        (item) =>
+                          !ownerOnly(session.roles ?? []) ||
+                          !OWNER_ONLY_HIDDEN.has(item.key),
+                      ),
+                      ...(isOwnerOrAdmin(session.roles ?? [])
+                        ? [
+                            {
+                              key: "tambos" as const,
+                              icon: "ubicacion" as const,
+                              label: "Mis tambos",
+                              hint: "Crear, archivar y cambiar",
+                            },
+                          ]
+                        : []),
+                      {
+                        key: "account" as const,
+                        icon: "cuenta" as const,
+                        label: "Cuenta",
+                        hint: "Tu perfil y cómo usás CAL",
+                      },
+                    ].map((item) => (
+                      <Pressable
+                        key={item.key}
+                        style={styles.menuTile}
+                        onPress={() => {
+                          setStatus("");
+                          setScreen(item.key);
+                          if (item.key === "notifications" && session) {
+                            void loadNotifications(session);
+                          }
+                          if (item.key === "parts" && session) {
+                            void loadParts();
+                          }
+                        }}
+                      >
+                        <View style={styles.iconCircle}>
+                          <Icon name={item.icon} size={24} />
+                        </View>
+                        <Text style={styles.menuTileLabel}>{item.label}</Text>
+                        {item.key === "notifications" && unreadNotifications > 0 ? (
+                          <View style={styles.unreadBadge}>
+                            <Text style={styles.unreadBadgeText}>
+                              {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </Pressable>
+                    ))}
+                  </View>
                   {status ? (
                     <View style={styles.feedback}>
                       <Text style={styles.feedbackText}>{status}</Text>
@@ -3886,21 +3947,36 @@ function AppContent() {
                         </Text>
                         {p.life?.kind === "USAGE_BASED" ? (
                           <>
-                            <View style={styles.progressTrack}>
+                            <View style={styles.lifeRow}>
+                              <Ring
+                                percent={lifePercentShown(p.life)}
+                                color={ringColorForLife(p.life.status)}
+                                size={52}
+                                caption={lifeChipLabel(p.life.status ?? "OK")}
+                              />
                               <View
                                 style={[
-                                  styles.progressFill,
-                                  {
-                                    width: `${Math.min(100, Math.round((p.life.percent ?? 0) * 100))}%`,
-                                    backgroundColor:
-                                      p.life.status === "OVERDUE"
-                                        ? colors.danger
-                                        : p.life.status === "SOON"
-                                          ? colors.accent
-                                          : colors.success,
-                                  },
+                                  styles.lifeStatusChip,
+                                  p.life.status === "OVERDUE"
+                                    ? styles.lifeChipOverdue
+                                    : p.life.status === "SOON"
+                                      ? styles.lifeChipSoon
+                                      : styles.lifeChipOk,
                                 ]}
-                              />
+                              >
+                                <Text
+                                  style={[
+                                    styles.lifeStatusChipText,
+                                    p.life.status === "OVERDUE"
+                                      ? styles.lifeChipOverdueText
+                                      : p.life.status === "SOON"
+                                        ? styles.lifeChipSoonText
+                                        : styles.lifeChipOkText,
+                                  ]}
+                                >
+                                  {lifeChipLabel(p.life.status ?? "OK")}
+                                </Text>
+                              </View>
                             </View>
                             {p.life.byUsage ? (
                               <Text style={styles.itemMeta}>
@@ -3915,18 +3991,6 @@ function AppContent() {
                                 {p.life.byTime.lifeMonths} meses
                               </Text>
                             ) : null}
-                            <Text
-                              style={[
-                                styles.lifeChip,
-                                p.life.status === "OVERDUE"
-                                  ? styles.lifeChipOverdue
-                                  : p.life.status === "SOON"
-                                    ? styles.lifeChipSoon
-                                    : styles.lifeChipOk,
-                              ]}
-                            >
-                              {lifeChipLabel(p.life.status ?? "OK")}
-                            </Text>
                             {p.life.estimatedReplacementDate ? (
                               <Text style={styles.itemMeta}>
                                 Cambio estimado:{" "}
@@ -4848,7 +4912,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   scrollContent: {
-    padding: space.lg,
+    paddingHorizontal: space.lg,
     paddingBottom: space.xl * 2,
     gap: space.md,
   },
@@ -4860,7 +4924,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   loadingText: { color: colors.textMuted, fontSize: font.body },
-  header: { gap: space.sm },
+  header: {
+    backgroundColor: colors.accent,
+    borderBottomLeftRadius: 44,
+    borderBottomRightRadius: 44,
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+    gap: space.sm,
+    marginHorizontal: -space.lg,
+  },
+  headerMeta: { color: colors.text, fontSize: font.meta },
   title: { fontSize: font.display, fontWeight: "700", color: colors.text },
   meta: { color: colors.textMuted, fontSize: font.meta },
   chip: {
@@ -4871,6 +4944,13 @@ const styles = StyleSheet.create({
   },
   chipOk: { backgroundColor: colors.successSoft },
   chipWarn: { backgroundColor: colors.accentSoft },
+  chipNeutral: {
+    backgroundColor: colors.bgSubtle,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: radius.pill,
+  },
+  chipNeutralText: { color: colors.textMuted, fontWeight: "700", fontSize: font.meta },
   chipText: { color: colors.successText, fontWeight: "700", fontSize: font.meta },
   chipTextWarn: { color: colors.accentText },
   card: {
@@ -4917,7 +4997,143 @@ const styles = StyleSheet.create({
   menuEmoji: { fontSize: 36 },
   menuTextWrap: { flex: 1, gap: 2 },
   menuLabel: { fontSize: 20, fontWeight: "700", color: colors.text },
-  menuHint: { fontSize: 15, color: colors.textMuted },
+  homeMenu: { gap: space.md },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  menuGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: 12,
+  },
+  menuTile: {
+    position: "relative",
+    width: "48.5%",
+    height: 84,
+    minHeight: 84,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  menuTileLabel: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  unreadBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 6,
+    borderRadius: 11,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  unreadBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconCircleSm: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hoyCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: 18,
+    gap: space.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  hoyStats: {
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  hoyStat: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    minHeight: touch.min,
+    paddingHorizontal: 4,
+  },
+  hoyStatNum: {
+    fontSize: 30,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  hoyStatLabel: {
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: "center",
+  },
+  hoyStatDivider: {
+    width: 1,
+    backgroundColor: colors.border,
+    marginVertical: 4,
+  },
+  hoyDueBlock: { gap: space.xs },
+  hoyDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  hoyPumpRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
+  },
+  hoyPumpText: { flex: 1, gap: 2 },
+  hoyPumpTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
+  todaySectionHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+  },
+  lifeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
+    marginTop: space.xs,
+  },
+  lifeStatusChip: {
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+    borderRadius: radius.pill,
+  },
+  lifeStatusChipText: {
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  lifeChipOkText: { color: colors.successText },
+  lifeChipSoonText: { color: colors.accentText },
+  lifeChipOverdueText: { color: colors.dangerText },
   todayRow: {
     minHeight: touch.min,
     flexDirection: "row",
