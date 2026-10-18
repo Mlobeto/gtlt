@@ -2228,7 +2228,7 @@ function AppContent() {
   if (!ready) {
   return (
       <SafeAreaView style={styles.safe} edges={["bottom"]}>
-      <View style={[styles.center, { paddingTop: insets.top }]}>
+      <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Cargando...</Text>
     </View>
@@ -2418,7 +2418,7 @@ function AppContent() {
           ) : null}
           {!session ? (
             <Text style={[styles.meta, { textAlign: "center" }]}>
-              CAL · en memoria de Carlos Alberto Lobeto
+              CAL 
             </Text>
           ) : isTechnicianOnly(session.roles ?? []) ? (
             <>
@@ -4997,6 +4997,7 @@ const styles = StyleSheet.create({
   menuEmoji: { fontSize: 36 },
   menuTextWrap: { flex: 1, gap: 2 },
   menuLabel: { fontSize: 20, fontWeight: "700", color: colors.text },
+  menuHint: { fontSize: 15, color: colors.textMuted },
   homeMenu: { gap: space.md },
   sectionLabel: {
     fontSize: 13,
