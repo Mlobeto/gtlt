@@ -83,6 +83,10 @@ export function getDb() {
           truck_declared_liters REAL NOT NULL,
           cold_tank_temperature_c REAL,
           truck_temperature_c REAL,
+          pickup_date TEXT,
+          pickup_shift TEXT,
+          guachera_liters REAL,
+          ticket_photo_url TEXT,
           notes TEXT,
           pending INTEGER NOT NULL DEFAULT 0,
           status TEXT NOT NULL DEFAULT 'ACTIVE'
@@ -163,6 +167,30 @@ export function getDb() {
         "animals",
         "pending",
         "pending INTEGER NOT NULL DEFAULT 0",
+      );
+      await ensureColumn(
+        db,
+        "milk_deliveries_local",
+        "pickup_date",
+        "pickup_date TEXT",
+      );
+      await ensureColumn(
+        db,
+        "milk_deliveries_local",
+        "pickup_shift",
+        "pickup_shift TEXT",
+      );
+      await ensureColumn(
+        db,
+        "milk_deliveries_local",
+        "guachera_liters",
+        "guachera_liters REAL",
+      );
+      await ensureColumn(
+        db,
+        "milk_deliveries_local",
+        "ticket_photo_url",
+        "ticket_photo_url TEXT",
       );
 
       return db;
@@ -789,6 +817,10 @@ export type LocalMilkDelivery = {
   truck_declared_liters: number;
   cold_tank_temperature_c: number | null;
   truck_temperature_c: number | null;
+  pickup_date: string | null;
+  pickup_shift: string | null;
+  guachera_liters: number | null;
+  ticket_photo_url: string | null;
   notes: string | null;
   pending: number;
   status: string;
@@ -801,8 +833,9 @@ export async function upsertLocalMilkDelivery(
   await db.runAsync(
     `INSERT INTO milk_deliveries_local
       (id, tambo_id, period_start, period_end, cold_tank_liters, truck_declared_liters,
-       cold_tank_temperature_c, truck_temperature_c, notes, pending, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       cold_tank_temperature_c, truck_temperature_c, pickup_date, pickup_shift,
+       guachera_liters, ticket_photo_url, notes, pending, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
       period_start = excluded.period_start,
       period_end = excluded.period_end,
@@ -810,6 +843,10 @@ export async function upsertLocalMilkDelivery(
       truck_declared_liters = excluded.truck_declared_liters,
       cold_tank_temperature_c = excluded.cold_tank_temperature_c,
       truck_temperature_c = excluded.truck_temperature_c,
+      pickup_date = excluded.pickup_date,
+      pickup_shift = excluded.pickup_shift,
+      guachera_liters = excluded.guachera_liters,
+      ticket_photo_url = excluded.ticket_photo_url,
       notes = excluded.notes,
       pending = excluded.pending,
       status = excluded.status`,
@@ -822,6 +859,10 @@ export async function upsertLocalMilkDelivery(
       d.truck_declared_liters,
       d.cold_tank_temperature_c,
       d.truck_temperature_c,
+      d.pickup_date,
+      d.pickup_shift,
+      d.guachera_liters,
+      d.ticket_photo_url,
       d.notes,
       d.pending,
       d.status,

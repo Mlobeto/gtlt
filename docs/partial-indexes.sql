@@ -41,10 +41,15 @@ CREATE UNIQUE INDEX animals_unique_ear_tag_active
     AND deleted_at IS NULL;
 
 -- ---------------------------------------------------------------------------
--- 4) ControlLechero / MilkDelivery: no hay unique de negocio por fecha;
---    la corrección es append-only (status + corrects_*_id). Sin índice parcial
---    de unicidad adicional en Fase 1.
+-- 4) ControlLechero: no hay unique de negocio por fecha;
+--    la corrección es append-only (status + corrects_*_id).
+--    MilkDelivery: un ACTIVE con momento por (tambo, fecha, turno).
 -- ---------------------------------------------------------------------------
+
+CREATE UNIQUE INDEX milk_deliveries_one_active_per_pickup
+  ON milk_deliveries (tambo_id, pickup_date, pickup_shift)
+  WHERE status = 'ACTIVE'
+    AND pickup_date IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- 5) Device: un solo dispositivo no retirado

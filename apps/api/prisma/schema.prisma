@@ -275,6 +275,8 @@ model Tambo {
   /// Copia del presupuesto de equipos al momento del alta (precios congelados).
   plannedEquipment Json @default("[]") @map("planned_equipment")
   pumpCount Int @default(1) @map("pump_count")
+  /// Umbral de diferencia vs la fábrica (%). Nulo = se muestra la comparación sin marcar alerta.
+  deliveryDiffThresholdPct Decimal? @map("delivery_diff_threshold_pct") @db.Decimal(5, 2)
   active      Boolean  @default(true)
   /// Nulo = en instalación (usable, no se factura). Se setea al activar.
   activatedAt DateTime? @map("activated_at")
@@ -778,6 +780,13 @@ model MilkDelivery {
   coldTankTemperatureC    Decimal?     @map("cold_tank_temperature_c") @db.Decimal(5, 2)
   /// Temperatura declarada por camión/industria (°C) — comparar plus por temperatura
   truckTemperatureC       Decimal?     @map("truck_temperature_c") @db.Decimal(5, 2)
+  /// Fecha calendario del paso del camión (sin hora).
+  pickupDate              DateTime?    @map("pickup_date") @db.Date
+  /// Turno posterior al ordeñe (mañana o tarde).
+  pickupShift             MilkingShift? @map("pickup_shift")
+  /// Litros que no van al camión (guachera).
+  guacheraLiters          Decimal?     @map("guachera_liters") @db.Decimal(12, 2)
+  ticketPhotoUrl          String?      @map("ticket_photo_url")
   coldEquipmentInstanceId String?      @map("cold_equipment_instance_id") @db.Uuid
   status                  RecordStatus @default(ACTIVE)
   correctsDeliveryId      String?      @map("corrects_delivery_id") @db.Uuid
@@ -795,9 +804,13 @@ model MilkDelivery {
   correctedBy           MilkDelivery[] @relation("DeliveryCorrection")
 
   @@index([tenantId, tamboId, periodStart])
+  @@index([tamboId, pickupDate, pickupShift])
   @@index([coldEquipmentInstanceId])
   @@index([correctsDeliveryId])
   @@index([tenantId, clientMutationId])
+  /// PARTIAL UNIQUE (migración SQL):
+  /// UNIQUE (tambo_id, pickup_date, pickup_shift) WHERE status = 'ACTIVE' AND pickup_date IS NOT NULL
+  ///
   /// FASE 2: lecturas automáticas del EKC 202 podrían precargar temp/volumen del tanque.
   /// FASE 3 COSTOS: liquidación / precio industria puede colgarse de esta reconciliación.
   @@map("milk_deliveries")

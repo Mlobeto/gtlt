@@ -12,6 +12,7 @@ import { AnimalsTab } from '../components/AnimalsTab'
 import { TeamTab } from '../components/TeamTab'
 import { SettingsTab } from '../components/SettingsTab'
 import { WorkReportsTab } from '../components/WorkReportsTab'
+import { DeliveriesTab } from '../components/DeliveriesTab'
 import { AppShell } from '../components/AppShell'
 import { Button } from '../components/ui'
 import { api } from '../lib/api'
@@ -23,7 +24,7 @@ interface DashboardPageProps {
   onSessionChange?: (next: AuthToken) => void
 }
 
-type Tab = 'today' | 'works' | 'tickets' | 'prototype' | 'accounts' | 'tambo-requests' | 'part-types' | 'hardware' | 'plans' | 'providers' | 'animals' | 'team' | 'settings'
+type Tab = 'today' | 'works' | 'deliveries' | 'tickets' | 'prototype' | 'accounts' | 'tambo-requests' | 'part-types' | 'hardware' | 'plans' | 'providers' | 'animals' | 'team' | 'settings'
 
 export function DashboardPage({ auth, onLogout, onSessionChange }: DashboardPageProps) {
   const isOwner = auth.roles.includes('DUENIO') || auth.roles.includes('ADMIN')
@@ -32,6 +33,7 @@ export function DashboardPage({ auth, onLogout, onSessionChange }: DashboardPage
     ? [
         { id: 'today', label: 'Hoy' },
         { id: 'works', label: 'Trabajos' },
+        { id: 'deliveries', label: 'Entregas' },
         { id: 'animals', label: 'Animales' },
         { id: 'team', label: 'Equipo' },
         { id: 'settings', label: 'Configuración' },
@@ -101,6 +103,7 @@ export function DashboardPage({ auth, onLogout, onSessionChange }: DashboardPage
         <div>
           {activeTab === 'today' && isOwner && <TodayTab auth={auth} />}
           {activeTab === 'works' && isOwner && <WorkReportsTab auth={auth} />}
+          {activeTab === 'deliveries' && isOwner && <DeliveriesTab auth={auth} />}
           {activeTab === 'tickets' && isDeveloper && !isOwner && (
             <TicketsTab
               auth={auth}

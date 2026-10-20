@@ -161,6 +161,10 @@ export async function pullServerState(
         d.coldTankTemperatureC == null ? null : toNum(d.coldTankTemperatureC),
       truck_temperature_c:
         d.truckTemperatureC == null ? null : toNum(d.truckTemperatureC),
+      pickup_date: d.pickupDate ?? null,
+      pickup_shift: d.pickupShift ?? null,
+      guachera_liters: d.guacheraLiters == null ? null : toNum(d.guacheraLiters),
+      ticket_photo_url: d.ticketPhotoUrl ?? null,
       notes: null,
       status: d.status,
     })),
@@ -522,6 +526,10 @@ export async function queueMilkDeliveryOffline(input: {
   truckDeclaredLiters: number;
   coldTankTemperatureC?: number | null;
   truckTemperatureC?: number | null;
+  pickupDate?: string | null;
+  pickupShift?: "MORNING" | "AFTERNOON" | null;
+  guacheraLiters?: number | null;
+  ticketPhotoUrl?: string | null;
   notes?: string;
 }): Promise<string> {
   const id = Crypto.randomUUID();
@@ -534,6 +542,10 @@ export async function queueMilkDeliveryOffline(input: {
     truckDeclaredLiters: input.truckDeclaredLiters,
     coldTankTemperatureC: input.coldTankTemperatureC ?? null,
     truckTemperatureC: input.truckTemperatureC ?? null,
+    pickupDate: input.pickupDate ?? null,
+    pickupShift: input.pickupShift ?? null,
+    guacheraLiters: input.guacheraLiters ?? null,
+    ticketPhotoUrl: input.ticketPhotoUrl ?? null,
     notes: input.notes,
     clientMutationId: id,
   };
@@ -547,6 +559,10 @@ export async function queueMilkDeliveryOffline(input: {
     truck_declared_liters: input.truckDeclaredLiters,
     cold_tank_temperature_c: input.coldTankTemperatureC ?? null,
     truck_temperature_c: input.truckTemperatureC ?? null,
+    pickup_date: input.pickupDate ?? null,
+    pickup_shift: input.pickupShift ?? null,
+    guachera_liters: input.guacheraLiters ?? null,
+    ticket_photo_url: input.ticketPhotoUrl ?? null,
     notes: input.notes ?? null,
     pending: 1,
     status: "ACTIVE",

@@ -347,6 +347,36 @@ export type DeviceItem = {
   createdAt: string
 }
 
+export type MilkDeliveryComparison = {
+  status: 'OK' | 'ALERT' | 'NO_THRESHOLD' | 'NOT_COMPARABLE'
+  reason?: 'FIRST_DELIVERY' | 'NO_PICKUP_MOMENT' | 'MISSING_TURNS' | 'ZERO_MEASURED'
+  measuredLiters: number
+  guacheraLiters: number
+  expectedLiters: number
+  factoryLiters: number
+  differenceLiters: number
+  differencePct: number
+  missingTurns: { date: string; shift: 'MORNING' | 'AFTERNOON' }[]
+}
+
+export type MilkDeliveryComparisonItem = {
+  delivery: {
+    id: string
+    pickupDate: string | null
+    pickupShift: 'MORNING' | 'AFTERNOON' | null
+    coldTankLiters: number
+    truckDeclaredLiters: number
+    guacheraLiters: number | null
+    ticketPhotoUrl: string | null
+  }
+  previous: {
+    id: string
+    pickupDate: string | null
+    pickupShift: 'MORNING' | 'AFTERNOON' | null
+  } | null
+  comparison: MilkDeliveryComparison
+}
+
 export const api = {
   async login(email: string, password: string, tenantId?: string) {
     const res = await fetch(`${API_URL}/auth/login`, {
@@ -630,7 +660,39 @@ export const api = {
         latitude?: number | null
         longitude?: number | null
         address?: string | null
+        deliveryDiffThresholdPct?: number | null
       }[]
+    }>
+  },
+
+  async updateTamboDeliverySettings(
+    token: string,
+    tamboId: string,
+    deliveryDiffThresholdPct: number | null,
+  ) {
+    const res = await fetch(`${API_URL}/tambos/${tamboId}/settings`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ deliveryDiffThresholdPct }),
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo guardar el umbral de entrega')
+    return res.json() as Promise<{
+      item: { id: string; name: string; deliveryDiffThresholdPct: number | null }
+    }>
+  },
+
+  async getMilkDeliveryComparisons(token: string, tamboId: string, limit = 20) {
+    const params = new URLSearchParams({ tamboId, limit: String(limit) })
+    const res = await fetch(`${API_URL}/milk-deliveries/comparisons?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudieron cargar las entregas')
+    return res.json() as Promise<{
+      items: MilkDeliveryComparisonItem[]
+      thresholdPct: number | null
     }>
   },
 

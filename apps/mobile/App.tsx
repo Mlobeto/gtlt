@@ -59,7 +59,9 @@ import {
   updateTamboLocation,
   uploadPhoto,
   photoSource,
+  listMilkDeliveryComparisons,
   type AppNotification,
+  type MilkDeliveryComparisonItem,
   type PartInstanceItem,
   type PartTypeItem,
   type ServiceRequestItem,
@@ -423,6 +425,66 @@ function hoyISO(): string {
   return `${y}-${m}-${day}`;
 }
 
+function addLocalDaysISO(base: string, days: number): string {
+  const [y, m, d] = base.split("-").map(Number);
+  const dt = new Date(y, (m ?? 1) - 1, (d ?? 1) + days);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
+function isIsoDateLocal(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y, m, d] = value.split("-").map(Number);
+  const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
+  return (
+    dt.getFullYear() === y &&
+    dt.getMonth() === (m ?? 1) - 1 &&
+    dt.getDate() === d
+  );
+}
+
+function formatDayMonth(iso: string): string {
+  const [, m, d] = iso.split("-");
+  return `${d}/${m}`;
+}
+
+function deliveryMomentLabel(
+  date: string | null | undefined,
+  shift: string | null | undefined,
+): string {
+  if (!date || !shift) return "Sin momento";
+  const hoy = hoyISO();
+  const day =
+    date === hoy
+      ? "Hoy"
+      : date === addLocalDaysISO(hoy, -1)
+        ? "Ayer"
+        : date === addLocalDaysISO(hoy, -2)
+          ? "Anteayer"
+          : formatDayMonth(date);
+  const turn =
+    shift === "MORNING" ? "después de la mañana" : "después de la tarde";
+  return `${day} · ${turn}`;
+}
+
+function comparisonReasonLabel(item: MilkDeliveryComparisonItem): string {
+  const c = item.comparison;
+  if (c.reason === "FIRST_DELIVERY") return "Es la primera entrega";
+  if (c.reason === "NO_PICKUP_MOMENT") return "Esta entrega no tiene el momento";
+  if (c.reason === "MISSING_TURNS") {
+    const missing = c.missingTurns
+      .map(
+        (t) =>
+          `${formatDayMonth(t.date)} de la ${t.shift === "MORNING" ? "mañana" : "tarde"}`,
+      )
+      .join(", ");
+    return missing
+      ? `Falta cargar el ordeñe del ${missing}`
+      : "Faltan turnos de ordeñe";
+  }
+  if (c.reason === "ZERO_MEASURED") return "No hay litros ordeñados en el período";
+  return "";
+}
+
 function addDaysISO(days: number): string {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000)
     .toISOString()
@@ -466,6 +528,16 @@ function AppContent() {
   const [truckLiters, setTruckLiters] = useState("");
   const [tankTemp, setTankTemp] = useState("");
   const [truckTemp, setTruckTemp] = useState("");
+  const [pickupDay, setPickupDay] = useState<"hoy" | "ayer" | "anteayer" | "otra">(
+    "hoy",
+  );
+  const [pickupDateOther, setPickupDateOther] = useState("");
+  const [pickupShift, setPickupShift] = useState<"" | "MORNING" | "AFTERNOON">("");
+  const [guacheraLiters, setGuacheraLiters] = useState("");
+  const [ticketPhotoUrl, setTicketPhotoUrl] = useState<string | null>(null);
+  const [deliveryComparisons, setDeliveryComparisons] = useState<
+    MilkDeliveryComparisonItem[]
+  >([]);
   const [controlEarTag, setControlEarTag] = useState("101");
   const [controlBajada, setControlBajada] = useState("1");
   const [controlLiters, setControlLiters] = useState("");
@@ -1461,8 +1533,80 @@ function AppContent() {
     }
   }
 
+  function resolvedPickupDate(): string | null {
+    if (pickupDay === "hoy") return hoyISO();
+    if (pickupDay === "ayer") return addLocalDaysISO(hoyISO(), -1);
+    if (pickupDay === "anteayer") return addLocalDaysISO(hoyISO(), -2);
+    const other = pickupDateOther.trim();
+    return isIsoDateLocal(other) ? other : null;
+  }
+
+  async function loadDeliveryComparisons(forSession = session) {
+    if (!forSession || !isOwnerOrAdmin(forSession.roles ?? [])) {
+      setDeliveryComparisons([]);
+      return;
+    }
+    if (!online) return;
+    try {
+      const res = await listMilkDeliveryComparisons(
+        forSession.token,
+        forSession.tamboId,
+        5,
+      );
+      const withMoment = res.items.filter((item) => item.delivery.pickupDate);
+      setDeliveryComparisons(withMoment.slice(-5).reverse());
+    } catch {
+      setDeliveryComparisons([]);
+    }
+  }
+
+  async function pickTicketPhoto() {
+    if (!session) return;
+    if (!online) {
+      setStatus("La foto se puede agregar después");
+      return;
+    }
+    const cam = await ImagePicker.requestCameraPermissionsAsync();
+    let uri: string | undefined;
+    if (cam.granted) {
+      const shot = await ImagePicker.launchCameraAsync({
+        quality: 0.4,
+        allowsEditing: false,
+      });
+      if (!shot.canceled) uri = shot.assets[0]?.uri;
+    }
+    if (!uri) {
+      const gallery = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!gallery.granted) {
+        setStatus("Necesitamos permiso de cámara o galería para la foto.");
+        return;
+      }
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        quality: 0.4,
+        allowsEditing: false,
+      });
+      if (!picked.canceled) uri = picked.assets[0]?.uri;
+    }
+    if (!uri) return;
+    setBusy(true);
+    try {
+      const uploaded = await uploadPhoto(session.token, uri);
+      setTicketPhotoUrl(uploaded.url);
+      setStatus("Foto del ticket lista.");
+    } catch {
+      setStatus("No se pudo subir la foto del ticket.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleQueueDelivery() {
     if (!session) return;
+    const pickupDate = resolvedPickupDate();
+    if (!pickupDate || !pickupShift) {
+      setStatus("Elegí cuándo pasó el camión.");
+      return;
+    }
     const tank = Number(tankLiters.replace(",", "."));
     const truck = Number(truckLiters.replace(",", "."));
     if (!Number.isFinite(tank) || tank < 0 || !Number.isFinite(truck) || truck < 0) {
@@ -1471,6 +1615,13 @@ function AppContent() {
     }
     const tTemp = tankTemp.trim() ? Number(tankTemp.replace(",", ".")) : null;
     const trTemp = truckTemp.trim() ? Number(truckTemp.replace(",", ".")) : null;
+    const guachera = guacheraLiters.trim()
+      ? Number(guacheraLiters.replace(",", "."))
+      : null;
+    if (guachera != null && (!Number.isFinite(guachera) || guachera < 0)) {
+      setStatus("Anotá los litros de la guachera o dejalo vacío.");
+      return;
+    }
     const now = new Date().toISOString();
     setBusy(true);
     try {
@@ -1482,13 +1633,23 @@ function AppContent() {
         truckDeclaredLiters: truck,
         coldTankTemperatureC: tTemp,
         truckTemperatureC: trTemp,
+        pickupDate,
+        pickupShift,
+        guacheraLiters: guachera,
+        ticketPhotoUrl,
       });
       await refreshLocal(session.tamboId);
       setTankLiters("");
       setTruckLiters("");
       setTankTemp("");
       setTruckTemp("");
+      setGuacheraLiters("");
+      setTicketPhotoUrl(null);
+      setPickupDay("hoy");
+      setPickupDateOther("");
+      setPickupShift("");
       setStatus("Entrega guardada.");
+      await loadDeliveryComparisons(session);
     } catch {
       setStatus("No se pudo guardar la entrega.");
     } finally {
@@ -2747,6 +2908,9 @@ function AppContent() {
                           }
                           if (item.key === "parts" && session) {
                             void loadParts();
+                          }
+                          if (item.key === "delivery" && session) {
+                            void loadDeliveryComparisons(session);
                           }
                         }}
                       >
@@ -4726,10 +4890,83 @@ function AppContent() {
 
               {screen === "delivery" ? (
                 <View style={styles.card}>
-                  <Text style={styles.cardTitle}>🚛 Entrega de leche</Text>
+                  <Text style={styles.cardTitle}>Entrega de leche</Text>
                   <Text style={styles.help}>
-                    Litros del tanque vs lo que declara el camión, y temperaturas.
+                    Litros del tanque vs lo que declara el camión de la fábrica, y temperaturas.
                   </Text>
+                  <Text style={styles.label}>¿Cuándo pasó el camión?</Text>
+                  <View style={styles.wrapRow}>
+                    {(
+                      [
+                        ["hoy", "Hoy"],
+                        ["ayer", "Ayer"],
+                        ["anteayer", "Anteayer"],
+                        ["otra", "Otra fecha"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <Pressable
+                        key={key}
+                        style={[
+                          styles.choiceSmall,
+                          pickupDay === key && styles.choiceOn,
+                        ]}
+                        onPress={() => setPickupDay(key)}
+                      >
+                        <Text
+                          style={[
+                            styles.choiceText,
+                            pickupDay === key && styles.choiceTextOn,
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  {pickupDay === "otra" ? (
+                    <TextInput
+                      style={styles.input}
+                      value={pickupDateOther}
+                      onChangeText={setPickupDateOther}
+                      placeholder="AAAA-MM-DD"
+                      placeholderTextColor={colors.textMuted}
+                      autoCapitalize="none"
+                    />
+                  ) : null}
+                  <View style={styles.wrapRow}>
+                    <Pressable
+                      style={[
+                        styles.choiceSmall,
+                        pickupShift === "MORNING" && styles.choiceOn,
+                      ]}
+                      onPress={() => setPickupShift("MORNING")}
+                    >
+                      <Text
+                        style={[
+                          styles.choiceText,
+                          pickupShift === "MORNING" && styles.choiceTextOn,
+                        ]}
+                      >
+                        Después del ordeñe de la mañana
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.choiceSmall,
+                        pickupShift === "AFTERNOON" && styles.choiceOn,
+                      ]}
+                      onPress={() => setPickupShift("AFTERNOON")}
+                    >
+                      <Text
+                        style={[
+                          styles.choiceText,
+                          pickupShift === "AFTERNOON" && styles.choiceTextOn,
+                        ]}
+                      >
+                        Después del ordeñe de la tarde
+                      </Text>
+                    </Pressable>
+                  </View>
                   <Text style={styles.label}>Litros tanque</Text>
                   <TextInput
                     style={styles.input}
@@ -4744,6 +4981,38 @@ function AppContent() {
                     value={truckLiters}
                     onChangeText={setTruckLiters}
                   />
+                  <Text style={styles.label}>Leche para la guachera (litros)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="decimal-pad"
+                    value={guacheraLiters}
+                    onChangeText={setGuacheraLiters}
+                    placeholder="Opcional"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                  <Text style={styles.label}>Foto del ticket</Text>
+                  {online ? (
+                    <>
+                      <Pressable
+                        style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+                        onPress={() => void pickTicketPhoto()}
+                        disabled={busy}
+                      >
+                        <Text style={styles.buttonSecondaryText}>
+                          {ticketPhotoUrl ? "Cambiar foto del ticket" : "Sacar foto del ticket"}
+                        </Text>
+                      </Pressable>
+                      {ticketPhotoUrl && session ? (
+                        <Image
+                          source={photoSource(session.token, ticketPhotoUrl)}
+                          style={styles.animalPhoto}
+                          resizeMode="cover"
+                        />
+                      ) : null}
+                    </>
+                  ) : (
+                    <Text style={styles.help}>La foto se puede agregar después</Text>
+                  )}
                   <Text style={styles.label}>Temp. tanque (°C)</Text>
                   <TextInput
                     style={styles.input}
@@ -4776,10 +5045,67 @@ function AppContent() {
                   </Pressable>
                   {deliveries.slice(0, 5).map((d) => (
                     <Text key={d.id} style={styles.itemMeta}>
-                      Tanque {d.cold_tank_liters} L · Camión {d.truck_declared_liters} L
+                      {deliveryMomentLabel(d.pickup_date, d.pickup_shift)} · Tanque{" "}
+                      {d.cold_tank_liters} L · Camión {d.truck_declared_liters} L
                       {d.pending ? " · Falta enviar" : ""}
                     </Text>
                   ))}
+                  {isOwnerOrAdmin(session.roles ?? []) ? (
+                    <View style={styles.hoyDueBlock}>
+                      <Text style={styles.sectionInCard}>Comparación con la fábrica</Text>
+                      {!online ? (
+                        <Text style={styles.help}>La comparación se ve con señal.</Text>
+                      ) : deliveryComparisons.length === 0 ? (
+                        <Text style={styles.meta}>Todavía no hay entregas para comparar.</Text>
+                      ) : (
+                        deliveryComparisons.map((item) => (
+                          <View key={item.delivery.id} style={styles.item}>
+                            <Text style={styles.itemTitle}>
+                              {deliveryMomentLabel(
+                                item.delivery.pickupDate,
+                                item.delivery.pickupShift,
+                              )}
+                            </Text>
+                            {item.comparison.status === "NOT_COMPARABLE" ? (
+                              <Text style={styles.itemMeta}>
+                                {comparisonReasonLabel(item)}
+                              </Text>
+                            ) : (
+                              <>
+                                <Text style={styles.itemMeta}>
+                                  CAL midió {item.comparison.measuredLiters} L · fábrica{" "}
+                                  {item.comparison.factoryLiters} L
+                                </Text>
+                                <Text style={styles.itemMeta}>
+                                  Diferencia {item.comparison.differenceLiters > 0 ? "+" : ""}
+                                  {item.comparison.differenceLiters} L (
+                                  {item.comparison.differencePct > 0 ? "+" : ""}
+                                  {item.comparison.differencePct}%)
+                                </Text>
+                              </>
+                            )}
+                            {item.comparison.status === "OK" ? (
+                              <View style={[styles.chip, styles.chipOk]}>
+                                <Text style={styles.chipText}>OK</Text>
+                              </View>
+                            ) : null}
+                            {item.comparison.status === "ALERT" ? (
+                              <View style={[styles.chip, { backgroundColor: colors.dangerSoft }]}>
+                                <Text style={[styles.chipText, { color: colors.dangerText }]}>
+                                  Diferencia grande
+                                </Text>
+                              </View>
+                            ) : null}
+                            {item.comparison.status === "NOT_COMPARABLE" ? (
+                              <View style={styles.chipNeutral}>
+                                <Text style={styles.chipNeutralText}>Sin comparación</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                        ))
+                      )}
+                    </View>
+                  ) : null}
                 </View>
               ) : null}
 

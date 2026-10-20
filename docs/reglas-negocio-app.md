@@ -1,6 +1,6 @@
 # Reglas de negocio — capa aplicación / API
 
-**Última actualización:** 2026-10-11 (alta de cuenta)
+**Última actualización:** 2026-10-20 (entrega: momento del camión)
 
 Validaciones que **no** se expresan como constraint de PostgreSQL (dependen de otra tabla o de lógica de dominio). Implementar en servicios antes de dar por cerrado el CRUD/sync.
 
@@ -91,6 +91,38 @@ Contenedor de un trabajo: fecha (`performedAt`), resumen (hasta 2000), tareas (h
 ### Offline
 
 Registrar informes y cambios de piezas necesita conexión, igual que el resto de la carga de máquinas. No hay cola offline.
+
+## Entrega de leche (camión de la fábrica)
+
+En las pantallas se habla de **entrega** y **camión de la fábrica**. Nunca “retiro”: en CAL “retiro” es la leche que no se puede entregar por un tratamiento.
+
+### Momento
+
+- Cada entrega ACTIVE puede tener `pickupDate` (fecha calendario, sin hora) y `pickupShift` (`MORNING` o `AFTERNOON`): “después del ordeñe de la mañana/tarde”.
+- Se ordena por `(fecha, turno)` con la mañana antes que la tarde. No se usan horas ni zonas horarias.
+- El momento es obligatorio en los clientes actuales; un cliente viejo que no lo mande sigue pudiendo crear la entrega, queda “sin momento” y no es comparable.
+- Unicidad: un solo ACTIVE por `(tambo, pickup_date, pickup_shift)` cuando hay fecha (`milk_deliveries_one_active_per_pickup`). Conflicto → 409.
+
+### Qué ordeñes entran
+
+- Entran las `MilkingSession` ACTIVE de turnos **posteriores** al momento de la entrega anterior y **hasta** el momento de esta, inclusive en el extremo final.
+- La primera entrega del tambo no es comparable (no hay entrega anterior).
+- Si falta algún turno del período (hay dos por día), **no se calcula** la diferencia: se informa cuáles faltan. Una comparación con datos incompletos es peor que ninguna.
+- Sesiones `VOIDED` no cuentan.
+
+### Cuenta
+
+- `esperado = ordeñado − litros para la guachera`
+- `diferencia = litros de la fábrica − esperado`
+- `porcentaje = diferencia / esperado × 100` (un decimal). Un porcentaje negativo significa que la fábrica informa menos de lo que CAL midió.
+- Todavía **no** se descuentan vacas en tratamiento ni calostro: hace falta litros por vaca.
+
+### Umbral y quién ve
+
+- `Tambo.deliveryDiffThresholdPct` (0,1–50) es por tambo y **no tiene valor por defecto**. Si el dueño no lo configura, la comparación se muestra con estado `NO_THRESHOLD` y no marca alerta.
+- `|porcentaje| > umbral` → `ALERT`. Si no lo supera → `OK`.
+- Solo `DUENIO` y `ADMIN` ven la comparación (`GET /milk-deliveries/comparisons`). El tambero carga entregas y ve la lista de las suyas, sin diferencias.
+- La alerta es solo un estado en pantalla. Este prompt no envía avisos.
 
 ## Correcciones append-only
 

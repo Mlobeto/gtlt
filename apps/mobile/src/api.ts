@@ -576,10 +576,59 @@ export function fetchMilkDeliveries(token: string, tamboId: string) {
       truckDeclaredLiters: string | number;
       coldTankTemperatureC: string | number | null;
       truckTemperatureC: string | number | null;
+      pickupDate?: string | null;
+      pickupShift?: "MORNING" | "AFTERNOON" | null;
+      guacheraLiters?: string | number | null;
+      ticketPhotoUrl?: string | null;
       status: string;
     }[];
   }>(
     `/milk-deliveries?tamboId=${encodeURIComponent(tamboId)}&status=ACTIVE`,
+    { token },
+  );
+}
+
+export type MilkDeliveryComparison = {
+  status: "OK" | "ALERT" | "NO_THRESHOLD" | "NOT_COMPARABLE";
+  reason?: "FIRST_DELIVERY" | "NO_PICKUP_MOMENT" | "MISSING_TURNS" | "ZERO_MEASURED";
+  measuredLiters: number;
+  guacheraLiters: number;
+  expectedLiters: number;
+  factoryLiters: number;
+  differenceLiters: number;
+  differencePct: number;
+  missingTurns: { date: string; shift: "MORNING" | "AFTERNOON" }[];
+};
+
+export type MilkDeliveryComparisonItem = {
+  delivery: {
+    id: string;
+    pickupDate: string | null;
+    pickupShift: "MORNING" | "AFTERNOON" | null;
+    coldTankLiters: number;
+    truckDeclaredLiters: number;
+    guacheraLiters: number | null;
+    ticketPhotoUrl: string | null;
+  };
+  previous: {
+    id: string;
+    pickupDate: string | null;
+    pickupShift: "MORNING" | "AFTERNOON" | null;
+  } | null;
+  comparison: MilkDeliveryComparison;
+};
+
+export function listMilkDeliveryComparisons(
+  token: string,
+  tamboId: string,
+  limit = 5,
+) {
+  const params = new URLSearchParams({
+    tamboId,
+    limit: String(limit),
+  });
+  return request<{ items: MilkDeliveryComparisonItem[]; thresholdPct: number | null }>(
+    `/milk-deliveries/comparisons?${params.toString()}`,
     { token },
   );
 }
@@ -595,6 +644,10 @@ export function createMilkDelivery(
     truckDeclaredLiters: number;
     coldTankTemperatureC?: number | null;
     truckTemperatureC?: number | null;
+    pickupDate?: string | null;
+    pickupShift?: "MORNING" | "AFTERNOON" | null;
+    guacheraLiters?: number | null;
+    ticketPhotoUrl?: string | null;
     notes?: string;
     clientMutationId: string;
   },

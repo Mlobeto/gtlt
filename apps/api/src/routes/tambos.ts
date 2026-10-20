@@ -65,6 +65,7 @@ tambosRouter.get("/", authenticate, async (req, res) => {
       longitude: true,
       address: true,
       powerSupply: true,
+      deliveryDiffThresholdPct: true,
     },
     orderBy: { name: "asc" },
   });
@@ -72,6 +73,12 @@ tambosRouter.get("/", authenticate, async (req, res) => {
   res.json({
     items: tambos.map((t) => ({
       ...t,
+      deliveryDiffThresholdPct:
+        t.deliveryDiffThresholdPct == null
+          ? null
+          : typeof t.deliveryDiffThresholdPct === "number"
+            ? t.deliveryDiffThresholdPct
+            : t.deliveryDiffThresholdPct.toNumber(),
       ...locationFields(t),
       state: tamboLifecycleState(t),
     })),
@@ -308,6 +315,55 @@ tambosRouter.patch(
         id: item.id,
         name: item.name,
         defaultServiceProviderId: item.defaultServiceProviderId,
+      },
+    });
+  },
+);
+
+tambosRouter.patch(
+  "/:tamboId/settings",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN"),
+  async (req, res) => {
+    const tamboId = String(req.params.tamboId);
+    const idParsed = z.string().uuid().safeParse(tamboId);
+    const body = z
+      .object({
+        deliveryDiffThresholdPct: z
+          .number()
+          .min(0.1)
+          .max(50)
+          .nullable(),
+      })
+      .safeParse(req.body);
+    if (!idParsed.success || !body.success) {
+      res.status(400).json({
+        error: "Invalid body",
+        details: body.success ? undefined : body.error.flatten(),
+      });
+      return;
+    }
+
+    const auth = req.auth!;
+    await requireTamboInTenant(auth, tamboId);
+
+    const item = await prisma.tambo.update({
+      where: { id: tamboId },
+      data: { deliveryDiffThresholdPct: body.data.deliveryDiffThresholdPct },
+      select: {
+        id: true,
+        name: true,
+        deliveryDiffThresholdPct: true,
+      },
+    });
+
+    res.json({
+      item: {
+        ...item,
+        deliveryDiffThresholdPct:
+          item.deliveryDiffThresholdPct == null
+            ? null
+            : item.deliveryDiffThresholdPct.toNumber(),
       },
     });
   },
