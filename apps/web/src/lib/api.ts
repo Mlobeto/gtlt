@@ -996,6 +996,15 @@ export const api = {
     return res.json() as Promise<import('../types/dashboard').AnimalSummary>
   },
 
+  async getAnimalGenealogy(token: string, animalId: string, generations = 3) {
+    const params = new URLSearchParams({ generations: String(generations) })
+    const res = await fetch(`${API_URL}/animals/${animalId}/genealogy?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo cargar la genealogía')
+    return res.json() as Promise<import('../types/dashboard').AnimalGenealogy>
+  },
+
   async getAdminSupportTickets(token: string, status?: string) {
     const params = new URLSearchParams()
     if (status) params.append('status', status)

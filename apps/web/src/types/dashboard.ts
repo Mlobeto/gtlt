@@ -130,3 +130,44 @@ export interface AnimalSummary {
   lastControl: { performedAt: string; liters: number; bajadaNumber: number } | null
   previousControl: { performedAt: string; liters: number; bajadaNumber: number } | null
 }
+
+export type AncestorNode =
+  | {
+      kind: 'ANIMAL'
+      id: string
+      earTag: string
+      status: string
+      birthDate: string | null
+      breed: string | null
+      photoUrl: string | null
+      tamboId: string
+      tamboName: string
+      mother: AncestorNode
+      father: AncestorNode
+      truncated: boolean
+    }
+  | {
+      kind: 'SIRE'
+      sireId: string
+      name: string
+      registrationCode: string | null
+      isExternal: boolean
+    }
+  | { kind: 'UNKNOWN' }
+
+export interface OffspringRow {
+  id: string
+  earTag: string
+  status: string
+  birthDate: string | null
+  breed: string | null
+  photoUrl: string | null
+  via: 'MOTHER' | 'SIRE'
+}
+
+export interface AnimalGenealogy {
+  animal: { id: string; earTag: string }
+  mother: AncestorNode
+  father: AncestorNode
+  offspring: OffspringRow[]
+}

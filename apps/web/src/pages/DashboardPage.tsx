@@ -54,10 +54,17 @@ export function DashboardPage({ auth, onLogout, onSessionChange }: DashboardPage
   if (canUseReaderLab) tabs.push({ id: 'lab', label: 'Laboratorio' })
 
   const [activeTab, setActiveTab] = useState<Tab>(isOwner ? 'today' : 'tickets')
+  const [refreshKey, setRefreshKey] = useState(0)
   const [helpOpen, setHelpOpen] = useState(false)
   const [loadingMe, setLoadingMe] = useState(true)
   const [user, setUser] = useState<any>(null)
   const [tenantName, setTenantName] = useState('')
+
+  const goHome = () => {
+    setActiveTab(isOwner ? 'today' : 'tickets')
+    setRefreshKey((k) => k + 1)
+    window.scrollTo(0, 0)
+  }
 
   useEffect(() => {
     const fetchMe = async () => {
@@ -91,6 +98,7 @@ export function DashboardPage({ auth, onLogout, onSessionChange }: DashboardPage
         onSelect={setActiveTab}
         user={{ name: !loadingMe && user ? user.name : 'Cargando...', role: roleLabel }}
         onLogout={onLogout}
+        onHome={goHome}
         headerRight={
           isOwner ? (
             <button
@@ -104,7 +112,7 @@ export function DashboardPage({ auth, onLogout, onSessionChange }: DashboardPage
           ) : undefined
         }
       >
-        <div>
+        <div key={refreshKey}>
           {activeTab === 'today' && isOwner && <TodayTab auth={auth} />}
           {activeTab === 'works' && isOwner && <WorkReportsTab auth={auth} />}
           {activeTab === 'deliveries' && isOwner && <DeliveriesTab auth={auth} />}

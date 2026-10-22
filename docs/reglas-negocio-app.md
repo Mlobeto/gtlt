@@ -1,6 +1,6 @@
 # Reglas de negocio — capa aplicación / API
 
-**Última actualización:** 2026-10-22 (ficha del animal en el web)
+**Última actualización:** 2026-10-22 (genealogía en la ficha)
 
 Validaciones que **no** se expresan como constraint de PostgreSQL (dependen de otra tabla o de lógica de dominio). Implementar en servicios antes de dar por cerrado el CRUD/sync.
 
@@ -343,3 +343,15 @@ No hay entidad de diagnóstico. Se toma el último `SERVICE`; si no hay `CALVING
 - Último y anterior control: dos `ControlLecheroLine` de controles `ACTIVE`, por fecha del control. La variación porcentual en el web es informativa.
 
 Las alertas se calculan solo para `ACTIVE` y `DRY`. Si falta un dato, la ficha muestra “—” u omite el bloque; no se rellena.
+
+### Genealogía (árbol)
+
+`GET /animals/:id/genealogy?generations=1..4` (por defecto 3: padres, abuelos, bisabuelos). El árbol se arma **por generación** (una consulta por nivel, no por nodo), solo dentro del tenant. Un ascendiente borrado o un ciclo en la misma línea se muestra como **“Sin dato”**. El mismo animal puede aparecer en dos ramas (p. ej. un abuelo por madre y por padre).
+
+- **Madre:** `Animal.motherId` → otra vaca (puede estar en otro tambo del tenant). De otro tambo solo van datos básicos (caravana, nacimiento, estado, raza, foto, nombre del tambo), nunca eventos.
+- **Padre:** `Animal.sireId` → `Sire`. Si el toro tiene `linkedAnimalId`, se resuelve como `Animal` y el árbol continúa; si no, es una hoja con nombre y código (“Toro externo” / “Toro propio”).
+- **Crías:** no hay campo de sexo, así que se listan **crías** (no “hijas”): `motherId = esta vaca`, y las de un toro propio por los `Sire` con `linkedAnimalId` igual a ella. Hasta 100, de la más nueva a la más vieja.
+- Lo que falta no se inventa: nodo `UNKNOWN`, texto “Sin dato”.
+- La carga de madre y padre es en el celular; el web es de solo lectura.
+
+**Estas reglas de árbol viven en** `apps/api/src/lib/pedigree.ts` **y se chequean con** `apps/api/src/scripts/verify-pedigree.ts`.

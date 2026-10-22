@@ -11,7 +11,8 @@ import {
   naturalCompare,
 } from '../lib/format'
 import type { AuthToken } from '../types/auth'
-import type { Animal, AnimalSummary, TimelineItem } from '../types/dashboard'
+import type { Animal, AnimalGenealogy, AnimalSummary, TimelineItem } from '../types/dashboard'
+import { PedigreeTree } from './PedigreeTree'
 import { TamboPicker, useTamboId } from './TamboPicker'
 import { Badge, Card, EmptyState, ErrorBanner, Field, StatCard, type BadgeTone } from './ui'
 
@@ -21,6 +22,7 @@ interface AnimalsTabProps {
 
 type StatusFilter = 'all' | 'ACTIVE' | 'DRY'
 type KindFilter = 'all' | TimelineItem['kind']
+type FichaTab = 'history' | 'genealogy'
 
 const KIND_CHIPS: { id: KindFilter; label: string }[] = [
   { id: 'all', label: 'Todos' },
@@ -239,6 +241,10 @@ export function AnimalsTab({ auth }: AnimalsTabProps) {
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [kindFilter, setKindFilter] = useState<KindFilter>('all')
+  const [fichaTab, setFichaTab] = useState<FichaTab>('history')
+  const [genealogy, setGenealogy] = useState<AnimalGenealogy | null>(null)
+  const [loadingGenealogy, setLoadingGenealogy] = useState(false)
+  const [genealogyError, setGenealogyError] = useState('')
   const today = localToday()
 
   useEffect(() => {
@@ -248,6 +254,7 @@ export function AnimalsTab({ auth }: AnimalsTabProps) {
       setSelectedId(null)
       setSummary(null)
       setTimeline([])
+      setGenealogy(null)
       setQuery('')
       setLoading(false)
       return
@@ -264,8 +271,11 @@ export function AnimalsTab({ auth }: AnimalsTabProps) {
         setSelectedId(null)
         setSummary(null)
         setTimeline([])
+        setGenealogy(null)
         setQuery('')
         setStatusFilter('all')
+        setFichaTab('history')
+        setKindFilter('all')
       } catch (err) {
         if (cancelled) return
         setError(err instanceof Error ? err.message : 'Error al cargar animales')
@@ -298,12 +308,14 @@ export function AnimalsTab({ auth }: AnimalsTabProps) {
     })
   }, [sorted, statusFilter, query])
 
-  const openAnimal = async (animal: Animal) => {
+  const openAnimal = async (animal: Animal, tab: FichaTab = 'history') => {
     setSelectedId(animal.id)
     setSummary(null)
     setTimeline([])
+    setGenealogy(null)
     setFichaError('')
     setKindFilter('all')
+    setFichaTab(tab)
     setLoadingFicha(true)
     const errors: string[] = []
     const [sumRes, timeRes] = await Promise.allSettled([
@@ -318,6 +330,30 @@ export function AnimalsTab({ auth }: AnimalsTabProps) {
     setLoadingFicha(false)
   }
 
+  useEffect(() => {
+    if (!selectedId || fichaTab !== 'genealogy') return
+    let cancelled = false
+    const load = async () => {
+      try {
+        setLoadingGenealogy(true)
+        setGenealogyError('')
+        const data = await api.getAnimalGenealogy(auth.token, selectedId, 3)
+        if (!cancelled) setGenealogy(data)
+      } catch (err) {
+        if (!cancelled) {
+          setGenealogy(null)
+          setGenealogyError(err instanceof Error ? err.message : 'No se pudo cargar la genealogía')
+        }
+      } finally {
+        if (!cancelled) setLoadingGenealogy(false)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [auth.token, selectedId, fichaTab])
+
   const selected = sorted.find((a) => a.id === selectedId) ?? summary?.animal ?? null
   const preg = pregnancyCard(summary, today)
   const lactationNumber = summary?.lactation.lactationNumber ?? 0
@@ -328,6 +364,14 @@ export function AnimalsTab({ auth }: AnimalsTabProps) {
   const notes = selected?.notes ?? summary?.animal.notes
   const birth = selected?.birthDate ?? summary?.animal.birthDate
   const age = ageText(birth, today)
+
+  const kindCounts = useMemo(() => {
+    const c: Record<string, number> = { all: timeline.length }
+    for (const item of timeline) {
+      c[item.kind] = (c[item.kind] ?? 0) + 1
+    }
+    return c
+  }, [timeline])
 
   const groupedTimeline = useMemo(() => {
     const items = kindFilter === 'all' ? timeline : timeline.filter((i) => i.kind === kindFilter)
@@ -523,28 +567,72 @@ export function AnimalsTab({ auth }: AnimalsTabProps) {
                   </div>
                 ) : null}
 
-                <div>
-                  <h5 className="text-sm font-semibold text-ink mb-2">Historial</h5>
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {KIND_CHIPS.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        className={chipBtn(kindFilter === c.id)}
-                        onClick={() => setKindFilter(c.id)}
-                      >
-                        {c.label}
-                      </button>
-                    ))}
-                  </div>
+                <div
+                  role="tablist"
+                  aria-label="Secciones de la ficha"
+                  className="flex flex-wrap gap-2"
+                  onKeyDown={(e) => {
+                    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
+                    e.preventDefault()
+                    setFichaTab((t) => (t === 'history' ? 'genealogy' : 'history'))
+                  }}
+                >
+                  {(
+                    [
+                      { id: 'history' as const, label: 'Historial' },
+                      { id: 'genealogy' as const, label: 'Genealogía' },
+                    ]
+                  ).map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      role="tab"
+                      id={`animal-tab-${t.id}`}
+                      aria-selected={fichaTab === t.id}
+                      aria-controls={`animal-panel-${t.id}`}
+                      tabIndex={fichaTab === t.id ? 0 : -1}
+                      className={chipBtn(fichaTab === t.id)}
+                      onClick={() => setFichaTab(t.id)}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
+                {fichaTab === 'history' ? (
+                <div role="tabpanel" id="animal-panel-history" aria-labelledby="animal-tab-history">
                   {loadingFicha && timeline.length === 0 ? (
                     <div className="text-center py-4">
                       <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
                     </div>
                   ) : timeline.length === 0 ? (
                     <p className="text-sm text-ink-muted">Todavía no hay eventos para este animal.</p>
-                  ) : groupedTimeline.length === 0 ? (
-                    <p className="text-sm text-ink-muted">Ningún evento de este tipo.</p>
+                  ) : (
+                    <>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {KIND_CHIPS.map((c) => {
+                      const count = kindCounts[c.id] ?? 0
+                      const disabled = c.id !== 'all' && count === 0
+                      return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        disabled={disabled}
+                        aria-disabled={disabled}
+                        className={`${chipBtn(kindFilter === c.id)} ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        onClick={() => {
+                          if (!disabled) setKindFilter(c.id)
+                        }}
+                      >
+                        {c.id === 'all' ? `${c.label} (${kindCounts.all})` : `${c.label} (${count})`}
+                      </button>
+                      )
+                    })}
+                  </div>
+                  {groupedTimeline.length === 0 ? (
+                    <p className="text-sm text-ink-muted">
+                      No hay eventos de {KIND_LABEL[kindFilter] ?? kindFilter}.
+                    </p>
                   ) : (
                     <div className="space-y-4">
                       {groupedTimeline.map((group) => (
@@ -596,7 +684,38 @@ export function AnimalsTab({ auth }: AnimalsTabProps) {
                       ))}
                     </div>
                   )}
+                    </>
+                  )}
                 </div>
+                ) : (
+                <div role="tabpanel" id="animal-panel-genealogy" aria-labelledby="animal-tab-genealogy">
+                  {genealogyError ? <ErrorBanner>{genealogyError}</ErrorBanner> : null}
+                  {loadingGenealogy ? (
+                    <div className="text-center py-4">
+                      <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+                    </div>
+                  ) : genealogy && selected ? (
+                    <PedigreeTree
+                      mother={genealogy.mother}
+                      father={genealogy.father}
+                      offspring={genealogy.offspring}
+                      root={{
+                        id: selected.id,
+                        earTag: selected.earTag,
+                        status: selected.status,
+                        birthDate: selected.birthDate,
+                        breed: selected.breed,
+                        photoUrl: selected.photoUrl,
+                        tamboId: selected.tamboId,
+                      }}
+                      token={auth.token}
+                      currentTamboId={tamboId ?? selected.tamboId}
+                      animals={animals}
+                      onSelect={(a) => void openAnimal(a, 'genealogy')}
+                    />
+                  ) : null}
+                </div>
+                )}
               </div>
             </Card>
           )}

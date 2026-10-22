@@ -19,6 +19,7 @@ export function AppShell<K extends string>({
   user,
   onLogout,
   headerRight,
+  onHome,
   children,
 }: {
   title: ReactNode
@@ -29,13 +30,25 @@ export function AppShell<K extends string>({
   user?: { name: string; role: string }
   onLogout: () => void
   headerRight?: ReactNode
+  onHome?: () => void
   children: ReactNode
 }) {
   return (
     <div className="min-h-screen bg-subtle">
       <header className="print-hide bg-accent rounded-b-[44px] px-4 sm:px-6 lg:px-9 pt-5 pb-7">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-          <img src="/cal-logo-negro.png" alt="CAL" className="h-10 w-auto" />
+          {onHome ? (
+            <button
+              type="button"
+              onClick={onHome}
+              aria-label="CAL, ir al inicio"
+              className={`h-10 shrink-0 rounded-lg ${focusRing}`}
+            >
+              <img src="/cal-logo-negro.png" alt="" className="h-10 w-auto" />
+            </button>
+          ) : (
+            <img src="/cal-logo-negro.png" alt="CAL" className="h-10 w-auto" />
+          )}
           <nav
             aria-label="Secciones"
             className="order-last w-full flex gap-2 overflow-x-auto lg:order-none lg:w-auto lg:flex-1 lg:flex-wrap lg:justify-center lg:overflow-visible"

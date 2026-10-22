@@ -13,6 +13,13 @@ import {
   derivePregnancy,
   utcDay,
 } from "../lib/animal-insights.js";
+import {
+  buildPedigree,
+  dateOnly as pedigreeDateOnly,
+  listOffspring,
+  type PedigreeAnimal,
+  type PedigreeSire,
+} from "../lib/pedigree.js";
 
 export const animalsRouter = Router();
 
@@ -581,5 +588,149 @@ animalsRouter.get("/:id/summary", authenticate, async (req, res) => {
     alerts,
     lastControl: toControl(last),
     previousControl: toControl(previous),
+  });
+});
+
+const genealogyQuerySchema = z.object({
+  generations: z.coerce.number().int().min(1).max(4).optional().default(3),
+});
+
+function toPedigreeAnimal(
+  row: {
+    id: string;
+    earTag: string;
+    status: string;
+    birthDate: Date | null;
+    breed: string | null;
+    photoUrl: string | null;
+    tamboId: string;
+    motherId: string | null;
+    sireId: string | null;
+    deletedAt: Date | null;
+    tambo: { id: string; name: string };
+  },
+): PedigreeAnimal {
+  return {
+    id: row.id,
+    earTag: row.earTag,
+    status: row.status,
+    birthDate: pedigreeDateOnly(row.birthDate),
+    breed: row.breed,
+    photoUrl: row.photoUrl,
+    tamboId: row.tamboId,
+    tamboName: row.tambo.name,
+    motherId: row.motherId,
+    sireId: row.sireId,
+    deletedAt: row.deletedAt,
+  };
+}
+
+animalsRouter.get("/:id/genealogy", authenticate, async (req, res) => {
+  const parsed = genealogyQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid query", details: parsed.error.flatten() });
+    return;
+  }
+
+  const auth = req.auth!;
+  const id = String(req.params.id);
+  const generations = parsed.data.generations;
+
+  const root = await prisma.animal.findFirst({
+    where: { id, tenantId: auth.tenantId, deletedAt: null },
+    include: { tambo: { select: { id: true, name: true } } },
+  });
+  if (!root) throw new HttpError(404, "Animal not found");
+  await requireTamboInTenant(auth, root.tamboId);
+
+  const animalsById = new Map<string, PedigreeAnimal>();
+  const siresById = new Map<string, PedigreeSire>();
+  animalsById.set(root.id, toPedigreeAnimal(root));
+
+  let frontier: string[] = [root.id];
+  for (let level = 0; level < generations; level += 1) {
+    const current = frontier
+      .map((fid) => animalsById.get(fid))
+      .filter((a): a is PedigreeAnimal => a != null && a.deletedAt == null);
+    const nextAnimalIds = new Set<string>();
+    const sireIds = new Set<string>();
+    for (const a of current) {
+      if (a.motherId && !animalsById.has(a.motherId)) nextAnimalIds.add(a.motherId);
+      if (a.sireId && !siresById.has(a.sireId)) sireIds.add(a.sireId);
+    }
+
+    if (sireIds.size > 0) {
+      const sires = await prisma.sire.findMany({
+        where: { tenantId: auth.tenantId, id: { in: [...sireIds] } },
+      });
+      for (const s of sires) {
+        siresById.set(s.id, {
+          id: s.id,
+          name: s.name,
+          registrationCode: s.registrationCode,
+          isExternal: s.isExternal,
+          linkedAnimalId: s.linkedAnimalId,
+        });
+        if (s.linkedAnimalId && !animalsById.has(s.linkedAnimalId)) {
+          nextAnimalIds.add(s.linkedAnimalId);
+        }
+      }
+    }
+
+    if (nextAnimalIds.size === 0) {
+      frontier = [];
+      continue;
+    }
+
+    const rows = await prisma.animal.findMany({
+      where: { tenantId: auth.tenantId, id: { in: [...nextAnimalIds] } },
+      include: { tambo: { select: { id: true, name: true } } },
+    });
+    frontier = [];
+    for (const row of rows) {
+      animalsById.set(row.id, toPedigreeAnimal(row));
+      if (!row.deletedAt) frontier.push(row.id);
+    }
+  }
+
+  const tree = buildPedigree({
+    rootId: root.id,
+    animalsById,
+    siresById,
+    generations,
+  });
+
+  const linkedSires = await prisma.sire.findMany({
+    where: { tenantId: auth.tenantId, linkedAnimalId: id },
+  });
+  const offspringAnimals = await prisma.animal.findMany({
+    where: {
+      tenantId: auth.tenantId,
+      deletedAt: null,
+      OR: [
+        { motherId: id },
+        ...(linkedSires.length > 0 ? [{ sireId: { in: linkedSires.map((s) => s.id) } }] : []),
+      ],
+    },
+    include: { tambo: { select: { id: true, name: true } } },
+  });
+
+  const offspring = listOffspring({
+    parentAnimalId: id,
+    animals: offspringAnimals.map(toPedigreeAnimal),
+    sires: linkedSires.map((s) => ({
+      id: s.id,
+      name: s.name,
+      registrationCode: s.registrationCode,
+      isExternal: s.isExternal,
+      linkedAnimalId: s.linkedAnimalId,
+    })),
+  }).slice(0, 100);
+
+  res.json({
+    animal: { id: root.id, earTag: root.earTag },
+    mother: tree.mother,
+    father: tree.father,
+    offspring,
   });
 });

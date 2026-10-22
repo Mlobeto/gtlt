@@ -135,6 +135,7 @@ export function TechnicianDashboardPage({
   onSessionChange,
 }: TechnicianDashboardPageProps) {
   const [view, setView] = useState<'inbox' | 'tambo'>('inbox')
+  const [refreshKey, setRefreshKey] = useState(0)
   const [tamboId, setTamboId] = useState('')
   const [loadingMe, setLoadingMe] = useState(true)
   const [user, setUser] = useState<{ name: string } | null>(null)
@@ -266,6 +267,12 @@ export function TechnicianDashboardPage({
     setError('')
   }
 
+  const goHome = () => {
+    setView('inbox')
+    setRefreshKey((k) => k + 1)
+    window.scrollTo(0, 0)
+  }
+
   const nav: NavItem<'inbox' | 'tambo'>[] = [{ key: 'inbox', label: 'Bandeja' }]
   if (tamboId) nav.push({ key: 'tambo', label: workspaceTambo?.name ?? 'Tambo' })
 
@@ -278,6 +285,7 @@ export function TechnicianDashboardPage({
       onSelect={(key) => (key === 'inbox' ? backToInbox() : setView('tambo'))}
       user={{ name: !loadingMe && user ? user.name : 'Cargando...', role: 'Técnico' }}
       onLogout={onLogout}
+      onHome={goHome}
       headerRight={
         view === 'tambo' ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -289,7 +297,7 @@ export function TechnicianDashboardPage({
         ) : undefined
       }
     >
-      <div className="space-y-6">
+      <div className="space-y-6" key={refreshKey}>
         {error && <ErrorBanner>{error}</ErrorBanner>}
         {statusMsg && (
           <div className="bg-success-soft border border-success/30 text-success-text px-4 py-3 rounded-lg text-sm">
