@@ -13,6 +13,7 @@ import { TeamTab } from '../components/TeamTab'
 import { SettingsTab } from '../components/SettingsTab'
 import { WorkReportsTab } from '../components/WorkReportsTab'
 import { DeliveriesTab } from '../components/DeliveriesTab'
+import { ReaderLabTab } from '../components/ReaderLabTab'
 import { AppShell } from '../components/AppShell'
 import { Button } from '../components/ui'
 import { api } from '../lib/api'
@@ -24,11 +25,12 @@ interface DashboardPageProps {
   onSessionChange?: (next: AuthToken) => void
 }
 
-type Tab = 'today' | 'works' | 'deliveries' | 'tickets' | 'prototype' | 'accounts' | 'tambo-requests' | 'part-types' | 'hardware' | 'plans' | 'providers' | 'animals' | 'team' | 'settings'
+type Tab = 'today' | 'works' | 'deliveries' | 'tickets' | 'prototype' | 'accounts' | 'tambo-requests' | 'part-types' | 'hardware' | 'plans' | 'providers' | 'animals' | 'team' | 'settings' | 'lab'
 
 export function DashboardPage({ auth, onLogout, onSessionChange }: DashboardPageProps) {
   const isOwner = auth.roles.includes('DUENIO') || auth.roles.includes('ADMIN')
   const isDeveloper = auth.roles.includes('DESARROLLADORA')
+  const canUseReaderLab = isDeveloper && auth.roles.length === 1
   const tabs: { id: Tab; label: string }[] = isOwner
     ? [
         { id: 'today', label: 'Hoy' },
@@ -48,6 +50,8 @@ export function DashboardPage({ auth, onLogout, onSessionChange }: DashboardPage
         { id: 'providers', label: 'Proveedores' },
         { id: 'plans', label: 'Planes' },
       ]
+
+  if (canUseReaderLab) tabs.push({ id: 'lab', label: 'Laboratorio' })
 
   const [activeTab, setActiveTab] = useState<Tab>(isOwner ? 'today' : 'tickets')
   const [helpOpen, setHelpOpen] = useState(false)
@@ -119,6 +123,7 @@ export function DashboardPage({ auth, onLogout, onSessionChange }: DashboardPage
           {activeTab === 'hardware' && isDeveloper && <HardwareProductsAdminTab auth={auth} />}
           {activeTab === 'providers' && isDeveloper && <ServiceProvidersAdminTab auth={auth} />}
           {activeTab === 'plans' && isDeveloper && <PlansTab auth={auth} />}
+          {activeTab === 'lab' && canUseReaderLab && <ReaderLabTab />}
           {activeTab === 'animals' && isOwner && <AnimalsTab auth={auth} />}
           {activeTab === 'team' && isOwner && <TeamTab auth={auth} />}
           {activeTab === 'settings' && isOwner && (
