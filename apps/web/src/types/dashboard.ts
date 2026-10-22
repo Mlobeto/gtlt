@@ -103,6 +103,25 @@ export interface TimelineItem {
   productName?: string | null
 }
 
+export type NotificationType =
+  | 'SERVICE_REQUESTED'
+  | 'SERVICE_PENDING_APPROVAL'
+  | 'SERVICE_APPROVED'
+  | 'SERVICE_REJECTED'
+  | 'ANIMAL_PHOTO_CONSULT'
+  | 'WORK_REPORT_SUBMITTED'
+
+export interface AppNotification {
+  id: string
+  type: NotificationType
+  title: string
+  body: string
+  payload: Record<string, unknown> | null
+  tamboId: string | null
+  readAt: string | null
+  createdAt: string
+}
+
 export type AnimalAlertCode =
   | 'DRY_OFF'
   | 'CALVING_SOON'

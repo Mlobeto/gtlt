@@ -996,6 +996,37 @@ export const api = {
     return res.json() as Promise<import('../types/dashboard').AnimalSummary>
   },
 
+  async getNotifications(token: string, unreadOnly = false) {
+    const params = new URLSearchParams()
+    params.set('unreadOnly', unreadOnly ? 'true' : 'false')
+    const res = await fetch(`${API_URL}/notifications?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los avisos')
+    return res.json() as Promise<{
+      items: import('../types/dashboard').AppNotification[]
+      unreadCount: number
+    }>
+  },
+
+  async markNotificationRead(token: string, id: string) {
+    const res = await fetch(`${API_URL}/notifications/${id}/read`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo marcar el aviso')
+    return res.json() as Promise<{ item: import('../types/dashboard').AppNotification }>
+  },
+
+  async markAllNotificationsRead(token: string) {
+    const res = await fetch(`${API_URL}/notifications/read-all`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudieron marcar los avisos')
+    return res.json() as Promise<{ updated: number }>
+  },
+
   async getAnimalGenealogy(token: string, animalId: string, generations = 3) {
     const params = new URLSearchParams({ generations: String(generations) })
     const res = await fetch(`${API_URL}/animals/${animalId}/genealogy?${params}`, {

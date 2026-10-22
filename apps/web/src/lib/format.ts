@@ -76,3 +76,26 @@ export function naturalCompare(a: string, b: string): number {
 export function eidDigits(eid: string | null | undefined): string {
   return (eid ?? '').replace(/[\s\-_]/g, '')
 }
+
+function startOfLocalDay(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+}
+
+export function timeAgo(iso: string, now: Date = new Date()): string {
+  const then = new Date(iso)
+  if (Number.isNaN(then.getTime())) return '—'
+  const diffMs = now.getTime() - then.getTime()
+  const diffSec = Math.max(0, Math.round(diffMs / 1000))
+  if (diffSec < 60) return 'hace un momento'
+  const diffMin = Math.round(diffSec / 60)
+  if (diffMin < 60) return `hace ${diffMin} min`
+  const today = startOfLocalDay(now)
+  const thatDay = startOfLocalDay(then)
+  const dayDiff = Math.round((today - thatDay) / DAY_MS)
+  if (dayDiff === 0) {
+    const hours = Math.max(1, Math.round(diffSec / 3600))
+    return `hace ${hours} h`
+  }
+  if (dayDiff === 1) return 'ayer'
+  return `${pad2(then.getDate())}/${pad2(then.getMonth() + 1)}`
+}

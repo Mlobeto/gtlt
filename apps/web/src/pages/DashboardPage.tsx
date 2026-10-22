@@ -15,6 +15,7 @@ import { WorkReportsTab } from '../components/WorkReportsTab'
 import { DeliveriesTab } from '../components/DeliveriesTab'
 import { ReaderLabTab } from '../components/ReaderLabTab'
 import { AppShell } from '../components/AppShell'
+import { NotificationsBell } from '../components/NotificationsBell'
 import { Button } from '../components/ui'
 import { api } from '../lib/api'
 import type { AuthToken } from '../types/auth'
@@ -54,6 +55,7 @@ export function DashboardPage({ auth, onLogout, onSessionChange }: DashboardPage
   if (canUseReaderLab) tabs.push({ id: 'lab', label: 'Laboratorio' })
 
   const [activeTab, setActiveTab] = useState<Tab>(isOwner ? 'today' : 'tickets')
+  const [focusAnimalId, setFocusAnimalId] = useState<string | undefined>()
   const [refreshKey, setRefreshKey] = useState(0)
   const [helpOpen, setHelpOpen] = useState(false)
   const [loadingMe, setLoadingMe] = useState(true)
@@ -99,6 +101,17 @@ export function DashboardPage({ auth, onLogout, onSessionChange }: DashboardPage
         user={{ name: !loadingMe && user ? user.name : 'Cargando...', role: roleLabel }}
         onLogout={onLogout}
         onHome={goHome}
+        bell={
+          <NotificationsBell
+            auth={auth}
+            activeTab={activeTab}
+            onNavigate={({ tab, animalId }) => {
+              if (!tabs.some((t) => t.id === tab)) return
+              setActiveTab(tab)
+              setFocusAnimalId(animalId)
+            }}
+          />
+        }
         headerRight={
           isOwner ? (
             <button
@@ -132,7 +145,9 @@ export function DashboardPage({ auth, onLogout, onSessionChange }: DashboardPage
           {activeTab === 'providers' && isDeveloper && <ServiceProvidersAdminTab auth={auth} />}
           {activeTab === 'plans' && isDeveloper && <PlansTab auth={auth} />}
           {activeTab === 'lab' && canUseReaderLab && <ReaderLabTab />}
-          {activeTab === 'animals' && isOwner && <AnimalsTab auth={auth} />}
+          {activeTab === 'animals' && isOwner && (
+            <AnimalsTab auth={auth} focusAnimalId={focusAnimalId} />
+          )}
           {activeTab === 'team' && isOwner && <TeamTab auth={auth} />}
           {activeTab === 'settings' && isOwner && (
             <SettingsTab auth={auth} onSessionChange={onSessionChange} />

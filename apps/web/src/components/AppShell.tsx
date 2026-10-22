@@ -20,6 +20,7 @@ export function AppShell<K extends string>({
   onLogout,
   headerRight,
   onHome,
+  bell,
   children,
 }: {
   title: ReactNode
@@ -31,6 +32,7 @@ export function AppShell<K extends string>({
   onLogout: () => void
   headerRight?: ReactNode
   onHome?: () => void
+  bell?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -83,6 +85,7 @@ export function AppShell<K extends string>({
             })}
           </nav>
           <div className="ml-auto flex items-center gap-2.5">
+            {bell}
             {headerRight}
             {subtitle ? (
               <span className="hidden sm:inline-flex h-11 items-center px-4 rounded-full border-[1.5px] border-ink text-[15px] font-bold">

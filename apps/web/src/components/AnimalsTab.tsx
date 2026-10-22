@@ -18,6 +18,7 @@ import { Badge, Card, EmptyState, ErrorBanner, Field, StatCard, type BadgeTone }
 
 interface AnimalsTabProps {
   auth: AuthToken
+  focusAnimalId?: string
 }
 
 type StatusFilter = 'all' | 'ACTIVE' | 'DRY'
@@ -229,7 +230,7 @@ function alertChip(code: string, daysDelta: number, date: string): { text: strin
   return null
 }
 
-export function AnimalsTab({ auth }: AnimalsTabProps) {
+export function AnimalsTab({ auth, focusAnimalId }: AnimalsTabProps) {
   const { tamboId, setTamboId, ready, error, setError } = useTamboId(auth.token)
   const [animals, setAnimals] = useState<Animal[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -329,6 +330,13 @@ export function AnimalsTab({ auth }: AnimalsTabProps) {
     setFichaError(errors.join('. '))
     setLoadingFicha(false)
   }
+
+  useEffect(() => {
+    if (!focusAnimalId || loading) return
+    const match = animals.find((a) => a.id === focusAnimalId)
+    if (!match || selectedId === match.id) return
+    void openAnimal(match)
+  }, [focusAnimalId, animals, loading, selectedId])
 
   useEffect(() => {
     if (!selectedId || fichaTab !== 'genealogy') return

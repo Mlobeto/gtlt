@@ -4,7 +4,7 @@ Documento vivo de **colores, tipografía, formularios y componentes**.
 Toda pantalla de producto (mobile y web) debe alinearse acá.  
 Complementa [ux-usuario.md](./ux-usuario.md) (idioma y simplicidad).
 
-**Última actualización:** 2026-10-17
+**Última actualización:** 2026-10-22
 
 ---
 
@@ -244,6 +244,18 @@ Mensajes de feedback **dentro del formulario**, arriba de los botones — nunca 
 - La barra se oculta con el teclado y no aparece en el login, el cambio obligatorio de clave ni para el técnico solo. El contenido desplazable reserva espacio para que su último elemento no quede debajo de la barra; cuando esta está visible, el margen seguro inferior lo gestiona la propia barra.
 - La campanita de la franja amarilla abre Avisos y muestra un punto cuando hay notificaciones sin leer.
 
+### Campana de avisos en el web
+
+`NotificationsBell` en el encabezado de `AppShell` (`bell`), a la izquierda del chip del tambo. Vale para dueño, administrador y desarrolladora.
+
+- **Actualización:** al montar, cada 60 s si la pestaña del navegador está visible, y al volver (`visibilitychange` / `focus`) con al menos 10 s entre consultas. Sin websockets, sin push del navegador, sin sonido.
+- **Contador:** insignia `danger` sobre `accent`, "9+" si hay más de 9. Un error de red no borra la lista ni el número; el error se ve en el panel, con "Reintentar".
+- **Al tocar un aviso:** se marca leído (optimista), se cierra el panel y se cambia de pestaña solo si el rol la tiene:
+  - `SERVICE_*` → Hoy
+  - `WORK_REPORT_SUBMITTED` → Trabajos
+  - `ANIMAL_PHOTO_CONSULT` → Animales, y la ficha si el `payload` trae `animalId`
+- Cierre: Escape, clic afuera o elegir un aviso; el foco vuelve a la campana.
+
 ---
 
 ## 10. Qué falta definir (abierto)
@@ -267,6 +279,7 @@ Mensajes de feedback **dentro del formulario**, arriba de los botones — nunca 
 
 ## Changelog
 
+- **2026-10-22** — Campana de avisos en el encabezado web (sondeo 60 s, panel, destino por tipo).
 - **2026-10-22** — Barra de navegación inferior mobile por rol, botón central Service/Dictar, ocultamiento con teclado y campanita de Avisos.
 - **2026-10-17** — Celular etapa 3: franja amarilla, `Icon`/`Ring`, mosaicos de inicio y anillos en Máquinas. `radius.md` 24.
 - **2026-10-17** — Paleta amarillo/negro/crema (etapa 1 del rediseño). `primary` es negro; `onPrimary` amarillo sobre negro; verde solo en tokens de éxito. Radios: sm 12 / md 24 / lg 28 / pill. `--font-brand` = DM Sans.

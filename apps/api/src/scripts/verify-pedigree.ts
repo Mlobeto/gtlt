@@ -171,10 +171,50 @@ const root = animal({ id: "r", earTag: "100" });
     tree.mother.mother.kind === "ANIMAL" &&
     tree.mother.mother.earTag === "2" &&
     tree.mother.mother.mother.kind === "UNKNOWN";
-  check("ciclo (un animal que es su propio ancestro)", cycleCut, JSON.stringify({
-    m: kindOf(tree.mother),
-    mm: tree.mother.kind === "ANIMAL" ? kindOf(tree.mother.mother) : "",
-  }));
+  check(
+    "ciclo en la línea (R→A→B→A, la raíz queda fuera del bucle)",
+    cycleCut,
+    JSON.stringify({
+      m: kindOf(tree.mother),
+      mm: tree.mother.kind === "ANIMAL" ? kindOf(tree.mother.mother) : "",
+    }),
+  );
+}
+
+{
+  const a = animal({ id: "a", earTag: "A", motherId: "b" });
+  const b = animal({ id: "b", earTag: "B", motherId: "a" });
+  const tree = buildPedigree({
+    rootId: "a",
+    generations: 4,
+    ...maps([a, b]),
+  });
+  const ok =
+    tree.mother.kind === "ANIMAL" &&
+    tree.mother.id === "b" &&
+    tree.mother.mother.kind === "UNKNOWN";
+  check(
+    "ciclo (1): la raíz es su propio ancestro (A←B←A)",
+    ok,
+    JSON.stringify({
+      mother: kindOf(tree.mother),
+      motherOfB: tree.mother.kind === "ANIMAL" ? kindOf(tree.mother.mother) : "",
+    }),
+  );
+}
+
+{
+  const a = animal({ id: "a", earTag: "A", motherId: "a" });
+  const tree = buildPedigree({
+    rootId: "a",
+    generations: 4,
+    ...maps([a]),
+  });
+  check(
+    "ciclo (2): un animal es su propia madre (motherId = A)",
+    tree.mother.kind === "UNKNOWN",
+    kindOf(tree.mother),
+  );
 }
 
 {
