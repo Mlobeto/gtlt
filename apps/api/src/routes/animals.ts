@@ -6,6 +6,13 @@ import { HttpError } from "../lib/http-error.js";
 import { requireTamboInTenant } from "../lib/tambo-scope.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
+import {
+  argentinaToday,
+  deriveAlerts,
+  deriveLactation,
+  derivePregnancy,
+  utcDay,
+} from "../lib/animal-insights.js";
 
 export const animalsRouter = Router();
 
@@ -73,6 +80,12 @@ function mapPrismaError(err: unknown): never {
 function dateOnly(d: Date | null | undefined): string | null {
   if (!d) return null;
   return d.toISOString().slice(0, 10);
+}
+
+function litersNum(value: { toNumber(): number } | number | string): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") return Number(value);
+  return value.toNumber();
 }
 
 /** motherId → debe existir en el mismo tenant (puede estar en otro tambo si se transfirió). */
@@ -187,6 +200,7 @@ animalsRouter.get("/:id", authenticate, async (req, res) => {
       type: e.type,
       summary: e.productName ?? e.type,
       notes: e.notes,
+      productName: e.productName,
       milkWithdrawalUntil: e.milkWithdrawalUntil?.toISOString() ?? null,
     })),
     ...reproEvents.map((e) => ({
@@ -205,8 +219,10 @@ animalsRouter.get("/:id", authenticate, async (req, res) => {
         id: l.id,
         at: l.controlLechero.performedAt.toISOString(),
         type: "CONTROL_LECHERO",
-        summary: `Bajada ${l.bajadaNumber} · ${l.liters} L`,
+        summary: `Bajada ${l.bajadaNumber} · ${litersNum(l.liters)} L`,
         notes: null as string | null,
+        liters: litersNum(l.liters),
+        bajadaNumber: l.bajadaNumber,
       })),
   ].sort((a, b) => (a.at < b.at ? 1 : -1));
 
@@ -405,6 +421,7 @@ animalsRouter.get("/:id/timeline", authenticate, async (req, res) => {
       type: e.type,
       summary: e.productName ?? e.type,
       notes: e.notes,
+      productName: e.productName,
       milkWithdrawalUntil: e.milkWithdrawalUntil?.toISOString() ?? null,
     })),
     ...reproEvents.map((e) => ({
@@ -432,8 +449,10 @@ animalsRouter.get("/:id/timeline", authenticate, async (req, res) => {
         id: l.id,
         at: l.controlLechero.performedAt.toISOString(),
         type: "CONTROL_LECHERO",
-        summary: `Bajada ${l.bajadaNumber} · ${l.liters} L`,
+        summary: `Bajada ${l.bajadaNumber} · ${litersNum(l.liters)} L`,
         notes: null as string | null,
+        liters: litersNum(l.liters),
+        bajadaNumber: l.bajadaNumber,
       })),
     ...weightEvents.map((w) => ({
       kind: "weight" as const,
@@ -456,4 +475,111 @@ animalsRouter.get("/:id/timeline", authenticate, async (req, res) => {
   ].sort((a, b) => (a.at < b.at ? 1 : -1));
 
   res.json({ items });
+});
+
+const summaryTodaySchema = z.object({
+  today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
+animalsRouter.get("/:id/summary", authenticate, async (req, res) => {
+  const parsed = summaryTodaySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid query", details: parsed.error.flatten() });
+    return;
+  }
+
+  const auth = req.auth!;
+  const id = String(req.params.id);
+  const today = parsed.data.today ?? argentinaToday();
+
+  const animal = await prisma.animal.findFirst({
+    where: { id, tenantId: auth.tenantId, deletedAt: null },
+    include: {
+      mother: { select: { id: true, earTag: true, deletedAt: true } },
+      sire: { select: { id: true, name: true, registrationCode: true } },
+    },
+  });
+  if (!animal) throw new HttpError(404, "Animal not found");
+  await requireTamboInTenant(auth, animal.tamboId);
+
+  const [reproEvents, healthEvents, controlLines] = await Promise.all([
+    prisma.reproEvent.findMany({
+      where: { tenantId: auth.tenantId, animalId: id, deletedAt: null },
+      orderBy: { eventAt: "desc" },
+    }),
+    prisma.healthEvent.findMany({
+      where: { tenantId: auth.tenantId, animalId: id, deletedAt: null },
+      orderBy: { eventAt: "desc" },
+    }),
+    prisma.controlLecheroLine.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        animalId: id,
+        controlLechero: { status: "ACTIVE" },
+      },
+      include: { controlLechero: { select: { performedAt: true } } },
+      orderBy: { controlLechero: { performedAt: "desc" } },
+      take: 2,
+    }),
+  ]);
+
+  const pregnancy = derivePregnancy(
+    reproEvents.map((e) => ({
+      type: e.type,
+      eventAt: e.eventAt.toISOString(),
+      expectedCalvingAt: dateOnly(e.expectedCalvingAt),
+    })),
+  );
+
+  const calvings = reproEvents
+    .filter((e) => e.type === "CALVING")
+    .map((e) => ({ eventAt: e.eventAt.toISOString() }));
+  const lactation = deriveLactation({
+    status: animal.status,
+    calvings,
+    today,
+  });
+
+  let withdrawalUntil: string | null = null;
+  for (const h of healthEvents) {
+    if (!h.milkWithdrawalUntil) continue;
+    const until = dateOnly(h.milkWithdrawalUntil);
+    if (!until) continue;
+    if (!withdrawalUntil || utcDay(until) > utcDay(withdrawalUntil)) {
+      withdrawalUntil = until;
+    }
+  }
+
+  const alerts = deriveAlerts({
+    status: animal.status,
+    pregnancy,
+    withdrawalUntil,
+    today,
+  });
+
+  const [last, previous] = controlLines;
+  const toControl = (row: (typeof controlLines)[number] | undefined) =>
+    row
+      ? {
+          performedAt: row.controlLechero.performedAt.toISOString(),
+          liters: litersNum(row.liters),
+          bajadaNumber: row.bajadaNumber,
+        }
+      : null;
+
+  const { mother, sire, ...animalRow } = animal;
+  res.json({
+    animal: {
+      ...animalRow,
+      birthDate: dateOnly(animal.birthDate),
+      enteredAt: dateOnly(animal.enteredAt),
+    },
+    mother: mother && !mother.deletedAt ? { id: mother.id, earTag: mother.earTag } : null,
+    sire: sire ? { id: sire.id, name: sire.name, registrationCode: sire.registrationCode } : null,
+    pregnancy,
+    lactation,
+    alerts,
+    lastControl: toControl(last),
+    previousControl: toControl(previous),
+  });
 });

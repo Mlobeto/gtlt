@@ -80,6 +80,12 @@ export interface Animal {
   status: 'ACTIVE' | 'DRY' | 'SOLD' | 'DEAD'
   birthDate: string | null
   breed?: string | null
+  electronicId?: string | null
+  photoUrl?: string | null
+  notes?: string | null
+  enteredAt?: string | null
+  motherId?: string | null
+  sireId?: string | null
 }
 
 export interface TimelineItem {
@@ -89,4 +95,38 @@ export interface TimelineItem {
   type: string
   summary: string
   notes: string | null
+  liters?: number
+  bajadaNumber?: number
+  photoUrl?: string | null
+  milkWithdrawalUntil?: string | null
+  expectedCalvingAt?: string | null
+  productName?: string | null
+}
+
+export type AnimalAlertCode =
+  | 'DRY_OFF'
+  | 'CALVING_SOON'
+  | 'CALVING_OVERDUE'
+  | 'PREGNANCY_CHECK'
+  | 'MILK_WITHDRAWAL'
+
+export interface AnimalSummary {
+  animal: Animal
+  mother: { id: string; earTag: string } | null
+  sire: { id: string; name: string; registrationCode: string | null } | null
+  pregnancy: {
+    pregnant: boolean
+    servedAt: string | null
+    expectedCalvingAt: string | null
+    lastCalvingAt: string | null
+    lastAbortionAt: string | null
+  }
+  lactation: {
+    lactationNumber: number
+    lastCalvingAt: string | null
+    daysInMilk: number | null
+  }
+  alerts: { code: AnimalAlertCode; daysDelta: number; date: string }[]
+  lastControl: { performedAt: string; liters: number; bajadaNumber: number } | null
+  previousControl: { performedAt: string; liters: number; bajadaNumber: number } | null
 }

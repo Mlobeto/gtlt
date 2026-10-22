@@ -1,6 +1,6 @@
 # Reglas de negocio — capa aplicación / API
 
-**Última actualización:** 2026-10-20 (entrega: momento del camión)
+**Última actualización:** 2026-10-22 (ficha del animal en el web)
 
 Validaciones que **no** se expresan como constraint de PostgreSQL (dependen de otra tabla o de lógica de dominio). Implementar en servicios antes de dar por cerrado el CRUD/sync.
 
@@ -312,3 +312,34 @@ La configuración del prototipo debe quedar centralizada para usarla en el dashb
 
 3. **No reemplaza**
    - Esta configuración no reemplaza la app del tambo ni su flujo de soporte; solo centraliza la info del prototipo activo para el equipo.
+
+## Ficha del animal
+
+El web (`GET /animals/:id/summary?today=AAAA-MM-DD`) y el celular calculan preñez, alertas de listas de acción y lactancia **con los mismos números**, sin un diagnóstico de preñez cargado.
+
+**Estas reglas existen en dos lugares (celular y API): si se cambia una, hay que cambiar la otra y los vectores** (`apps/mobile/src/animals/pregnancy.ts`, `apps/mobile/src/animals/actionLists.ts`, `apps/api/src/lib/animal-insights.ts`, `docs/vectores-animal-insights.json`).
+
+### Constantes (no alterar “a ojo”)
+
+- Gestación: **280** días calendario UTC desde el servicio, si no hay parto estimado explícito.
+- Parto próximo: **0 ≤ días al parto ≤ 30**.
+- Parto atrasado: **−15 ≤ días al parto &lt; 0**.
+- Para secar: animal `ACTIVE`, preñada, **0 &lt; días al parto ≤ 60**.
+- Tacto: preñada y **30 ≤ días desde el último servicio ≤ 60**.
+- Retiro de leche: vigente si `milkWithdrawalUntil` es **hoy o posterior**.
+
+### Preñez (se presume, no se diagnostica)
+
+No hay entidad de diagnóstico. Se toma el último `SERVICE`; si no hay `CALVING` ni `ABORTION` en o después de esa fecha, se presume preñez. En la ficha web el texto es **“Preñada, según el último servicio”**, nunca “Preñada” a secas ni “confirmada”. El parto estimado es el último evento posterior al servicio que sea `EXPECTED_CALVING` o traiga `expectedCalvingAt`; si no, el del propio servicio; si no, servicio + 280 días.
+
+### Fechas de solo día
+
+`birthDate`, `enteredAt`, parto estimado y fin de retiro se muestran con componentes **UTC** (`2023-03-12T00:00:00.000Z` = 12/03/2023). Los momentos con hora (eventos) van en hora local. `today` lo manda el navegador (`AAAA-MM-DD`); si falta, la API usa el día de `America/Argentina/Buenos_Aires`.
+
+### Lactancia y controles
+
+- Número de lactancia = cantidad de eventos `CALVING` cargados (no se inventa).
+- Días en leche: solo si el animal está `ACTIVE` y hay partos; si está `DRY` o no hay partos, no hay DIM.
+- Último y anterior control: dos `ControlLecheroLine` de controles `ACTIVE`, por fecha del control. La variación porcentual en el web es informativa.
+
+Las alertas se calculan solo para `ACTIVE` y `DRY`. Si falta un dato, la ficha muestra “—” u omite el bloque; no se rellena.

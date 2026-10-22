@@ -987,6 +987,15 @@ export const api = {
     return res.json()
   },
 
+  async getAnimalSummary(token: string, animalId: string, today: string) {
+    const params = new URLSearchParams({ today })
+    const res = await fetch(`${API_URL}/animals/${animalId}/summary?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw await toApiError(res, 'No se pudo cargar la ficha')
+    return res.json() as Promise<import('../types/dashboard').AnimalSummary>
+  },
+
   async getAdminSupportTickets(token: string, status?: string) {
     const params = new URLSearchParams()
     if (status) params.append('status', status)

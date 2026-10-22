@@ -235,7 +235,18 @@ Mensajes de feedback **dentro del formulario**, arriba de los botones — nunca 
 
 ---
 
-## 9. Qué falta definir (abierto)
+## 9. Navegación mobile
+
+- **`apps/mobile/src/BottomBar.tsx`:** barra fija inferior negra, con esquinas superiores `radius.lg`, cuatro pestañas y un botón amarillo central elevado. Usa `Icon` y los tokens de `theme.ts`; incluye el margen seguro inferior del dispositivo.
+- **Dueño o administrador que no ordeña:** Inicio, Vacas, Service al centro, Máquinas y Cuenta.
+- **Tambero, veterinario o dueño que también ordeña:** Inicio, Vacas, Dictar al centro, Sanidad y Cuenta.
+- Las pestañas reutilizan los mismos manejadores del menú de inicio. Dictar abre la captura de voz solo si el turno ya está activo; no inicia un turno.
+- La barra se oculta con el teclado y no aparece en el login, el cambio obligatorio de clave ni para el técnico solo. El contenido desplazable reserva espacio para que su último elemento no quede debajo de la barra; cuando esta está visible, el margen seguro inferior lo gestiona la propia barra.
+- La campanita de la franja amarilla abre Avisos y muestra un punto cuando hay notificaciones sin leer.
+
+---
+
+## 10. Qué falta definir (abierto)
 
 - [ ] Logo final Lobeto / GTLT y variantes
 - [x] Tipografía web de marca: DM Sans (sin Fraunces)
@@ -244,7 +255,7 @@ Mensajes de feedback **dentro del formulario**, arriba de los botones — nunca 
 
 ---
 
-## 10. Fuente de verdad en código
+## 11. Fuente de verdad en código
 
 | Plataforma | Archivo |
 |---|---|
@@ -256,6 +267,7 @@ Mensajes de feedback **dentro del formulario**, arriba de los botones — nunca 
 
 ## Changelog
 
+- **2026-10-22** — Barra de navegación inferior mobile por rol, botón central Service/Dictar, ocultamiento con teclado y campanita de Avisos.
 - **2026-10-17** — Celular etapa 3: franja amarilla, `Icon`/`Ring`, mosaicos de inicio y anillos en Máquinas. `radius.md` 24.
 - **2026-10-17** — Paleta amarillo/negro/crema (etapa 1 del rediseño). `primary` es negro; `onPrimary` amarillo sobre negro; verde solo en tokens de éxito. Radios: sm 12 / md 24 / lg 28 / pill. `--font-brand` = DM Sans.
 - **2026-10-03** — Contraste: `primary` pasa a `#3D7D57` (4.9:1 con blanco); el verde del PDF `#4C9A6A` queda como `primaryLight`, solo decorativo. Web: tokens con `@theme` en `index.css` (Tailwind v4 no cargaba `tailwind.config.ts`, que se borró).

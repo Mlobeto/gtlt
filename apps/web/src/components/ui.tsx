@@ -95,7 +95,7 @@ export function Badge({
 }
 
 export const inputClass =
-  'w-full px-3 py-2 bg-surface border border-line rounded-lg text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60'
+  'w-full min-h-11 px-3 py-2 bg-surface border border-line rounded-lg text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-primary focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60'
 
 type FieldBase = { label: ReactNode; hint?: ReactNode; className?: string }
 

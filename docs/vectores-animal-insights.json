@@ -1,0 +1,313 @@
+{
+  "today": "2026-06-01",
+  "pregnancy": [
+    {
+      "name": "sin eventos",
+      "events": [],
+      "expected": {
+        "pregnant": false,
+        "servedAt": null,
+        "expectedCalvingAt": null,
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      }
+    },
+    {
+      "name": "solo servicio (parto = servicio + 280)",
+      "events": [{ "type": "SERVICE", "eventAt": "2026-01-01" }],
+      "expected": {
+        "pregnant": true,
+        "servedAt": "2026-01-01",
+        "expectedCalvingAt": "2026-10-08",
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      }
+    },
+    {
+      "name": "servicio con parto estimado explícito",
+      "events": [
+        {
+          "type": "SERVICE",
+          "eventAt": "2026-01-01",
+          "expectedCalvingAt": "2026-09-15"
+        }
+      ],
+      "expected": {
+        "pregnant": true,
+        "servedAt": "2026-01-01",
+        "expectedCalvingAt": "2026-09-15",
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      }
+    },
+    {
+      "name": "varios servicios (cuenta el último)",
+      "events": [
+        { "type": "SERVICE", "eventAt": "2025-10-01" },
+        { "type": "SERVICE", "eventAt": "2026-03-01" }
+      ],
+      "expected": {
+        "pregnant": true,
+        "servedAt": "2026-03-01",
+        "expectedCalvingAt": "2026-12-06",
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      }
+    },
+    {
+      "name": "servicio y luego parto (no preñada)",
+      "events": [
+        { "type": "SERVICE", "eventAt": "2025-08-01" },
+        { "type": "CALVING", "eventAt": "2026-05-01" }
+      ],
+      "expected": {
+        "pregnant": false,
+        "servedAt": "2025-08-01",
+        "expectedCalvingAt": null,
+        "lastCalvingAt": "2026-05-01",
+        "lastAbortionAt": null
+      }
+    },
+    {
+      "name": "servicio y luego aborto (no preñada)",
+      "events": [
+        { "type": "SERVICE", "eventAt": "2026-02-01" },
+        { "type": "ABORTION", "eventAt": "2026-04-01" }
+      ],
+      "expected": {
+        "pregnant": false,
+        "servedAt": "2026-02-01",
+        "expectedCalvingAt": null,
+        "lastCalvingAt": null,
+        "lastAbortionAt": "2026-04-01"
+      }
+    }
+  ],
+  "alerts": [
+    {
+      "name": "secado: faltan 60 días sí",
+      "status": "ACTIVE",
+      "pregnancy": {
+        "pregnant": true,
+        "servedAt": "2026-01-01",
+        "expectedCalvingAt": "2026-07-31",
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      },
+      "withdrawalUntil": null,
+      "expectCodes": ["DRY_OFF"]
+    },
+    {
+      "name": "secado: faltan 61 días no",
+      "status": "ACTIVE",
+      "pregnancy": {
+        "pregnant": true,
+        "servedAt": "2026-01-01",
+        "expectedCalvingAt": "2026-08-01",
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      },
+      "withdrawalUntil": null,
+      "expectCodes": []
+    },
+    {
+      "name": "secado: faltan 0 días no",
+      "status": "ACTIVE",
+      "pregnancy": {
+        "pregnant": true,
+        "servedAt": "2026-01-01",
+        "expectedCalvingAt": "2026-06-01",
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      },
+      "withdrawalUntil": null,
+      "expectCodes": ["CALVING_SOON"]
+    },
+    {
+      "name": "parto próximo: 30 días sí",
+      "status": "ACTIVE",
+      "pregnancy": {
+        "pregnant": true,
+        "servedAt": "2026-01-01",
+        "expectedCalvingAt": "2026-07-01",
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      },
+      "withdrawalUntil": null,
+      "expectCodes": ["DRY_OFF", "CALVING_SOON"]
+    },
+    {
+      "name": "parto próximo: 31 días no",
+      "status": "ACTIVE",
+      "pregnancy": {
+        "pregnant": true,
+        "servedAt": "2026-01-01",
+        "expectedCalvingAt": "2026-07-02",
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      },
+      "withdrawalUntil": null,
+      "expectCodes": ["DRY_OFF"]
+    },
+    {
+      "name": "parto atrasado: −15 sí",
+      "status": "ACTIVE",
+      "pregnancy": {
+        "pregnant": true,
+        "servedAt": "2025-08-01",
+        "expectedCalvingAt": "2026-05-17",
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      },
+      "withdrawalUntil": null,
+      "expectCodes": ["CALVING_OVERDUE"]
+    },
+    {
+      "name": "parto atrasado: −16 no",
+      "status": "ACTIVE",
+      "pregnancy": {
+        "pregnant": true,
+        "servedAt": "2025-08-01",
+        "expectedCalvingAt": "2026-05-16",
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      },
+      "withdrawalUntil": null,
+      "expectCodes": []
+    },
+    {
+      "name": "tacto: 30 días sí",
+      "status": "ACTIVE",
+      "pregnancy": {
+        "pregnant": true,
+        "servedAt": "2026-05-02",
+        "expectedCalvingAt": "2027-02-06",
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      },
+      "withdrawalUntil": null,
+      "expectCodes": ["PREGNANCY_CHECK"]
+    },
+    {
+      "name": "tacto: 60 días sí",
+      "status": "ACTIVE",
+      "pregnancy": {
+        "pregnant": true,
+        "servedAt": "2026-04-02",
+        "expectedCalvingAt": "2027-01-07",
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      },
+      "withdrawalUntil": null,
+      "expectCodes": ["PREGNANCY_CHECK"]
+    },
+    {
+      "name": "tacto: 29 días no",
+      "status": "ACTIVE",
+      "pregnancy": {
+        "pregnant": true,
+        "servedAt": "2026-05-03",
+        "expectedCalvingAt": "2027-02-07",
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      },
+      "withdrawalUntil": null,
+      "expectCodes": []
+    },
+    {
+      "name": "tacto: 61 días no",
+      "status": "ACTIVE",
+      "pregnancy": {
+        "pregnant": true,
+        "servedAt": "2026-04-01",
+        "expectedCalvingAt": "2027-01-06",
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      },
+      "withdrawalUntil": null,
+      "expectCodes": []
+    },
+    {
+      "name": "animal DRY sin alerta de secado",
+      "status": "DRY",
+      "pregnancy": {
+        "pregnant": true,
+        "servedAt": "2026-01-01",
+        "expectedCalvingAt": "2026-07-15",
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      },
+      "withdrawalUntil": null,
+      "expectCodes": []
+    },
+    {
+      "name": "retiro que termina hoy",
+      "status": "ACTIVE",
+      "pregnancy": {
+        "pregnant": false,
+        "servedAt": null,
+        "expectedCalvingAt": null,
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      },
+      "withdrawalUntil": "2026-06-01",
+      "expectCodes": ["MILK_WITHDRAWAL"]
+    },
+    {
+      "name": "retiro que termina mañana",
+      "status": "ACTIVE",
+      "pregnancy": {
+        "pregnant": false,
+        "servedAt": null,
+        "expectedCalvingAt": null,
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      },
+      "withdrawalUntil": "2026-06-02",
+      "expectCodes": ["MILK_WITHDRAWAL"]
+    },
+    {
+      "name": "retiro que terminó ayer",
+      "status": "ACTIVE",
+      "pregnancy": {
+        "pregnant": false,
+        "servedAt": null,
+        "expectedCalvingAt": null,
+        "lastCalvingAt": null,
+        "lastAbortionAt": null
+      },
+      "withdrawalUntil": "2026-05-31",
+      "expectCodes": []
+    }
+  ],
+  "lactation": [
+    {
+      "name": "días en leche 100 · activa",
+      "status": "ACTIVE",
+      "calvings": [{ "eventAt": "2026-02-21" }],
+      "expected": { "lactationNumber": 1, "lastCalvingAt": "2026-02-21", "daysInMilk": 100 }
+    },
+    {
+      "name": "días en leche · seca",
+      "status": "DRY",
+      "calvings": [{ "eventAt": "2026-02-21" }],
+      "expected": { "lactationNumber": 1, "lastCalvingAt": "2026-02-21", "daysInMilk": null }
+    },
+    {
+      "name": "días en leche · sin partos",
+      "status": "ACTIVE",
+      "calvings": [],
+      "expected": { "lactationNumber": 0, "lastCalvingAt": null, "daysInMilk": null }
+    },
+    {
+      "name": "tres partos → lactancia 3",
+      "status": "ACTIVE",
+      "calvings": [
+        { "eventAt": "2024-01-10" },
+        { "eventAt": "2025-01-15" },
+        { "eventAt": "2026-02-21" }
+      ],
+      "expected": { "lactationNumber": 3, "lastCalvingAt": "2026-02-21", "daysInMilk": 100 }
+    }
+  ]
+}
