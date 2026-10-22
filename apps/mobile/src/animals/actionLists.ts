@@ -69,7 +69,9 @@ export function buildActionLists(input: {
   withdrawals: LocalHealthEvent[];
   now: Date;
 }): ActionLists {
-  const { now } = input;
+  const now = new Date(
+    Date.UTC(input.now.getFullYear(), input.now.getMonth(), input.now.getDate()),
+  );
   const animals = new Map(
     input.animals
       .filter((a) => LISTED_STATUSES.includes(a.status))

@@ -23,6 +23,9 @@ function addDaysISO(iso: string, days: number): string {
 
 function dateLabel(iso: string | null): string {
   if (!iso) return "-";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    return new Date(iso).toLocaleDateString("es-AR", { timeZone: "UTC" });
+  }
   return new Date(iso).toLocaleDateString("es-AR");
 }
 
@@ -63,7 +66,7 @@ export function derivePregnancy(events: LocalReproEvent[]): PregnancySummary {
   let headline: string;
 
   if (pregnant && lastService) {
-    headline = "Preñada";
+    headline = "Preñada, según el último servicio";
     detailLines.push(`Servicio: ${dateLabel(lastService.event_at)}`);
     if (expectedCalvingAt) {
       detailLines.push(`Parto estimado: ${dateLabel(expectedCalvingAt)}`);

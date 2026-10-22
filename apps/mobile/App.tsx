@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  Keyboard,
   Image,
   KeyboardAvoidingView,
   Linking,
@@ -80,6 +81,7 @@ import {
   type AttributeDraft,
 } from "./src/part-fields";
 import { ownerOnly } from "./src/roles";
+import { BottomBar, type BottomBarTab } from "./src/BottomBar";
 import { TambosScreen } from "./src/TambosScreen";
 import { buildActionLists, type ActionLists } from "./src/animals/actionLists";
 import {
@@ -237,6 +239,25 @@ const ROLE_LABEL: Record<string, string> = {
 
 function showOwnerSupervision(roles: string[]) {
   return ownerOnly(roles) || (isOwnerOrAdmin(roles) && roles.includes("TAMBERO"));
+}
+
+function bottomTabForScreen(screen: Screen): string {
+  if (screen === "animals" || screen === "animalDetail" || screen === "animalForm") {
+    return "vacas";
+  }
+  if (
+    screen === "parts" ||
+    screen === "partForm" ||
+    screen === "replaceBatch" ||
+    screen === "partHistory"
+  ) {
+    return "maquinas";
+  }
+  if (screen === "treatment") return "sanidad";
+  if (screen === "account" || screen === "tambos" || screen === "switchTambo") {
+    return "cuenta";
+  }
+  return screen === "service" ? "" : "home";
 }
 
 const SERVICE_CATEGORIES: { key: ServiceCategory; label: string }[] = [
@@ -495,6 +516,7 @@ function AppContent() {
   const insets = useSafeAreaInsets();
   const [ready, setReady] = useState(false);
   const [screen, setScreen] = useState<Screen>("home");
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
@@ -655,6 +677,20 @@ function AppContent() {
     card?: number;
     sections: Partial<Record<TodaySectionKey, number>>;
   }>({ sections: {} });
+
+  useEffect(() => {
+    const subscriptions = [
+      Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true)),
+      Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false)),
+    ];
+    if (Platform.OS === "ios") {
+      subscriptions.push(
+        Keyboard.addListener("keyboardWillShow", () => setKeyboardVisible(true)),
+        Keyboard.addListener("keyboardWillHide", () => setKeyboardVisible(false)),
+      );
+    }
+    return () => subscriptions.forEach((subscription) => subscription.remove());
+  }, []);
 
   function scrollToPendingTodaySection() {
     const key = pendingTodaySectionRef.current;
@@ -2378,6 +2414,31 @@ function AppContent() {
     setScreen("home");
   }
 
+  function handleMenuNavigation(destination: Screen) {
+    setStatus("");
+    setScreen(destination);
+    if (destination === "notifications" && session) {
+      void loadNotifications(session);
+    }
+    if (destination === "parts" && session) {
+      void loadParts();
+    }
+    if (destination === "delivery" && session) {
+      void loadDeliveryComparisons(session);
+    }
+  }
+
+  function handleDictate() {
+    setScreen("milking");
+    if (!milkingShiftActive) {
+      setVoiceCaptureOpen(false);
+      setStatus("Empezá el turno para dictar");
+      return;
+    }
+    setStatus("");
+    setVoiceCaptureOpen(true);
+  }
+
   const requestTargetProvider =
     (pickOtherProvider && otherProviderId
       ? serviceProviders.find((p) => p.id === otherProviderId)
@@ -2401,9 +2462,46 @@ function AppContent() {
   const todayActive = milkings.find(
     (m) => m.session_date === hoyISO() && m.shift === shift,
   );
+  const showBottomBar = Boolean(
+    session &&
+      !isTechnicianOnly(session.roles ?? []) &&
+      screen !== "changePassword" &&
+      !keyboardVisible,
+  );
+  const headerNotificationsVisible = Boolean(
+    session && !isTechnicianOnly(session.roles ?? []) && screen !== "changePassword",
+  );
+  const activeBottomTab = bottomTabForScreen(screen);
+  const bottomTabs: BottomBarTab[] = ownerOnly(session?.roles ?? [])
+    ? [
+        { key: "home", label: "Inicio", icon: "home", onPress: goHome, active: activeBottomTab === "home" },
+        { key: "vacas", label: "Vacas", icon: "vacas", onPress: () => handleMenuNavigation("animals"), active: activeBottomTab === "vacas" },
+        { key: "maquinas", label: "Máquinas", icon: "maquinas", onPress: () => handleMenuNavigation("parts"), active: activeBottomTab === "maquinas" },
+        { key: "cuenta", label: "Cuenta", icon: "cuenta", onPress: () => handleMenuNavigation("account"), active: activeBottomTab === "cuenta" },
+      ]
+    : [
+        { key: "home", label: "Inicio", icon: "home", onPress: goHome, active: activeBottomTab === "home" },
+        { key: "vacas", label: "Vacas", icon: "vacas", onPress: () => handleMenuNavigation("animals"), active: activeBottomTab === "vacas" },
+        { key: "sanidad", label: "Sanidad", icon: "sanidad", onPress: () => handleMenuNavigation("treatment"), active: activeBottomTab === "sanidad" },
+        { key: "cuenta", label: "Cuenta", icon: "cuenta", onPress: () => handleMenuNavigation("account"), active: activeBottomTab === "cuenta" },
+      ];
+  const centerButton = ownerOnly(session?.roles ?? [])
+    ? {
+        label: "Service",
+        icon: "service" as const,
+        onPress: () => handleMenuNavigation("service"),
+        accessibilityLabel: "Service",
+        active: screen === "service",
+      }
+    : {
+        label: "Dictar",
+        icon: "microfono" as const,
+        onPress: handleDictate,
+        accessibilityLabel: "Dictar",
+      };
 
   return (
-    <SafeAreaView style={styles.safe} edges={["bottom"]}>
+    <SafeAreaView style={styles.safe} edges={showBottomBar ? [] : ["bottom"]}>
       <StatusBar style="dark" />
       <KeyboardAvoidingView
         style={styles.flex}
@@ -2411,16 +2509,39 @@ function AppContent() {
       >
         <ScrollView
           ref={scrollRef}
-          contentContainerStyle={[styles.scrollContent, { paddingTop: 0 }]}
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              paddingTop: 0,
+              paddingBottom: showBottomBar ? 96 + insets.bottom + 36 : space.xl * 2,
+            },
+          ]}
           keyboardShouldPersistTaps="handled"
         >
           <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-          <Image
-  source={require("./assets/cal-logo-negro.png")}
-  style={{ width: 88, height: 40 }}
-  resizeMode="contain"
-  accessibilityLabel="CAL"
-/>
+            <View style={styles.headerTopRow}>
+              <Image
+                source={require("./assets/cal-logo-negro.png")}
+                style={{ width: 88, height: 40 }}
+                resizeMode="contain"
+                accessibilityLabel="CAL"
+              />
+              {headerNotificationsVisible ? (
+                <Pressable
+                  style={styles.headerNotificationsButton}
+                  onPress={() => handleMenuNavigation("notifications")}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    unreadNotifications > 0 ? "Avisos, hay novedades" : "Avisos"
+                  }
+                >
+                  <Icon name="campana" size={24} color={colors.text} />
+                  {unreadNotifications > 0 ? (
+                    <View style={styles.headerUnreadDot} />
+                  ) : null}
+                </Pressable>
+              ) : null}
+            </View>
             <View style={[styles.chip, online ? styles.chipOk : styles.chipWarn]}>
               <Text style={[styles.chipText, !online && styles.chipTextWarn]}>
                 {online ? "Con señal" : "Sin señal"}
@@ -2900,19 +3021,7 @@ function AppContent() {
                       <Pressable
                         key={item.key}
                         style={styles.menuTile}
-                        onPress={() => {
-                          setStatus("");
-                          setScreen(item.key);
-                          if (item.key === "notifications" && session) {
-                            void loadNotifications(session);
-                          }
-                          if (item.key === "parts" && session) {
-                            void loadParts();
-                          }
-                          if (item.key === "delivery" && session) {
-                            void loadDeliveryComparisons(session);
-                          }
-                        }}
+                        onPress={() => handleMenuNavigation(item.key)}
                       >
                         <View style={styles.iconCircle}>
                           <Icon name={item.icon} size={24} />
@@ -5221,6 +5330,9 @@ function AppContent() {
             </>
           )}
         </ScrollView>
+        {showBottomBar ? (
+          <BottomBar tabs={bottomTabs} center={centerButton} />
+        ) : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -5258,6 +5370,32 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     gap: space.sm,
     marginHorizontal: -space.lg,
+  },
+  headerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerNotificationsButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: colors.text,
+    borderRadius: radius.pill,
+    position: "relative",
+  },
+  headerUnreadDot: {
+    position: "absolute",
+    top: -1,
+    right: -1,
+    width: 11,
+    height: 11,
+    backgroundColor: colors.danger,
+    borderWidth: 2,
+    borderColor: colors.accent,
+    borderRadius: radius.pill,
   },
   headerMeta: { color: colors.text, fontSize: font.meta },
   title: { fontSize: font.display, fontWeight: "700", color: colors.text },
