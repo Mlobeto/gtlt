@@ -88,7 +88,7 @@ export function AppShell<K extends string>({
             {bell}
             {headerRight}
             {subtitle ? (
-              <span className="hidden sm:inline-flex h-11 items-center px-4 rounded-full border-[1.5px] border-ink text-[15px] font-bold">
+              <span className="hidden sm:inline text-sm text-ink-muted">
                 {subtitle}
               </span>
             ) : null}

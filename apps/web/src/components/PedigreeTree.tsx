@@ -9,7 +9,13 @@ const focusClass =
 
 function tagFallback(earTag: string): string {
   const t = earTag.trim()
-  return t.slice(-3) || '—'
+  if (!t) return '—'
+  return t.length <= 4 ? t : t.slice(-4)
+}
+
+function tagFallbackFontSize(markerPx: number, text: string): number {
+  const n = Math.max(1, text.length)
+  return Math.max(9, Math.min(markerPx * 0.36, (markerPx * 0.84) / n))
 }
 
 function birthShort(iso: string | null): string | null {
@@ -40,7 +46,12 @@ function NodePhoto({ src, fallback }: { src: string | null; fallback: string }) 
           onError={() => setBroken(true)}
         />
       ) : (
-        <span className="text-xs font-bold text-accent-text">{fallback}</span>
+        <span
+          className="font-bold text-accent-text leading-none tracking-tight tabular-nums px-0.5 text-center"
+          style={{ fontSize: tagFallbackFontSize(40, fallback) }}
+        >
+          {fallback}
+        </span>
       )}
     </div>
   )
@@ -180,13 +191,12 @@ function AncestorItem({
     />
   )
 
-  const showKids =
-    node.kind === 'ANIMAL' &&
-    !node.truncated &&
-    (node.mother.kind !== 'UNKNOWN' || node.father.kind !== 'UNKNOWN')
+  // Los UNKNOWN ya vienen en el árbol; se ocultan solo en toros sin ficha (SIRE)
+  // y cuando el nodo está truncado (más generaciones de las que se piden).
+  const showKids = node.kind === 'ANIMAL' && !node.truncated
 
   if (!showKids) {
-    return <li className={compact ? 'ml-4 mt-2' : 'flex items-center'}>{card}</li>
+    return <li className={compact ? 'ml-4 mt-2' : ''}>{card}</li>
   }
 
   if (compact) {
@@ -194,7 +204,7 @@ function AncestorItem({
       <li className="ml-4 mt-2">
         <p className="text-xs font-semibold text-ink-muted mb-1">{role}</p>
         {card}
-        <ul>
+        <ul className="m-0 list-none p-0">
           <AncestorItem
             node={node.mother}
             role="Madre"
@@ -219,12 +229,9 @@ function AncestorItem({
   }
 
   return (
-    <li className="flex flex-row-reverse items-center">
-      {card}
-      <div className="w-4 border-t border-line" aria-hidden />
-      <ul className="flex flex-col justify-center border-r border-line pr-0">
-        <li className="flex flex-row-reverse items-center py-3">
-          <div className="w-4 border-t border-line" aria-hidden />
+    <li className="flex items-center">
+      <ul className="m-0 flex list-none flex-col justify-center border-r border-line p-0">
+        <li className="flex items-center py-3">
           <ul className="contents">
             <AncestorItem
               node={node.mother}
@@ -236,9 +243,9 @@ function AncestorItem({
               compact={false}
             />
           </ul>
-        </li>
-        <li className="flex flex-row-reverse items-center py-3">
           <div className="w-4 border-t border-line" aria-hidden />
+        </li>
+        <li className="flex items-center py-3">
           <ul className="contents">
             <AncestorItem
               node={node.father}
@@ -250,8 +257,10 @@ function AncestorItem({
               compact={false}
             />
           </ul>
+          <div className="w-4 border-t border-line" aria-hidden />
         </li>
       </ul>
+      {card}
     </li>
   )
 }
@@ -373,12 +382,12 @@ export function PedigreeTree({
             <p className="text-xs font-semibold text-ink-muted mb-1">Esta vaca</p>
             <NodeCard node={rootNode} role="Esta vaca" highlighted {...shared} />
             {hasAncestors ? (
-              <ul>
+              <ul className="m-0 list-none p-0">
                 <li className="mt-3">
                   <p className="text-xs font-semibold text-ink-muted mb-1">Madre</p>
                   <NodeCard node={mother} role="Madre" {...shared} />
                   {mother.kind === 'ANIMAL' && !mother.truncated ? (
-                    <ul>
+                    <ul className="m-0 list-none p-0">
                       <AncestorItem node={mother.mother} role="Madre de la madre" compact {...shared} />
                       <AncestorItem node={mother.father} role="Padre de la madre" compact {...shared} />
                     </ul>
@@ -388,7 +397,7 @@ export function PedigreeTree({
                   <p className="text-xs font-semibold text-ink-muted mb-1">Padre</p>
                   <NodeCard node={father} role="Padre" {...shared} />
                   {father.kind === 'ANIMAL' && !father.truncated ? (
-                    <ul>
+                    <ul className="m-0 list-none p-0">
                       <AncestorItem node={father.mother} role="Madre del padre" compact {...shared} />
                       <AncestorItem node={father.father} role="Padre del padre" compact {...shared} />
                     </ul>
@@ -406,18 +415,34 @@ export function PedigreeTree({
       <div className="hidden lg:block overflow-x-auto pb-2">
         <div className="flex items-center gap-0 min-w-min">
           {hasAncestors ? (
-            <ul className="flex flex-col justify-center">
-              <li className="flex flex-row-reverse items-center py-2">
-                <div className="w-4 border-t border-line" aria-hidden />
-                <ul>
-                  <AncestorItem node={mother} role="Madre" compact={false} {...shared} />
-                </ul>
+            <ul className="m-0 grid list-none grid-cols-[auto_auto] items-center p-0">
+              <li className="flex items-center justify-end">
+                {mother.kind === 'ANIMAL' && !mother.truncated ? (
+                  <>
+                    <ul className="m-0 flex list-none flex-col justify-center border-r border-line p-0">
+                      <AncestorItem node={mother.mother} role="Madre de la madre" compact={false} {...shared} />
+                      <AncestorItem node={mother.father} role="Padre de la madre" compact={false} {...shared} />
+                    </ul>
+                    <div className="w-4 border-t border-line" aria-hidden />
+                  </>
+                ) : null}
               </li>
-              <li className="flex flex-row-reverse items-center py-2">
-                <div className="w-4 border-t border-line" aria-hidden />
-                <ul>
-                  <AncestorItem node={father} role="Padre" compact={false} {...shared} />
-                </ul>
+              <li className="justify-self-start py-2">
+                <NodeCard node={mother} role="Madre" {...shared} />
+              </li>
+              <li className="flex items-center justify-end">
+                {father.kind === 'ANIMAL' && !father.truncated ? (
+                  <>
+                    <ul className="m-0 flex list-none flex-col justify-center border-r border-line p-0">
+                      <AncestorItem node={father.mother} role="Madre del padre" compact={false} {...shared} />
+                      <AncestorItem node={father.father} role="Padre del padre" compact={false} {...shared} />
+                    </ul>
+                    <div className="w-4 border-t border-line" aria-hidden />
+                  </>
+                ) : null}
+              </li>
+              <li className="justify-self-start py-2">
+                <NodeCard node={father} role="Padre" {...shared} />
               </li>
             </ul>
           ) : null}

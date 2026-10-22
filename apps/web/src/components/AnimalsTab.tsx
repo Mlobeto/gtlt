@@ -102,7 +102,12 @@ function AnimalPhoto({
       className="w-full h-full object-cover"
     />
   ) : (
-    <span className="text-xs font-bold text-accent-text">{fallback}</span>
+    <span
+      className="font-bold text-accent-text leading-none tracking-tight tabular-nums px-0.5 text-center"
+      style={{ fontSize: tagFallbackFontSize(size, fallback) }}
+    >
+      {fallback}
+    </span>
   )
   const className = `shrink-0 overflow-hidden bg-accent flex items-center justify-center ${focusClass}`
   if (onOpen && src && !broken) {
@@ -131,7 +136,13 @@ function AnimalPhoto({
 
 function tagFallback(earTag: string): string {
   const t = earTag.trim()
-  return t.slice(-3) || '—'
+  if (!t) return '—'
+  return t.length <= 4 ? t : t.slice(-4)
+}
+
+function tagFallbackFontSize(markerPx: number, text: string): number {
+  const n = Math.max(1, text.length)
+  return Math.max(9, Math.min(markerPx * 0.36, (markerPx * 0.84) / n))
 }
 
 function shortDate(iso: string | null | undefined): string {

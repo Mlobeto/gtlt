@@ -94,7 +94,7 @@ export function DashboardPage({ auth, onLogout, onSessionChange }: DashboardPage
     <>
       <AppShell
         title={tabs.find((t) => t.id === activeTab)?.label ?? ''}
-        subtitle={tenantName || undefined}
+        subtitle={isDeveloper || !tenantName ? undefined : `Cuenta: ${tenantName}`}
         nav={tabs.map((t) => ({ key: t.id, label: t.label }))}
         active={activeTab}
         onSelect={setActiveTab}
