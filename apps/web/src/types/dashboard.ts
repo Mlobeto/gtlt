@@ -11,7 +11,7 @@ export interface SupportTicket {
   internalNote: string | null
   createdAt: string
   updatedAt: string
-  user?: { id: string; name: string; email?: string }
+  user?: { id: string; name: string; email?: string | null; phone?: string | null }
   tambo?: { id: string; name: string }
   tenant?: { id: string; name: string }
 }
@@ -48,7 +48,7 @@ export interface AdminTenant {
   createdAt: string
   activeTambos?: number
   installingTambos?: number
-  owner: { id: string; name: string; email: string | null } | null
+  owner: { id: string; name: string; email: string | null; phone?: string | null } | null
   tambos?: {
     id: string
     name: string

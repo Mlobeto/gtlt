@@ -4,17 +4,28 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { signAccessToken } from "../lib/auth-tokens.js";
 import { authContextWithPasswordFlag } from "../lib/access.js";
+import { parseIdentifier } from "../lib/identity.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { HttpError } from "../lib/http-error.js";
 
 export const authRouter = Router();
 
-const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-  /** Obligatorio si el user tiene memberships en más de un tenant. */
-  tenantId: z.string().uuid().optional(),
-});
+const LOGIN_GENERIC = "Invalid credentials";
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+const LOGIN_MAX_FAILURES = 10;
+
+const loginSchema = z
+  .object({
+    identifier: z.string().min(1).optional(),
+    /** Clientes viejos mandan `email`; sigue valiendo. */
+    email: z.string().min(1).optional(),
+    password: z.string().min(1),
+    /** Obligatorio si el user tiene memberships en más de un tenant. */
+    tenantId: z.string().uuid().optional(),
+  })
+  .refine((d) => Boolean(d.identifier?.trim() || d.email?.trim()), {
+    message: "identifier or email required",
+  });
 
 authRouter.post("/login", async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
@@ -23,17 +34,51 @@ authRouter.post("/login", async (req, res) => {
     return;
   }
 
-  const { email, password, tenantId } = parsed.data;
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user?.passwordHash) {
-    res.status(401).json({ error: "Invalid credentials" });
+  const { password, tenantId } = parsed.data;
+  const raw = (parsed.data.identifier ?? parsed.data.email ?? "").trim();
+  const identity = parseIdentifier(raw);
+  if (!identity.ok) {
+    res.status(401).json({ error: LOGIN_GENERIC });
     return;
+  }
+
+  const user =
+    identity.kind === "email"
+      ? await prisma.user.findUnique({ where: { email: identity.value } })
+      : await prisma.user.findUnique({ where: { phone: identity.value } });
+
+  if (!user?.passwordHash) {
+    res.status(401).json({ error: LOGIN_GENERIC });
+    return;
+  }
+
+  const now = Date.now();
+  if (user.lockedUntil && user.lockedUntil.getTime() > now) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((user.lockedUntil.getTime() - now) / 1000));
+    throw new HttpError(429, "Demasiados intentos. Probá de nuevo más tarde.", "LOGIN_LOCKED", {
+      retryAfterSeconds,
+    });
   }
 
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
-    res.status(401).json({ error: "Invalid credentials" });
+    const next = user.failedLogins + 1;
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLogins: next,
+        lockedUntil: next >= LOGIN_MAX_FAILURES ? new Date(now + LOGIN_LOCK_MS) : null,
+      },
+    });
+    res.status(401).json({ error: LOGIN_GENERIC });
     return;
+  }
+
+  if (user.failedLogins > 0 || user.lockedUntil) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLogins: 0, lockedUntil: null },
+    });
   }
 
   const memberships = await prisma.membership.findMany({

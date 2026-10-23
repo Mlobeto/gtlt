@@ -11,7 +11,8 @@ export const WEB_ALLOWED_ROLES = ['DUENIO', 'DESARROLLADORA', 'TECNICO'] as cons
 
 export interface User {
   id: string
-  email: string
+  email: string | null
+  phone?: string | null
   name: string
 }
 

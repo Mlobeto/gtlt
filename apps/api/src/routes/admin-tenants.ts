@@ -9,6 +9,11 @@ import { syncPlanPricesFromUsd } from "../lib/plan-pricing.js";
 import { tamboOnboardingSchema, createOnboardedTambo } from "../lib/tambo-onboarding.js";
 import { tamboLifecycleState } from "../lib/tambo-state.js";
 import { generateTemporaryPassword } from "../lib/temp-password.js";
+import {
+  normalizeEmail,
+  normalizePhone,
+  PHONE_INVALID_MESSAGE,
+} from "../lib/identity.js";
 
 /**
  * Panel de plataforma para DESARROLLADORA: alta de cuentas (tenant + dueño),
@@ -17,14 +22,19 @@ import { generateTemporaryPassword } from "../lib/temp-password.js";
  */
 export const adminRouter = Router();
 
-const createTenantSchema = z.object({
-  tenantName: z.string().trim().min(1).max(200),
-  ownerName: z.string().trim().min(1).max(120),
-  ownerEmail: z.string().trim().email(),
-  ownerPassword: z.string().min(8).max(100),
-  planCode: z.enum(["STANDARD", "LIFETIME"]).default("STANDARD"),
-  tambo: tamboOnboardingSchema,
-});
+const createTenantSchema = z
+  .object({
+    tenantName: z.string().trim().min(1).max(200),
+    ownerName: z.string().trim().min(1).max(120),
+    ownerEmail: z.string().trim().optional(),
+    ownerPhone: z.string().trim().optional(),
+    ownerPassword: z.string().min(8).max(100),
+    planCode: z.enum(["STANDARD", "LIFETIME"]).default("STANDARD"),
+    tambo: tamboOnboardingSchema,
+  })
+  .refine((d) => Boolean(d.ownerEmail || d.ownerPhone), {
+    message: "Poné al menos un correo o un teléfono",
+  });
 
 const addTamboSchema = tamboOnboardingSchema.extend({
   requestId: z.string().uuid().optional(),
@@ -51,7 +61,7 @@ adminRouter.get(
       include: {
         memberships: {
           where: { roles: { has: "DUENIO" } },
-          include: { user: { select: { id: true, name: true, email: true } } },
+          include: { user: { select: { id: true, name: true, email: true, phone: true } } },
           take: 1,
         },
         subscription: { include: { plan: true } },
@@ -124,9 +134,27 @@ adminRouter.post(
     }
     const data = parsed.data;
 
-    const existing = await prisma.user.findUnique({ where: { email: data.ownerEmail } });
+    let ownerEmail: string | null = null;
+    if (data.ownerEmail) {
+      const parsedEmail = normalizeEmail(data.ownerEmail);
+      if (!parsedEmail.ok) throw new HttpError(400, "Revisá el correo.");
+      ownerEmail = parsedEmail.value;
+    }
+    let ownerPhone: string | null = null;
+    if (data.ownerPhone) {
+      const parsedPhone = normalizePhone(data.ownerPhone);
+      if (!parsedPhone.ok) throw new HttpError(400, PHONE_INVALID_MESSAGE);
+      ownerPhone = parsedPhone.value;
+    }
+    if (!ownerEmail && !ownerPhone) {
+      throw new HttpError(400, "Poné al menos un correo o un teléfono");
+    }
+
+    const existing =
+      (ownerEmail ? await prisma.user.findUnique({ where: { email: ownerEmail } }) : null) ??
+      (ownerPhone ? await prisma.user.findUnique({ where: { phone: ownerPhone } }) : null);
     if (existing) {
-      throw new HttpError(409, "Ya existe un usuario con ese email");
+      throw new HttpError(409, "Ya existe un usuario con ese correo o teléfono");
     }
 
     const plan = await prisma.plan.findUnique({ where: { code: data.planCode } });
@@ -144,7 +172,8 @@ adminRouter.post(
       const tenant = await tx.tenant.create({ data: { name: data.tenantName } });
       const owner = await tx.user.create({
         data: {
-          email: data.ownerEmail,
+          email: ownerEmail,
+          phone: ownerPhone,
           name: data.ownerName,
           passwordHash,
           mustChangePassword: true,
@@ -172,7 +201,12 @@ adminRouter.post(
 
     res.status(201).json({
       tenant: result.tenant,
-      owner: { id: result.owner.id, name: result.owner.name, email: result.owner.email },
+      owner: {
+        id: result.owner.id,
+        name: result.owner.name,
+        email: result.owner.email,
+        phone: result.owner.phone,
+      },
       subscription: result.subscription,
       tambo: {
         ...result.tambo,

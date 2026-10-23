@@ -129,7 +129,7 @@ adminDevicesRouter.get(
     const memberships = await prisma.membership.findMany({
       where: { tenantId: tenant.id, roles: { has: "TECNICO" } },
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, phone: true } },
         serviceProvider: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: "asc" },
@@ -161,7 +161,7 @@ adminDevicesRouter.patch(
     const membership = await prisma.membership.findUnique({
       where: { id: String(req.params.id) },
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, phone: true } },
         tenant: { select: { id: true, name: true } },
         serviceProvider: { select: { id: true, name: true } },
       },
@@ -181,7 +181,7 @@ adminDevicesRouter.patch(
       where: { id: membership.id },
       data: { canInstallDevices: parsed.data.enabled },
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, phone: true } },
         tenant: { select: { id: true, name: true } },
         serviceProvider: { select: { id: true, name: true } },
       },

@@ -26,8 +26,13 @@ const emptyAccount = {
   tenantName: '',
   ownerName: '',
   ownerEmail: '',
+  ownerPhone: '',
   ownerPassword: '',
   planCode: 'STANDARD' as 'STANDARD' | 'LIFETIME',
+}
+
+function contactLine(person: { email?: string | null; phone?: string | null; name?: string | null }) {
+  return person.email || person.phone || person.name || 'Sin contacto'
 }
 
 const emptyTambo = (name = ''): TamboForm => ({
@@ -92,6 +97,10 @@ export function AccountsTab({ auth }: { auth: AuthToken }) {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!formData.ownerEmail.trim() && !formData.ownerPhone.trim()) {
+      setError('Poné al menos un correo o un teléfono')
+      return
+    }
     try {
       setSubmitting(true)
       setError('')
@@ -110,6 +119,7 @@ export function AccountsTab({ auth }: { auth: AuthToken }) {
         tenantName: result.tenant.name,
         ownerName: result.owner.name,
         ownerEmail: result.owner.email,
+        ownerPhone: result.owner.phone ?? (formData.ownerPhone.trim() || null),
         ownerPassword: formData.ownerPassword,
         tambo: result.tambo,
         budget: result.budget,
@@ -272,7 +282,12 @@ export function AccountsTab({ auth }: { auth: AuthToken }) {
                   type="email"
                   value={formData.ownerEmail}
                   onChange={(e) => setFormData({ ...formData, ownerEmail: e.target.value })}
-                  required
+                />
+                <Field
+                  label="Teléfono"
+                  value={formData.ownerPhone}
+                  onChange={(e) => setFormData({ ...formData, ownerPhone: e.target.value })}
+                  hint="Código de área y número, sin 0 ni 15."
                 />
                 <div className="md:col-span-2 flex flex-wrap items-end gap-2">
                   <Field
@@ -328,7 +343,9 @@ export function AccountsTab({ auth }: { auth: AuthToken }) {
                 <div className="min-w-0">
                   <h3 className="font-semibold text-ink">{tenant.name}</h3>
                   <p className="text-sm text-ink-muted break-all">
-                    {tenant.owner ? `${tenant.owner.name} · ${tenant.owner.email}` : 'Sin dueño asignado'}
+                    {tenant.owner
+                      ? `${tenant.owner.name} · ${contactLine(tenant.owner)}`
+                      : 'Sin dueño asignado'}
                     {typeof tenant.activeTambos === 'number'
                       ? ` · ${tenant.activeTambos} tambo${tenant.activeTambos === 1 ? '' : 's'} activo${tenant.activeTambos === 1 ? '' : 's'}`
                       : ''}
@@ -504,6 +521,7 @@ type AccountSummary = {
   tenantName: string
   ownerName: string
   ownerEmail: string | null
+  ownerPhone?: string | null
   ownerPassword: string
   tambo: { name: string; bajadaCount: number; pumpCount?: number; state?: string }
   budget: HardwareBudget
@@ -526,7 +544,12 @@ function CreatedAccountSummary({
             <strong>Cuenta:</strong> {summary.tenantName}
           </p>
           <p>
-            <strong>Dueño:</strong> {summary.ownerName} · {summary.ownerEmail}
+            <strong>Dueño:</strong> {summary.ownerName} ·{' '}
+            {contactLine({
+              email: summary.ownerEmail,
+              phone: summary.ownerPhone,
+              name: summary.ownerName,
+            })}
           </p>
           <p>
             <strong>Tambo:</strong> {summary.tambo.name} · {summary.tambo.bajadaCount} bajadas
@@ -764,7 +787,7 @@ function TenantInstallers({ token, tenantId }: { token: string; tenantId: string
                 <div className="min-w-0">
                   <p className="font-semibold text-ink">{item.user.name}</p>
                   <p className="text-ink-muted">
-                    {item.user.email ?? 'Sin email'}
+                    {contactLine(item.user)}
                     {item.serviceProvider ? ` · ${item.serviceProvider.name}` : ' · independiente'}
                   </p>
                 </div>

@@ -16,8 +16,8 @@ export const membershipsRouter = Router();
 const inviteTechnicianSchema = z
   .object({
     tamboId: z.string().uuid(),
-    email: z.string().email().optional(),
-    phone: z.string().trim().min(6).max(40).optional(),
+    email: z.string().trim().min(1).optional(),
+    phone: z.string().trim().min(1).max(40).optional(),
     name: z.string().trim().min(1).max(120).optional(),
     companyName: z.string().trim().max(200).optional(),
     serviceProviderId: z.string().uuid().optional(),
@@ -29,8 +29,8 @@ const inviteTechnicianSchema = z
 const inviteMemberSchema = z
   .object({
     tamboId: z.string().uuid(),
-    email: z.string().email().optional(),
-    phone: z.string().trim().min(6).max(40).optional(),
+    email: z.string().trim().min(1).optional(),
+    phone: z.string().trim().min(1).max(40).optional(),
     name: z.string().trim().min(1).max(120).optional(),
     role: z.enum(["TAMBERO", "VETERINARIO"]),
   })

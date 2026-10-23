@@ -142,7 +142,7 @@ Fuente de verdad: `apps/api/prisma/schema.prisma`. Detalle de campos: [erd.md](.
 
 ### Identidad y acceso
 
-- `User` — identidad global  
+- `User` — identidad global: correo y/o teléfono (correo en minúsculas, teléfono canónico único); `failedLogins` / `lockedUntil` para el tope de intentos de ingreso
 - `Membership` — user ↔ tenant + `roles[]`  
 - `MembershipTambo` — alcance operativo de tambos  
 - `Tenant` / `Tambo` (`bajadaCount` alimenta fórmula de uso de piezas)
@@ -279,7 +279,7 @@ Documentación completa: [apps/web/README.md](../apps/web/README.md)
 
 | Pieza | Detalle |
 |---|---|
-| Login | `POST /auth/login` `{ email, password, tenantId? }` → JWT |
+| Login | `POST /auth/login` `{ identifier` o `email`, `password`, `tenantId? }` → JWT. `401` genérico; `429` `LOGIN_LOCKED` si hay bloqueo |
 | JWT claims | `sub` (userId), `tenantId`, `roles[]`, `tamboIds` (`null` = todos) |
 | Me | `GET /auth/me` — user, tenant, tambos visibles |
 | Scope | Queries de negocio usan siempre `tenantId` del token; tambos filtrados si `tamboIds` no es null |

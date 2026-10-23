@@ -48,10 +48,10 @@ async function request<T>(
   return body as T;
 }
 
-export function login(email: string, password: string, tenantId?: string) {
+export function login(identifier: string, password: string, tenantId?: string) {
   return request<LoginResponse>("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password, ...(tenantId ? { tenantId } : {}) }),
+    body: JSON.stringify({ identifier, password, ...(tenantId ? { tenantId } : {}) }),
   });
 }
 

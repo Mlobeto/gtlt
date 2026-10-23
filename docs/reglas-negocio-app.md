@@ -1,6 +1,6 @@
 # Reglas de negocio — capa aplicación / API
 
-**Última actualización:** 2026-10-22 (genealogía en la ficha)
+**Última actualización:** 2026-10-23 (identidad correo o teléfono)
 
 Validaciones que **no** se expresan como constraint de PostgreSQL (dependen de otra tabla o de lógica de dominio). Implementar en servicios antes de dar por cerrado el CRUD/sync.
 
@@ -208,6 +208,25 @@ Aplica a `MilkingSession`, `ControlLechero` (header) y `MilkDelivery`:
 - **Aceptar autenticado** → `POST /memberships/accept-invite` con `inviteToken`. Busca la membership por token (no por el tenant de la sesión, así sirve para invitaciones de otro tenant) y exige que `membership.userId` sea el usuario logueado (`403` si no). Vale para cualquier rol.
 - **Invitar a alguien que ya es miembro `ACTIVE` del tenant no cambia sus roles ni su estado.** Si ya tiene el rol pedido, solo se le agrega el tambo (respuesta con `inviteToken: null`); si tiene otro rol, `409` y no se toca nada.
 - Login con usuario en varios tenants: `/auth/login` responde `400` con `tenants`; web y mobile muestran la lista y reintentan con el `tenantId` elegido.
+
+## Identidad (correo o teléfono)
+
+- Un `User` tiene **al menos un** correo o un teléfono. No hay constraint de base que lo obligue: lo valida el API.
+- El correo se guarda en minúsculas y sin espacios, único. El teléfono se guarda en formato canónico y es único (puede ser nulo). En Argentina el canónico es `+549` + 10 dígitos (código de área + número, sin 0 ni 15). Un `+` que no sea `+54` se trata como internacional.
+- El ingreso acepta `identifier` (correo o teléfono) o `email` (clientes viejos). Si el valor tiene `@` es correo; si no, teléfono. Un teléfono que no se puede normalizar responde el mismo `401` genérico que una clave incorrecta. **Ningún mensaje distingue “no existe” de “clave incorrecta”.**
+- Tras **10 intentos fallidos seguidos** el usuario queda bloqueado 15 minutos (`User.failedLogins`, `User.lockedUntil` en la base, no en memoria). Mientras está bloqueado: `429` `{ error, code: "LOGIN_LOCKED", retryAfterSeconds }` **sin comprobar la clave**. Un ingreso correcto pone el contador en cero. Un identificador que no existe no suma intentos.
+- **No hay SMS, códigos de verificación ni recuperación por correo.** La clave se elige al aceptar la invitación o la resetea la desarrolladora.
+
+### Antes de desplegar la migración
+
+Correr en local (solo lectura) contra una copia o el entorno que se vaya a migrar, **nunca contra producción desde esta máquina si no es el procedimiento acordado**:
+
+```powershell
+cd apps\api
+npx tsx src/scripts/check-identity-data.ts
+```
+
+Lista correos que chocan al pasar a minúsculas (la migración **se detiene** si hay), teléfonos que no se pueden normalizar (pasan a `NULL` con `NOTICE`), teléfonos repetidos (se conserva el usuario más antiguo) y usuarios sin correo ni teléfono. La migración se llama `identity_phone_unique_and_lockout`.
 
 ## Veterinario — acceso dual (pendiente de diseño)
 

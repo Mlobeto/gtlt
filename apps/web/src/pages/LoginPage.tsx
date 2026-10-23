@@ -22,6 +22,14 @@ function isTenantRequiredError(
 const hasWebRole = (roles: string[]) =>
   roles.some((role) => WEB_ALLOWED_ROLES.includes(role as (typeof WEB_ALLOWED_ROLES)[number]))
 
+function loginLockMessage(err: unknown): string | null {
+  if (!(err instanceof ApiError) || err.status !== 429 || err.code !== 'LOGIN_LOCKED') return null
+  const body = err.body as { retryAfterSeconds?: number } | null
+  const seconds = Number(body?.retryAfterSeconds) || 0
+  const minutes = Math.max(1, Math.ceil(seconds / 60))
+  return `Demasiados intentos. Probá de nuevo en ${minutes} minutos.`
+}
+
 let consumedInviteHash: string | null | undefined
 
 function consumeInviteHash(): string | null {
@@ -155,7 +163,7 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
         setError('')
         return
       }
-      setError(err instanceof Error ? err.message : 'Error de login')
+      setError(loginLockMessage(err) ?? (err instanceof Error ? err.message : 'Error de login'))
     } finally {
       setLoading(false)
     }
@@ -254,10 +262,16 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
                 </div>
               )}
               <Field
-                label="Email"
-                type="email"
+                label="Correo o teléfono"
+                type="text"
+                inputMode="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="username"
+                spellCheck={false}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                hint="Si te dieron un número, escribilo con el código de área, sin 0 ni 15."
                 disabled={loading}
               />
 

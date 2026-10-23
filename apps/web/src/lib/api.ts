@@ -37,7 +37,7 @@ export type AdminInstaller = {
   id: string
   canInstallDevices: boolean
   tenant: { id: string; name: string }
-  user: { id: string; name: string; email: string | null }
+  user: { id: string; name: string; email: string | null; phone: string | null }
   serviceProvider: { id: string; name: string } | null
 }
 
@@ -378,11 +378,11 @@ export type MilkDeliveryComparisonItem = {
 }
 
 export const api = {
-  async login(email: string, password: string, tenantId?: string) {
+  async login(identifier: string, password: string, tenantId?: string) {
     const res = await fetch(`${API_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, tenantId }),
+      body: JSON.stringify({ identifier, password, tenantId }),
     })
     const body = await res.json().catch(() => null)
     if (res.status === 400 && body?.error === 'tenantId required' && Array.isArray(body.tenants)) {
@@ -394,7 +394,7 @@ export const api = {
       err.tenants = body.tenants
       throw err
     }
-    if (!res.ok) throw new Error(body?.error || 'Login failed')
+    if (!res.ok) throw new ApiError(body?.error || 'Login failed', res.status, body?.code, body)
     return body as {
       accessToken: string
       user: { id: string; email: string | null; name: string }

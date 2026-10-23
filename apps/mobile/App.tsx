@@ -916,6 +916,10 @@ function AppContent() {
       ) {
         setLoginTenants(err.body.tenants);
         setStatus("Tenés acceso a más de un tambo. Elegí con cuál entrar.");
+      } else if (err instanceof ApiError && err.status === 429 && err.code === "LOGIN_LOCKED") {
+        const seconds = Number(err.body?.retryAfterSeconds) || 0;
+        const minutes = Math.max(1, Math.ceil(seconds / 60));
+        setStatus(`Demasiados intentos. Probá de nuevo en ${minutes} minutos.`);
       } else {
         setStatus("No se pudo entrar. Revisá usuario, contraseña o la señal.");
       }
@@ -2626,14 +2630,21 @@ function AppContent() {
                 </>
               ) : null}
               <Text style={styles.label}>
-                {loginMode === "login" ? "Usuario o correo" : "Tu correo"}
+                {loginMode === "login" ? "Correo o teléfono" : "Tu correo"}
               </Text>
               <TextInput
                 style={styles.input}
                 autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
                 value={email}
                 onChangeText={setEmail}
               />
+              {loginMode === "login" ? (
+                <Text style={styles.help}>
+                  Si te dieron un número, escribilo con el código de área, sin 0 ni 15.
+                </Text>
+              ) : null}
               {loginMode === "acceptInvite" ? (
                 <>
                   <Text style={styles.label}>Tu nombre (opcional)</Text>

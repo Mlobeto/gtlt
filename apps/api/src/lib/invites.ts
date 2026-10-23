@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type { Role } from "@prisma/client";
 import { prisma } from "./prisma.js";
 import { HttpError } from "./http-error.js";
+import { normalizeEmail, normalizePhone, PHONE_INVALID_MESSAGE } from "./identity.js";
 
 type CreateInviteInput = {
   tenantId: string;
@@ -15,13 +16,28 @@ type CreateInviteInput = {
 };
 
 export async function createInvite(input: CreateInviteInput) {
-  let user =
-    (input.email
-      ? await prisma.user.findUnique({ where: { email: input.email } })
-      : null) ??
-    (input.phone
-      ? await prisma.user.findFirst({ where: { phone: input.phone } })
-      : null);
+  let email: string | undefined;
+  if (input.email?.trim()) {
+    const parsed = normalizeEmail(input.email);
+    if (!parsed.ok) throw new HttpError(400, "Revisá el correo.");
+    email = parsed.value;
+  }
+  let phone: string | undefined;
+  if (input.phone?.trim()) {
+    const parsed = normalizePhone(input.phone);
+    if (!parsed.ok) throw new HttpError(400, PHONE_INVALID_MESSAGE);
+    phone = parsed.value;
+  }
+  if (!email && !phone) {
+    throw new HttpError(400, "Poné al menos un correo o un teléfono.");
+  }
+
+  const byEmail = email ? await prisma.user.findUnique({ where: { email } }) : null;
+  const byPhone = phone ? await prisma.user.findUnique({ where: { phone } }) : null;
+  if (byEmail && byPhone && byEmail.id !== byPhone.id) {
+    throw new HttpError(409, "Ese correo y ese teléfono pertenecen a personas distintas.");
+  }
+  let user = byPhone ?? byEmail;
 
   const fallbackName =
     input.role === "TECNICO"
@@ -62,16 +78,22 @@ export async function createInvite(input: CreateInviteInput) {
   if (!user) {
     user = await prisma.user.create({
       data: {
-        email: input.email,
-        phone: input.phone,
-        name: input.name?.trim() || input.email || input.phone || fallbackName,
+        email: email ?? null,
+        phone: phone ?? null,
+        name: input.name?.trim() || email || phone || fallbackName,
       },
     });
-  } else if (input.name?.trim()) {
-    user = await prisma.user.update({
-      where: { id: user.id },
-      data: { name: input.name.trim() },
-    });
+  } else {
+    const patch: { name?: string; email?: string; phone?: string } = {};
+    if (input.name?.trim()) patch.name = input.name.trim();
+    if (email && !user.email) patch.email = email;
+    if (phone && !user.phone) patch.phone = phone;
+    if (Object.keys(patch).length > 0) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: patch,
+      });
+    }
   }
 
   const inviteToken = crypto.randomBytes(32).toString("hex");
