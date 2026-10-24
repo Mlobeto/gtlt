@@ -215,7 +215,32 @@ Aplica a `MilkingSession`, `ControlLechero` (header) y `MilkDelivery`:
 - El correo se guarda en minúsculas y sin espacios, único. El teléfono se guarda en formato canónico y es único (puede ser nulo). En Argentina el canónico es `+549` + 10 dígitos (código de área + número, sin 0 ni 15). Un `+` que no sea `+54` se trata como internacional.
 - El ingreso acepta `identifier` (correo o teléfono) o `email` (clientes viejos). Si el valor tiene `@` es correo; si no, teléfono. Un teléfono que no se puede normalizar responde el mismo `401` genérico que una clave incorrecta. **Ningún mensaje distingue “no existe” de “clave incorrecta”.**
 - Tras **10 intentos fallidos seguidos** el usuario queda bloqueado 15 minutos (`User.failedLogins`, `User.lockedUntil` en la base, no en memoria). Mientras está bloqueado: `429` `{ error, code: "LOGIN_LOCKED", retryAfterSeconds }` **sin comprobar la clave**. Un ingreso correcto pone el contador en cero. Un identificador que no existe no suma intentos.
-- **No hay SMS, códigos de verificación ni recuperación por correo.** La clave se elige al aceptar la invitación o la resetea la desarrolladora.
+- **No hay SMS, códigos de verificación ni recuperación por correo.** La clave se elige al aceptar la invitación, la genera el dueño en el alta directa, o la restablece el dueño/admin (gente del tambo) o la desarrolladora.
+
+### Alta directa de tambero y veterinario
+
+- El dueño o un administrador da de alta a un **tambero** o un **veterinario** sin código ni enlace: `POST /memberships/create-member` `{ tamboId, name, phone?, email?, role }`. Hace falta el nombre y al menos un teléfono o un correo. La membresía nace **ACTIVA** (no PENDING).
+- El sistema genera una **clave temporal** (`generateTemporaryPassword`), marca `mustChangePassword` y la devuelve **una sola vez** en `{ temporaryPassword }`. No se vuelve a mostrar. No se escribe en logs ni en errores.
+- Solo roles `TAMBERO` y `VETERINARIO`. Un dueño no puede crear dueños, administradores ni técnicos (`400`). Eso lo hace la desarrolladora.
+- Si el identificador ya es de alguien **con clave**, no se toca la cuenta: `409` `USER_EXISTS` ("Esa persona ya tiene una cuenta en CAL. Invitala con el enlace para sumarla a este tambo.").
+- Si es un invitado **sin clave** y no tiene membresías **ACTIVE** en otro tenant, se le puede dar la clave temporal (nadie pudo haber entrado como él). Una invitación pendiente del mismo tenant pasa a ACTIVE y el código anterior deja de servir.
+- Si el stub sin clave ya tiene un acceso **ACTIVE** en otro tenant: `409` (no se le asigna clave).
+
+### Restablecer clave (dueño)
+
+- `POST /memberships/:id/reset-password` (dueño/admin). La membresía tiene que ser del tenant del llamador y `ACTIVE`, y el usuario tener clave. Responde `{ temporaryPassword }` una vez. También desbloquea el ingreso (`failedLogins = 0`, `lockedUntil` nulo).
+- Solo tambero o veterinario. Restablecer a dueño, admin o técnico: `403`.
+- **Cuentas compartidas:** un usuario puede tener membresías en más de un tenant. Si **alguna** membresía (activa o pendiente) está en otro tenant, el dueño **no** restablece: `409` `SHARED_ACCOUNT`. Si conociera esa clave temporal, podría entrar al otro tambo.
+- Al restablecer se pone `User.sessionsValidAfter = ahora`: los pases anteriores dejan de valer. El pase nuevo de `POST /auth/change-password` se emite después y sigue valiendo.
+
+### Equipo: editar, baja, reactivar, cancelar invitación
+
+- Solo `DUENIO`/`ADMIN`, y solo membresías de su tenant cuyos roles sean **únicamente** `TAMBERO` y/o `VETERINARIO`. Nunca dueños, administradores, técnicos ni a uno mismo. Un dueño de otro tenant recibe `404`.
+- **Dar de baja no es borrar.** `POST /memberships/:id/revoke` marca `REVOKED`, guarda `revokedAt`/`revokedById`, conserva los tambos y corta las sesiones de **ese** tenant (`Membership.sessionsValidAfter`). El usuario y todo lo que cargó (animales, ordeñes, eventos) siguen. Puede seguir teniendo acceso en otros tenants.
+- **Reactivar:** `POST /memberships/:id/reactivate` vuelve la misma fila a `ACTIVE`. No toca `sessionsValidAfter` (los pases de antes de la baja siguen sin valer). Si el usuario nunca tuvo clave: `409` y hay que invitar de nuevo. El dueño los ve con `GET /memberships?tamboId=&includeRevoked=true`.
+- **Editar:** `PATCH /memberships/:id`. Rol y tambos son de la membresía. Nombre/teléfono/correo son de la persona: en cuenta compartida (`409` `SHARED_ACCOUNT`) no se tocan. Un identificador de otro usuario: `409` `IDENTITY_TAKEN`. No se puede dejar a alguien sin correo ni teléfono. Cambiar rol o tambos en una membresía `ACTIVE` corta sus pases; cambiar solo datos personales no. Vale para `ACTIVE` y `PENDING` (en pendientes no se cortan sesiones).
+- **Cancelar invitación:** `POST /memberships/:id/cancel-invite` (solo `PENDING`) borra la membresía y sus tambos. Si el usuario no tiene clave, ni otras membresías, ni registros propios, se borra el usuario (resto de invitación).
+- **Celular:** al hablar con el servidor, un `401` `SESSION_REVOKED` cierra la sesión, borra los datos locales y la cola, y muestra "Tu acceso fue modificado. Volvé a ingresar." Sin conexión sigue mostrando lo que tenía. El cierre manual **no** borra datos locales.
 
 ### Antes de desplegar la migración
 

@@ -9,6 +9,8 @@ export type AuthContext = {
   /** Proveedor del técnico. Null si no aplica o es independiente. */
   serviceProviderId: string | null;
   mustChangePassword?: boolean;
+  /** `iat` del pase, en segundos. Ausente o inválido → 0. */
+  issuedAt?: number;
 };
 
 export type DeviceAuthContext = {

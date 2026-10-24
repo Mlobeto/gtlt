@@ -23,5 +23,5 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
-  "exclude": ["src/lib/readerLab/verify.ts"]
+  "exclude": ["src/lib/readerLab/verify.ts", "src/lib/verify-http.ts"]
 }

@@ -36,6 +36,7 @@ enum Role {
 enum MembershipStatus {
   PENDING
   ACTIVE
+  REVOKED
 }
 
 enum ServiceRequestCategory {
@@ -379,10 +380,13 @@ model User {
   mustChangePassword Boolean @default(false) @map("must_change_password")
   failedLogins Int      @default(0) @map("failed_logins")
   lockedUntil  DateTime? @map("locked_until")
+  /// Pases emitidos antes de este instante no valen (todas las sesiones de la persona).
+  sessionsValidAfter DateTime? @map("sessions_valid_after")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   memberships         Membership[]
+  membershipsRevoked  Membership[] @relation("MembershipRevokedBy")
   animalsCreated      Animal[]              @relation("AnimalCreatedBy")
   transfersCreated    AnimalTransferEvent[] @relation("TransferCreatedBy")
   sessionsCreated     MilkingSession[]      @relation("SessionCreatedBy")
@@ -428,11 +432,16 @@ model Membership {
   /// Token de invitación random, de un solo uso (se limpia al aceptar). Ver reglas-negocio-app.md.
   inviteToken          String?   @unique @map("invite_token")
   inviteTokenExpiresAt DateTime? @map("invite_token_expires_at")
+  revokedAt            DateTime? @map("revoked_at")
+  revokedById          String?   @map("revoked_by_id") @db.Uuid
+  /// Pases de este tenant emitidos antes de este instante no valen.
+  sessionsValidAfter   DateTime? @map("sessions_valid_after")
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
   tenant          Tenant           @relation(fields: [tenantId], references: [id])
   user            User             @relation(fields: [userId], references: [id])
+  revokedBy       User?            @relation("MembershipRevokedBy", fields: [revokedById], references: [id])
   tambos          MembershipTambo[]
   serviceProvider ServiceProvider? @relation(fields: [serviceProviderId], references: [id])
 

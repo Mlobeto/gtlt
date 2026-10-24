@@ -9,3 +9,6 @@ export const API_URL =
   "https://gtlt-api.proudmoss-fef6994b.eastus2.azurecontainerapps.io";
 
 export const WEB_URL = (process.env.EXPO_PUBLIC_WEB_URL ?? "").replace(/\/$/, "");
+
+/** Enlace de descarga de la app. Vacío hasta que exista un store / APK público. */
+export const APP_DOWNLOAD_URL = "";

@@ -9,6 +9,7 @@ import { syncPlanPricesFromUsd } from "../lib/plan-pricing.js";
 import { tamboOnboardingSchema, createOnboardedTambo } from "../lib/tambo-onboarding.js";
 import { tamboLifecycleState } from "../lib/tambo-state.js";
 import { generateTemporaryPassword } from "../lib/temp-password.js";
+import { invalidateAccess } from "../lib/access-session.js";
 import {
   normalizeEmail,
   normalizePhone,
@@ -372,8 +373,9 @@ adminRouter.post(
     const passwordHash = await bcrypt.hash(temporaryPassword, 10);
     await prisma.user.update({
       where: { id: user.id },
-      data: { passwordHash, mustChangePassword: true },
+      data: { passwordHash, mustChangePassword: true, sessionsValidAfter: new Date() },
     });
+    invalidateAccess(user.id);
 
     res.json({
       item: { id: user.id, email: user.email, name: user.name },

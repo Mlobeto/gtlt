@@ -7,6 +7,7 @@ import { authContextWithPasswordFlag } from "../lib/access.js";
 import { parseIdentifier } from "../lib/identity.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { HttpError } from "../lib/http-error.js";
+import { invalidateAccess } from "../lib/access-session.js";
 
 export const authRouter = Router();
 
@@ -212,8 +213,9 @@ authRouter.post("/change-password", authenticate, async (req, res) => {
   const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
   await prisma.user.update({
     where: { id: user.id },
-    data: { passwordHash, mustChangePassword: false },
+    data: { passwordHash, mustChangePassword: false, sessionsValidAfter: new Date() },
   });
+  invalidateAccess(user.id);
 
   const membership = await prisma.membership.findFirst({
     where: { userId: user.id, tenantId: auth.tenantId, status: "ACTIVE" },

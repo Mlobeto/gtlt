@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { api, ApiError, type AcceptedInvite } from '../lib/api'
+import { loginLockMessage } from '../lib/http'
 import { WEB_ALLOWED_ROLES, type AuthToken } from '../types/auth'
 import { Button, Card, ErrorBanner, Field } from '../components/ui'
 
 interface LoginPageProps {
   onSuccess: (token: AuthToken) => void
+  initialNotice?: string
 }
 
 type TenantChoice = { id: string; name: string; roles: string[] }
@@ -21,14 +23,6 @@ function isTenantRequiredError(
 
 const hasWebRole = (roles: string[]) =>
   roles.some((role) => WEB_ALLOWED_ROLES.includes(role as (typeof WEB_ALLOWED_ROLES)[number]))
-
-function loginLockMessage(err: unknown): string | null {
-  if (!(err instanceof ApiError) || err.status !== 429 || err.code !== 'LOGIN_LOCKED') return null
-  const body = err.body as { retryAfterSeconds?: number } | null
-  const seconds = Number(body?.retryAfterSeconds) || 0
-  const minutes = Math.max(1, Math.ceil(seconds / 60))
-  return `Demasiados intentos. Probá de nuevo en ${minutes} minutos.`
-}
 
 let consumedInviteHash: string | null | undefined
 
@@ -49,11 +43,11 @@ function consumeInviteHash(): string | null {
   return consumedInviteHash
 }
 
-export function LoginPage({ onSuccess }: LoginPageProps) {
+export function LoginPage({ onSuccess, initialNotice = '' }: LoginPageProps) {
   const inviteFromHash = consumeInviteHash()
   const [email, setEmail] = useState(import.meta.env.DEV ? 'admin@gtlt.local' : '')
   const [password, setPassword] = useState(import.meta.env.DEV ? 'demo1234' : '')
-  const [error, setError] = useState('')
+  const [error, setError] = useState(initialNotice)
   const [loading, setLoading] = useState(false)
   const [tenants, setTenants] = useState<TenantChoice[] | null>(null)
   const [mode, setMode] = useState<'login' | 'invite'>(inviteFromHash ? 'invite' : 'login')

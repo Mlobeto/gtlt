@@ -12,6 +12,7 @@ export type JwtPayload = {
   serviceProviderId?: string | null;
   /** Ausente en tokens viejos → se trata como false. */
   mustChangePassword?: boolean;
+  iat?: number;
 };
 
 export function signAccessToken(ctx: AuthContext): string {
@@ -42,5 +43,6 @@ export function verifyAccessToken(token: string): AuthContext {
     tamboIds: decoded.tamboIds ?? null,
     serviceProviderId: decoded.serviceProviderId ?? null,
     mustChangePassword: decoded.mustChangePassword === true,
+    issuedAt: typeof decoded.iat === "number" ? decoded.iat : 0,
   };
 }

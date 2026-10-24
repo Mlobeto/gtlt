@@ -1,17 +1,21 @@
 import { File } from "expo-file-system";
 import { API_URL } from "./config";
+import { ApiError, createHttp, loginLockMessage } from "./http";
 
-export class ApiError extends Error {
-  status: number;
-  code?: string;
-  body?: any;
-  constructor(message: string, status: number, code?: string, body?: any) {
-    super(message);
-    this.status = status;
-    this.code = code;
-    this.body = body;
-  }
-}
+export { ApiError, loginLockMessage };
+
+const http = createHttp({
+  fetch: (input, init) => globalThis.fetch(input, init),
+  baseUrl: API_URL,
+});
+
+const { request, apiFetch } = http;
+export const {
+  setSessionRevokedHandler,
+  resetSessionRevokedLatch,
+  isSessionRevoked,
+  login,
+} = http;
 
 type LoginResponse = {
   accessToken: string;
@@ -21,39 +25,6 @@ type LoginResponse = {
   tamboIds: string[] | null;
   mustChangePassword?: boolean;
 };
-
-async function request<T>(
-  path: string,
-  options: RequestInit & { token?: string } = {},
-): Promise<T> {
-  const { token, headers, ...rest } = options;
-  const res = await fetch(`${API_URL}${path}`, {
-    ...rest,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(headers ?? {}),
-    },
-  });
-
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new ApiError(
-      body.error ?? `HTTP ${res.status}`,
-      res.status,
-      body.code,
-      body,
-    );
-  }
-  return body as T;
-}
-
-export function login(identifier: string, password: string, tenantId?: string) {
-  return request<LoginResponse>("/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ identifier, password, ...(tenantId ? { tenantId } : {}) }),
-  });
-}
 
 export function changePassword(token: string, currentPassword: string, newPassword: string) {
   return request<LoginResponse>("/auth/change-password", {
@@ -398,7 +369,7 @@ export async function uploadPhoto(token: string, localUri: string): Promise<{ ur
   const form = new FormData();
   form.append("file", new File(localUri));
 
-  const res = await fetch(`${API_URL}/uploads/photo`, {
+  const res = await apiFetch(`${API_URL}/uploads/photo`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: form,

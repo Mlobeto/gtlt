@@ -104,7 +104,15 @@ export function createApp() {
         console.error(err);
       } else if (status >= 400) {
         const path = (req.originalUrl ?? req.url ?? "").split("?")[0];
-        console.warn(`${req.method} ${path} ${status} ${err.message}`);
+        const sensitive =
+          path === "/memberships/create-member" ||
+          /\/memberships\/[^/]+\/(reset-password|revoke|reactivate|cancel-invite)$/.test(path) ||
+          /^\/memberships\/[0-9a-fA-F-]{36}$/.test(path);
+        if (sensitive) {
+          console.warn(`${req.method} ${path} ${status}`);
+        } else {
+          console.warn(`${req.method} ${path} ${status} ${err.message}`);
+        }
       }
       res.status(status).json({
         error: err.message || "Internal error",

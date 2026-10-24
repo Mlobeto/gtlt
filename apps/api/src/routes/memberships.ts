@@ -6,6 +6,14 @@ import { HttpError } from "../lib/http-error.js";
 import { authContextWithPasswordFlag } from "../lib/access.js";
 import { signAccessToken } from "../lib/auth-tokens.js";
 import { createInvite } from "../lib/invites.js";
+import { createDirectMember, resetMemberPassword } from "../lib/members.js";
+import {
+  cancelInvite,
+  listMembershipsForTambo,
+  patchMembership,
+  reactivateMembership,
+  revokeMembership,
+} from "../lib/membership-admin.js";
 import { requireTamboInTenant } from "../lib/tambo-scope.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRoles } from "../middleware/require-roles.js";
@@ -45,6 +53,18 @@ const acceptInviteSchema = z.object({
 const tamberoRoleSchema = z.object({
   enabled: z.boolean(),
 });
+
+const createMemberSchema = z
+  .object({
+    tamboId: z.string().uuid(),
+    name: z.string().trim().min(1).max(120),
+    email: z.string().trim().min(1).optional(),
+    phone: z.string().trim().min(1).max(40).optional(),
+    role: z.string(),
+  })
+  .refine((d) => Boolean(d.email || d.phone), {
+    message: "Poné al menos un correo o un teléfono.",
+  });
 
 membershipsRouter.patch(
   "/me/tambero-role",
@@ -162,40 +182,140 @@ membershipsRouter.post(
   },
 );
 
+membershipsRouter.post(
+  "/create-member",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN"),
+  async (req, res) => {
+    const parsed = createMemberSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const msg = parsed.error.issues[0]?.message;
+      res.status(400).json({
+        error: msg && !msg.startsWith("Invalid") ? msg : "Revisá los datos.",
+      });
+      return;
+    }
+
+    const auth = req.auth!;
+    const data = parsed.data;
+    await requireTamboInTenant(auth, data.tamboId);
+
+    const { item, temporaryPassword } = await createDirectMember({
+      tenantId: auth.tenantId,
+      tamboId: data.tamboId,
+      name: data.name,
+      phone: data.phone,
+      email: data.email,
+      role: data.role,
+    });
+
+    res.status(201).json({ item, temporaryPassword });
+  },
+);
+
+membershipsRouter.post(
+  "/:id/reset-password",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN"),
+  async (req, res) => {
+    const auth = req.auth!;
+    const { temporaryPassword } = await resetMemberPassword({
+      callerRoles: auth.roles,
+      callerTenantId: auth.tenantId,
+      membershipId: String(req.params.id),
+    });
+    res.json({ temporaryPassword });
+  },
+);
+
 membershipsRouter.get(
   "/",
   authenticate,
   requireRoles("DUENIO", "ADMIN"),
   async (req, res) => {
-    const parsed = z.object({ tamboId: z.string().uuid() }).safeParse(req.query);
+    const parsed = z
+      .object({
+        tamboId: z.string().uuid(),
+        includeRevoked: z.enum(["true", "false"]).optional(),
+      })
+      .safeParse(req.query);
     if (!parsed.success) {
-      res.status(400).json({ error: "Invalid query", details: parsed.error.flatten() });
+      res.status(400).json({ error: "Revisá los datos." });
       return;
     }
 
-    const auth = req.auth!;
-    await requireTamboInTenant(auth, parsed.data.tamboId);
-
-    const items = await prisma.membership.findMany({
-      where: {
-        tenantId: auth.tenantId,
-        tambos: { some: { tamboId: parsed.data.tamboId } },
-      },
-      include: {
-        user: { select: { id: true, name: true, email: true, phone: true } },
-      },
-      orderBy: { createdAt: "asc" },
+    const items = await listMembershipsForTambo({
+      auth: req.auth!,
+      tamboId: parsed.data.tamboId,
+      includeRevoked: parsed.data.includeRevoked === "true",
     });
+    res.json({ items });
+  },
+);
 
-    res.json({
-      items: items.map((m) => ({
-        id: m.id,
-        roles: m.roles,
-        status: m.status,
-        companyName: m.companyName,
-        user: m.user,
-      })),
+membershipsRouter.patch(
+  "/:id",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN"),
+  async (req, res) => {
+    const parsed = z
+      .object({
+        name: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().optional(),
+        role: z.enum(["TAMBERO", "VETERINARIO"]).optional(),
+        tamboIds: z.array(z.string().uuid()).optional(),
+      })
+      .safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: "Revisá los datos." });
+      return;
+    }
+    const item = await patchMembership({
+      auth: req.auth!,
+      membershipId: String(req.params.id),
+      ...parsed.data,
     });
+    res.json({ item });
+  },
+);
+
+membershipsRouter.post(
+  "/:id/revoke",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN"),
+  async (req, res) => {
+    const item = await revokeMembership({
+      auth: req.auth!,
+      membershipId: String(req.params.id),
+    });
+    res.json({ item });
+  },
+);
+
+membershipsRouter.post(
+  "/:id/reactivate",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN"),
+  async (req, res) => {
+    const item = await reactivateMembership({
+      auth: req.auth!,
+      membershipId: String(req.params.id),
+    });
+    res.json({ item });
+  },
+);
+
+membershipsRouter.post(
+  "/:id/cancel-invite",
+  authenticate,
+  requireRoles("DUENIO", "ADMIN"),
+  async (req, res) => {
+    await cancelInvite({
+      auth: req.auth!,
+      membershipId: String(req.params.id),
+    });
+    res.status(204).end();
   },
 );
 

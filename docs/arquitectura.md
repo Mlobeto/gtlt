@@ -284,6 +284,12 @@ Documentación completa: [apps/web/README.md](../apps/web/README.md)
 | Me | `GET /auth/me` — user, tenant, tambos visibles |
 | Scope | Queries de negocio usan siempre `tenantId` del token; tambos filtrados si `tamboIds` no es null |
 | Roles helper | `requireRoles(...)` para endpoints futuros |
+| Alta directa | `POST /memberships/create-member` `{ tamboId, name, phone?, email?, role: TAMBERO\|VETERINARIO }` → `201` `{ item, temporaryPassword }`. Dueño/admin. Transacción. |
+| Restablecer clave | `POST /memberships/:id/reset-password` → `{ temporaryPassword }`. Dueño/admin; solo tambero/vet del tenant; no cuentas compartidas. Corta pases (`User.sessionsValidAfter`) |
+| Equipo | `PATCH /memberships/:id`, `POST .../revoke`, `.../reactivate`, `.../cancel-invite`. `GET /memberships?tamboId=&includeRevoked=` |
+| Sesión | Tras la firma, `authenticate` consulta membresía+usuario (caché 30 s, tope 5000). `401` `SESSION_REVOKED` si no está `ACTIVE` o el `iat` es anterior a `sessionsValidAfter` (membresía o usuario). `ACCESS_CHECK_ENABLED=false` deja solo la firma. Azure: `az containerapp update --set-env-vars ACCESS_CHECK_ENABLED=false` |
+
+`Membership.status` incluye `REVOKED` (baja, no borrado). Dos marcas: `Membership.sessionsValidAfter` (ese tenant) y `User.sessionsValidAfter` (todas las sesiones de la persona). Un pase sin `iat` se trata como emitido en 0. La caché es por proceso: con varias instancias de la API una baja puede tardar hasta 30 s en verse en otra. `ACCESS_CHECK_ENABLED=false` apaga el control sin redesplegar código.
 
 **Demo local** (seed): `admin@gtlt.local` / `demo1234` (roles `DUENIO`+`ADMIN`); también `tambero@gtlt.local` y `tecnico@gtlt.local` (misma clave).
 
@@ -353,7 +359,7 @@ gtlt/
 - [ ] RLS Postgres (post-MVP datos reales)  
 - [x] Modelo de datos `Plan` / `Subscription` / `Payment` (ver [pricing-model.md](./pricing-model.md))
 - [ ] Panel de dev: alta/edici\u00f3n de tenants y due\u00f1os, pagos y estad\u00edsticas (usa el modelo anterior)
-- [ ] Invitar/activar usuarios `TAMBERO` desde el due\u00f1o (hoy solo existe `invite-technician`)
+- [x] Alta directa de tambero/veterinario y restablecer clave (`/memberships/create-member`, `/memberships/:id/reset-password`)
 - [ ] Dise\u00f1o detallado de acceso dual del veterinario (historial + asignaci\u00f3n de tareas/visitas por el due\u00f1o)
 - [ ] Landing p\u00fablica + checkout Mercado Pago Suscripciones + webhook de aprovisionamiento
 - [ ] Publicaci\u00f3n Android como app unlisted en Play Console

@@ -17,6 +17,7 @@ import {
   createWeightEvent,
   uploadPhoto,
   createAnimalPhoto,
+  isSessionRevoked,
 } from "./api";
 import {
   countPendingOutbox,
@@ -102,6 +103,8 @@ export async function pullServerState(
     fetchControlLecheros(token, tamboId),
     fetchReproEvents(token, tamboId),
   ]);
+
+  if (isSessionRevoked()) return;
 
   await replaceAnimals(
     tamboId,
@@ -617,6 +620,9 @@ export async function pushOutbox(token: string): Promise<{
   let failed = 0;
 
   for (const row of pending) {
+    if (isSessionRevoked()) {
+      return { synced, failed, pendingLeft: await countPendingOutbox() };
+    }
     try {
       if (row.entity === "HealthEvent") {
         const payload = JSON.parse(row.payload) as Parameters<

@@ -23,6 +23,9 @@ import * as Location from "expo-location";
 import NetInfo from "@react-native-community/netinfo";
 import {
   ApiError,
+  loginLockMessage,
+  resetSessionRevokedLatch,
+  setSessionRevokedHandler,
   acceptInvite,
   acceptInviteRegister,
   approveServiceRequest,
@@ -87,6 +90,7 @@ import { buildActionLists, type ActionLists } from "./src/animals/actionLists";
 import {
   countPendingOutbox,
   getDb,
+  wipeLocalData,
   getLocalAnimal,
   listActiveWithdrawalsLocal,
   listAnimalPhotosForAnimal,
@@ -712,6 +716,31 @@ function AppContent() {
   const onlineRef = useRef(true);
   const syncingRef = useRef(false);
   const wasOnlineRef = useRef(true);
+  const accessRevokedRef = useRef(false);
+
+  const handleAccessRevoked = useCallback(async () => {
+    accessRevokedRef.current = true;
+    sessionRef.current = null;
+    await clearSession();
+    await wipeLocalData();
+    setSession(null);
+    setPendingAuth(null);
+    setAvailableTambos([]);
+    setScreen("home");
+    setWithdrawals([]);
+    setAnimals([]);
+    setMilkings([]);
+    setRepros([]);
+    setDeliveries([]);
+    setControls([]);
+    setPending(0);
+    setStatus("Tu acceso fue modificado. Volvé a ingresar.");
+  }, []);
+
+  useEffect(() => {
+    setSessionRevokedHandler(() => handleAccessRevoked());
+    return () => setSessionRevokedHandler(null);
+  }, [handleAccessRevoked]);
 
   useEffect(() => {
     sessionRef.current = session;
@@ -733,7 +762,7 @@ function AppContent() {
   const runAutoSync = useCallback(
     async (reason: "online" | "foreground") => {
       const s = sessionRef.current;
-      if (!s || !onlineRef.current || syncingRef.current) return;
+      if (accessRevokedRef.current || !s || !onlineRef.current || syncingRef.current) return;
       if (isTechnicianOnly(s.roles ?? [])) return;
       const left = await countPendingOutbox();
       if (left === 0 && reason === "foreground") {
@@ -889,6 +918,8 @@ function AppContent() {
     setStatus("Entrando...");
     try {
       const res = await apiLogin(email.trim(), password, tenantId);
+      resetSessionRevokedLatch();
+      accessRevokedRef.current = false;
       setLoginTenants([]);
       if (res.mustChangePassword) {
         setPendingAuth({
@@ -917,9 +948,7 @@ function AppContent() {
         setLoginTenants(err.body.tenants);
         setStatus("Tenés acceso a más de un tambo. Elegí con cuál entrar.");
       } else if (err instanceof ApiError && err.status === 429 && err.code === "LOGIN_LOCKED") {
-        const seconds = Number(err.body?.retryAfterSeconds) || 0;
-        const minutes = Math.max(1, Math.ceil(seconds / 60));
-        setStatus(`Demasiados intentos. Probá de nuevo en ${minutes} minutos.`);
+        setStatus(loginLockMessage(err) ?? "Demasiados intentos. Probá de nuevo más tarde.");
       } else {
         setStatus("No se pudo entrar. Revisá usuario, contraseña o la señal.");
       }

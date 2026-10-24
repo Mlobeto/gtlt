@@ -5,11 +5,12 @@ import { DashboardPage } from './pages/DashboardPage'
 import { TechnicianDashboardPage } from './pages/TechnicianDashboardPage'
 import { ChangePasswordScreen } from './components/ChangePasswordScreen'
 import { isTechnicianWebSession, type AuthToken } from './types/auth'
-import { api, ApiError } from './lib/api'
+import { api, ApiError, resetSessionRevokedLatch, setSessionRevokedHandler } from './lib/api'
 
 function App() {
   const [auth, setAuth] = useState<AuthToken | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loginNotice, setLoginNotice] = useState('')
 
   useEffect(() => {
     const stored = localStorage.getItem('gtlt_auth')
@@ -24,9 +25,20 @@ function App() {
   }, [])
 
   const persist = (next: AuthToken) => {
+    resetSessionRevokedLatch()
+    setLoginNotice('')
     setAuth(next)
     localStorage.setItem('gtlt_auth', JSON.stringify(next))
   }
+
+  useEffect(() => {
+    setSessionRevokedHandler(() => {
+      localStorage.removeItem('gtlt_auth')
+      setAuth(null)
+      setLoginNotice('Tu acceso fue modificado. Volvé a ingresar.')
+    })
+    return () => setSessionRevokedHandler(null)
+  }, [])
 
   useEffect(() => {
     if (!auth || auth.mustChangePassword) return
@@ -35,6 +47,9 @@ function App() {
         const me = await api.getMe(auth.token)
         if (me.mustChangePassword) persist({ ...auth, mustChangePassword: true })
       } catch (err) {
+        if (err instanceof ApiError && err.code === 'SESSION_REVOKED') {
+          return
+        }
         if (err instanceof ApiError && err.code === 'PASSWORD_CHANGE_REQUIRED') {
           persist({ ...auth, mustChangePassword: true })
         }
@@ -61,7 +76,7 @@ function App() {
 
   if (!auth) {
     return (
-      <LoginPage onSuccess={persist} />
+      <LoginPage onSuccess={persist} initialNotice={loginNotice} />
     )
   }
 

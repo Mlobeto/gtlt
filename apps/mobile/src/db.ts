@@ -1014,6 +1014,28 @@ export async function markOutboxError(
   ]);
 }
 
+const DATA_TABLES = [
+  "animals",
+  "health_events_local",
+  "milking_sessions_local",
+  "repro_events_local",
+  "milk_deliveries_local",
+  "control_lecheros_local",
+  "weight_events_local",
+  "animal_photos_local",
+  "outbox",
+] as const;
+
+/** Vacía datos y cola. No borra el esquema. */
+export async function wipeLocalData(): Promise<void> {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    for (const table of DATA_TABLES) {
+      await db.runAsync(`DELETE FROM ${table}`);
+    }
+  });
+}
+
 export async function countPendingOutbox(): Promise<number> {
   const db = await getDb();
   const row = await db.getFirstAsync<{ c: number }>(

@@ -1,21 +1,19 @@
+import { ApiError, createHttp } from './http'
+
+export { ApiError, loginLockMessage } from './http'
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+
+const http = createHttp({
+  fetch: (input, init) => globalThis.fetch(input, init),
+  baseUrl: API_URL,
+})
+
+export const { setSessionRevokedHandler, resetSessionRevokedLatch, apiFetch, login: httpLogin } = http
 
 export function photoFileUrl(token: string, url: string) {
   const params = new URLSearchParams({ url, access_token: token })
   return `${API_URL}/uploads/file?${params.toString()}`
-}
-
-export class ApiError extends Error {
-  status: number
-  code?: string
-  body?: unknown
-
-  constructor(message: string, status: number, code?: string, body?: unknown) {
-    super(message)
-    this.status = status
-    this.code = code
-    this.body = body
-  }
 }
 
 async function toApiError(res: Response, fallback: string) {
@@ -378,34 +376,12 @@ export type MilkDeliveryComparisonItem = {
 }
 
 export const api = {
-  async login(identifier: string, password: string, tenantId?: string) {
-    const res = await fetch(`${API_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier, password, tenantId }),
-    })
-    const body = await res.json().catch(() => null)
-    if (res.status === 400 && body?.error === 'tenantId required' && Array.isArray(body.tenants)) {
-      const err = new Error('tenantId required') as Error & {
-        code: 'TENANT_REQUIRED'
-        tenants: { id: string; name: string; roles: string[] }[]
-      }
-      err.code = 'TENANT_REQUIRED'
-      err.tenants = body.tenants
-      throw err
-    }
-    if (!res.ok) throw new ApiError(body?.error || 'Login failed', res.status, body?.code, body)
-    return body as {
-      accessToken: string
-      user: { id: string; email: string | null; name: string }
-      tenant: { id: string }
-      roles: string[]
-      mustChangePassword?: boolean
-    }
+  login(identifier: string, password: string, tenantId?: string) {
+    return httpLogin(identifier, password, tenantId)
   },
 
   async changePassword(token: string, currentPassword: string, newPassword: string) {
-    const res = await fetch(`${API_URL}/auth/change-password`, {
+    const res = await apiFetch(`${API_URL}/auth/change-password`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -424,17 +400,17 @@ export const api = {
   },
 
   async getMe(token: string) {
-    const res = await fetch(`${API_URL}/auth/me`, {
+    const res = await apiFetch(`${API_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-    if (!res.ok) throw new Error('Error al obtener el usuario')
+    if (!res.ok) throw await toApiError(res, 'Error al obtener el usuario')
     return res.json()
   },
 
   async getSupportTickets(token: string, status?: string) {
     const params = new URLSearchParams()
     if (status) params.append('status', status)
-    const res = await fetch(`${API_URL}/support-tickets?${params}`, {
+    const res = await apiFetch(`${API_URL}/support-tickets?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error('Failed to fetch tickets')
@@ -442,7 +418,7 @@ export const api = {
   },
 
   async createSupportTicket(token: string, data: any) {
-    const res = await fetch(`${API_URL}/support-tickets`, {
+    const res = await apiFetch(`${API_URL}/support-tickets`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -455,7 +431,7 @@ export const api = {
   },
 
   async updateSupportTicket(token: string, id: string, data: any) {
-    const res = await fetch(`${API_URL}/support-tickets/${id}`, {
+    const res = await apiFetch(`${API_URL}/support-tickets/${id}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -468,7 +444,7 @@ export const api = {
   },
 
   async getAppPrototypeConfigs(token: string) {
-    const res = await fetch(`${API_URL}/app-prototype-config`, {
+    const res = await apiFetch(`${API_URL}/app-prototype-config`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error('Failed to fetch configs')
@@ -476,7 +452,7 @@ export const api = {
   },
 
   async createAppPrototypeConfig(token: string, data: any) {
-    const res = await fetch(`${API_URL}/app-prototype-config`, {
+    const res = await apiFetch(`${API_URL}/app-prototype-config`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -489,7 +465,7 @@ export const api = {
   },
 
   async updateAppPrototypeConfig(token: string, id: string, data: any) {
-    const res = await fetch(`${API_URL}/app-prototype-config/${id}`, {
+    const res = await apiFetch(`${API_URL}/app-prototype-config/${id}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -502,7 +478,7 @@ export const api = {
   },
 
   async getAdminInstallers(token: string, tenantId: string) {
-    const res = await fetch(
+    const res = await apiFetch(
       `${API_URL}/admin/installers?tenantId=${encodeURIComponent(tenantId)}`,
       { headers: { Authorization: `Bearer ${token}` } },
     )
@@ -511,7 +487,7 @@ export const api = {
   },
 
   async updateAdminInstaller(token: string, membershipId: string, enabled: boolean) {
-    const res = await fetch(`${API_URL}/admin/memberships/${membershipId}/installer`, {
+    const res = await apiFetch(`${API_URL}/admin/memberships/${membershipId}/installer`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -524,7 +500,7 @@ export const api = {
   },
 
   async getAdminTenants(token: string) {
-    const res = await fetch(`${API_URL}/admin/tenants`, {
+    const res = await apiFetch(`${API_URL}/admin/tenants`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error('Failed to fetch accounts')
@@ -543,7 +519,7 @@ export const api = {
       equipmentProductIds: string[]
     },
   ) {
-    const res = await fetch(`${API_URL}/admin/tenants/${tenantId}/tambos`, {
+    const res = await apiFetch(`${API_URL}/admin/tenants/${tenantId}/tambos`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -556,7 +532,7 @@ export const api = {
   },
 
   async resetAdminUserPassword(token: string, userId: string, temporaryPassword?: string) {
-    const res = await fetch(`${API_URL}/admin/users/${userId}/reset-password`, {
+    const res = await apiFetch(`${API_URL}/admin/users/${userId}/reset-password`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -569,7 +545,7 @@ export const api = {
   },
 
   async updateAdminTamboServiceProvider(token: string, tamboId: string, serviceProviderId: string) {
-    const res = await fetch(`${API_URL}/admin/tambos/${tamboId}/service-provider`, {
+    const res = await apiFetch(`${API_URL}/admin/tambos/${tamboId}/service-provider`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -582,7 +558,7 @@ export const api = {
   },
 
   async getAdminTamboServiceProviderPeriods(token: string, tamboId: string) {
-    const res = await fetch(`${API_URL}/admin/tambos/${tamboId}/service-provider-periods`, {
+    const res = await apiFetch(`${API_URL}/admin/tambos/${tamboId}/service-provider-periods`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los períodos')
@@ -590,7 +566,7 @@ export const api = {
   },
 
   async createAdminTenant(token: string, data: any) {
-    const res = await fetch(`${API_URL}/admin/tenants`, {
+    const res = await apiFetch(`${API_URL}/admin/tenants`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -606,7 +582,7 @@ export const api = {
   },
 
   async updateAdminTenantSubscription(token: string, tenantId: string, data: any) {
-    const res = await fetch(`${API_URL}/admin/tenants/${tenantId}/subscription`, {
+    const res = await apiFetch(`${API_URL}/admin/tenants/${tenantId}/subscription`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -619,7 +595,7 @@ export const api = {
   },
 
   async getAdminPlans(token: string) {
-    const res = await fetch(`${API_URL}/admin/plans`, {
+    const res = await apiFetch(`${API_URL}/admin/plans`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error('Failed to fetch plans')
@@ -627,7 +603,7 @@ export const api = {
   },
 
   async updateAdminPlan(token: string, planId: string, data: any) {
-    const res = await fetch(`${API_URL}/admin/plans/${planId}`, {
+    const res = await apiFetch(`${API_URL}/admin/plans/${planId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -641,7 +617,7 @@ export const api = {
 
   async getTambos(token: string, includeArchived = false) {
     const q = includeArchived ? '?includeArchived=1' : ''
-    const res = await fetch(`${API_URL}/tambos${q}`, {
+    const res = await apiFetch(`${API_URL}/tambos${q}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) {
@@ -670,7 +646,7 @@ export const api = {
     tamboId: string,
     deliveryDiffThresholdPct: number | null,
   ) {
-    const res = await fetch(`${API_URL}/tambos/${tamboId}/settings`, {
+    const res = await apiFetch(`${API_URL}/tambos/${tamboId}/settings`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -686,7 +662,7 @@ export const api = {
 
   async getMilkDeliveryComparisons(token: string, tamboId: string, limit = 20) {
     const params = new URLSearchParams({ tamboId, limit: String(limit) })
-    const res = await fetch(`${API_URL}/milk-deliveries/comparisons?${params}`, {
+    const res = await apiFetch(`${API_URL}/milk-deliveries/comparisons?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudieron cargar las entregas')
@@ -697,7 +673,7 @@ export const api = {
   },
 
   async getBillingSummary(token: string) {
-    const res = await fetch(`${API_URL}/tambos/billing-summary`, {
+    const res = await apiFetch(`${API_URL}/tambos/billing-summary`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudo cargar el resumen de costo')
@@ -714,7 +690,7 @@ export const api = {
       flowMeters: String(query.flowMeters),
       rfidReaders: String(query.rfidReaders),
     })
-    const res = await fetch(`${API_URL}/tambo-requests/equipment-preview?${params}`, {
+    const res = await apiFetch(`${API_URL}/tambo-requests/equipment-preview?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudo calcular el listado de equipos')
@@ -722,7 +698,7 @@ export const api = {
   },
 
   async getTamboRequests(token: string) {
-    const res = await fetch(`${API_URL}/tambo-requests`, {
+    const res = await apiFetch(`${API_URL}/tambo-requests`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los pedidos')
@@ -744,7 +720,7 @@ export const api = {
       powerSupply?: PowerSupply | null
     },
   ) {
-    const res = await fetch(`${API_URL}/tambo-requests`, {
+    const res = await apiFetch(`${API_URL}/tambo-requests`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -757,7 +733,7 @@ export const api = {
   },
 
   async acceptTamboRequest(token: string, id: string) {
-    const res = await fetch(`${API_URL}/tambo-requests/${id}/accept`, {
+    const res = await apiFetch(`${API_URL}/tambo-requests/${id}/accept`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -770,7 +746,7 @@ export const api = {
   },
 
   async declineTamboRequest(token: string, id: string, reason?: string) {
-    const res = await fetch(`${API_URL}/tambo-requests/${id}/decline`, {
+    const res = await apiFetch(`${API_URL}/tambo-requests/${id}/decline`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -783,7 +759,7 @@ export const api = {
   },
 
   async cancelTamboRequest(token: string, id: string) {
-    const res = await fetch(`${API_URL}/tambo-requests/${id}/cancel`, {
+    const res = await apiFetch(`${API_URL}/tambo-requests/${id}/cancel`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -800,7 +776,7 @@ export const api = {
     if (query?.status) params.set('status', query.status)
     if (query?.tenantId) params.set('tenantId', query.tenantId)
     const q = params.toString() ? `?${params}` : ''
-    const res = await fetch(`${API_URL}/admin/tambo-requests${q}`, {
+    const res = await apiFetch(`${API_URL}/admin/tambo-requests${q}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los pedidos')
@@ -808,7 +784,7 @@ export const api = {
   },
 
   async getAdminTamboRequest(token: string, id: string) {
-    const res = await fetch(`${API_URL}/admin/tambo-requests/${id}`, {
+    const res = await apiFetch(`${API_URL}/admin/tambo-requests/${id}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudo cargar el pedido')
@@ -826,7 +802,7 @@ export const api = {
       quoteNotes?: string | null
     },
   ) {
-    const res = await fetch(`${API_URL}/admin/tambo-requests/${id}/quote`, {
+    const res = await apiFetch(`${API_URL}/admin/tambo-requests/${id}/quote`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -839,7 +815,7 @@ export const api = {
   },
 
   async rejectAdminTamboRequest(token: string, id: string, reason: string) {
-    const res = await fetch(`${API_URL}/admin/tambo-requests/${id}/reject`, {
+    const res = await apiFetch(`${API_URL}/admin/tambo-requests/${id}/reject`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -852,7 +828,7 @@ export const api = {
   },
 
   async createAdminTambo(token: string, requestId: string) {
-    const res = await fetch(`${API_URL}/admin/tambos`, {
+    const res = await apiFetch(`${API_URL}/admin/tambos`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -865,7 +841,7 @@ export const api = {
   },
 
   async activateAdminTambo(token: string, id: string) {
-    const res = await fetch(`${API_URL}/admin/tambos/${id}/activate`, {
+    const res = await apiFetch(`${API_URL}/admin/tambos/${id}/activate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -878,7 +854,7 @@ export const api = {
   },
 
   async getAdminInstallingTambos(token: string) {
-    const res = await fetch(`${API_URL}/admin/tambos?state=installing`, {
+    const res = await apiFetch(`${API_URL}/admin/tambos?state=installing`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los tambos en instalación')
@@ -895,7 +871,7 @@ export const api = {
       powerSupply?: PowerSupply | null
     },
   ) {
-    const res = await fetch(`${API_URL}/tambos/${tamboId}`, {
+    const res = await apiFetch(`${API_URL}/tambos/${tamboId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -908,7 +884,7 @@ export const api = {
   },
 
   async setTamboActive(token: string, tamboId: string, active: boolean) {
-    const res = await fetch(`${API_URL}/tambos/${tamboId}/active`, {
+    const res = await apiFetch(`${API_URL}/tambos/${tamboId}/active`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -921,7 +897,7 @@ export const api = {
   },
 
   async requestDeviceRemoval(token: string, tamboId: string) {
-    const res = await fetch(`${API_URL}/tambos/${tamboId}/request-device-removal`, {
+    const res = await apiFetch(`${API_URL}/tambos/${tamboId}/request-device-removal`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -934,7 +910,7 @@ export const api = {
   },
 
   async getAnimals(token: string, tamboId: string) {
-    const res = await fetch(`${API_URL}/animals?tamboId=${encodeURIComponent(tamboId)}`, {
+    const res = await apiFetch(`${API_URL}/animals?tamboId=${encodeURIComponent(tamboId)}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) {
@@ -945,7 +921,7 @@ export const api = {
   },
 
   async getPumpStatus(token: string, tamboId: string) {
-    const res = await fetch(`${API_URL}/tambos/${encodeURIComponent(tamboId)}/pump-status`, {
+    const res = await apiFetch(`${API_URL}/tambos/${encodeURIComponent(tamboId)}/pump-status`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) {
@@ -960,7 +936,7 @@ export const api = {
 
   async getPumpStatusHistory(token: string, tamboId: string, from: string, to: string) {
     const params = new URLSearchParams({ from, to })
-    const res = await fetch(
+    const res = await apiFetch(
       `${API_URL}/tambos/${encodeURIComponent(tamboId)}/pump-status/history?${params}`,
       { headers: { Authorization: `Bearer ${token}` } },
     )
@@ -980,7 +956,7 @@ export const api = {
   },
 
   async getAnimalTimeline(token: string, animalId: string) {
-    const res = await fetch(`${API_URL}/animals/${animalId}/timeline`, {
+    const res = await apiFetch(`${API_URL}/animals/${animalId}/timeline`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error('Failed to fetch animal timeline')
@@ -989,7 +965,7 @@ export const api = {
 
   async getAnimalSummary(token: string, animalId: string, today: string) {
     const params = new URLSearchParams({ today })
-    const res = await fetch(`${API_URL}/animals/${animalId}/summary?${params}`, {
+    const res = await apiFetch(`${API_URL}/animals/${animalId}/summary?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudo cargar la ficha')
@@ -999,7 +975,7 @@ export const api = {
   async getNotifications(token: string, unreadOnly = false) {
     const params = new URLSearchParams()
     params.set('unreadOnly', unreadOnly ? 'true' : 'false')
-    const res = await fetch(`${API_URL}/notifications?${params}`, {
+    const res = await apiFetch(`${API_URL}/notifications?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los avisos')
@@ -1010,7 +986,7 @@ export const api = {
   },
 
   async markNotificationRead(token: string, id: string) {
-    const res = await fetch(`${API_URL}/notifications/${id}/read`, {
+    const res = await apiFetch(`${API_URL}/notifications/${id}/read`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -1019,7 +995,7 @@ export const api = {
   },
 
   async markAllNotificationsRead(token: string) {
-    const res = await fetch(`${API_URL}/notifications/read-all`, {
+    const res = await apiFetch(`${API_URL}/notifications/read-all`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -1029,7 +1005,7 @@ export const api = {
 
   async getAnimalGenealogy(token: string, animalId: string, generations = 3) {
     const params = new URLSearchParams({ generations: String(generations) })
-    const res = await fetch(`${API_URL}/animals/${animalId}/genealogy?${params}`, {
+    const res = await apiFetch(`${API_URL}/animals/${animalId}/genealogy?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudo cargar la genealogía')
@@ -1039,7 +1015,7 @@ export const api = {
   async getAdminSupportTickets(token: string, status?: string) {
     const params = new URLSearchParams()
     if (status) params.append('status', status)
-    const res = await fetch(`${API_URL}/admin/support-tickets?${params}`, {
+    const res = await apiFetch(`${API_URL}/admin/support-tickets?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error('Failed to fetch tickets')
@@ -1047,7 +1023,7 @@ export const api = {
   },
 
   async updateAdminSupportTicket(token: string, id: string, data: any) {
-    const res = await fetch(`${API_URL}/admin/support-tickets/${id}`, {
+    const res = await apiFetch(`${API_URL}/admin/support-tickets/${id}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1060,7 +1036,7 @@ export const api = {
   },
 
   async getTeam(token: string, tamboId: string) {
-    const res = await fetch(`${API_URL}/memberships?tamboId=${encodeURIComponent(tamboId)}`, {
+    const res = await apiFetch(`${API_URL}/memberships?tamboId=${encodeURIComponent(tamboId)}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error('Failed to fetch team')
@@ -1071,7 +1047,7 @@ export const api = {
     token: string,
     data: { tamboId: string; email?: string; phone?: string; name?: string; role: 'TAMBERO' | 'VETERINARIO' },
   ) {
-    const res = await fetch(`${API_URL}/memberships/invite`, {
+    const res = await apiFetch(`${API_URL}/memberships/invite`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1084,7 +1060,7 @@ export const api = {
   },
 
   async acceptInviteRegister(data: { inviteToken: string; password: string; name?: string }) {
-    const res = await fetch(`${API_URL}/memberships/accept-invite/register`, {
+    const res = await apiFetch(`${API_URL}/memberships/accept-invite/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -1094,7 +1070,7 @@ export const api = {
   },
 
   async acceptInvite(token: string, inviteToken: string) {
-    const res = await fetch(`${API_URL}/memberships/accept-invite`, {
+    const res = await apiFetch(`${API_URL}/memberships/accept-invite`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1107,7 +1083,7 @@ export const api = {
   },
 
   async getTamboServiceProvider(token: string, tamboId: string) {
-    const res = await fetch(`${API_URL}/tambos/${tamboId}/service-provider`, {
+    const res = await apiFetch(`${API_URL}/tambos/${tamboId}/service-provider`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error('Failed to fetch service provider')
@@ -1120,7 +1096,7 @@ export const api = {
 
   async getServiceProviders(token: string, tamboId?: string) {
     const q = tamboId ? `?tamboId=${encodeURIComponent(tamboId)}` : ''
-    const res = await fetch(`${API_URL}/service-providers${q}`, {
+    const res = await apiFetch(`${API_URL}/service-providers${q}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudieron cargar las empresas de service')
@@ -1131,7 +1107,7 @@ export const api = {
     token: string,
     data: { name: string; contactName?: string; contactPhone?: string },
   ) {
-    const res = await fetch(`${API_URL}/service-providers`, {
+    const res = await apiFetch(`${API_URL}/service-providers`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1148,7 +1124,7 @@ export const api = {
     id: string,
     data: { name?: string; contactName?: string | null; contactPhone?: string | null; active?: boolean },
   ) {
-    const res = await fetch(`${API_URL}/service-providers/${id}`, {
+    const res = await apiFetch(`${API_URL}/service-providers/${id}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1161,7 +1137,7 @@ export const api = {
   },
 
   async getServiceRequestWhatsappLink(token: string, id: string) {
-    const res = await fetch(`${API_URL}/service-requests/${id}/whatsapp-link`, {
+    const res = await apiFetch(`${API_URL}/service-requests/${id}/whatsapp-link`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudo armar el aviso de WhatsApp')
@@ -1169,7 +1145,7 @@ export const api = {
   },
 
   async markServiceRequestNotified(token: string, id: string) {
-    const res = await fetch(`${API_URL}/service-requests/${id}/mark-notified`, {
+    const res = await apiFetch(`${API_URL}/service-requests/${id}/mark-notified`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1182,7 +1158,7 @@ export const api = {
   },
 
   async updateTamboServiceProvider(token: string, tamboId: string, serviceProviderId: string) {
-    const res = await fetch(`${API_URL}/tambos/${tamboId}/service-provider`, {
+    const res = await apiFetch(`${API_URL}/tambos/${tamboId}/service-provider`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1195,7 +1171,7 @@ export const api = {
   },
 
   async getAdminServiceProviders(token: string) {
-    const res = await fetch(`${API_URL}/admin/service-providers`, {
+    const res = await apiFetch(`${API_URL}/admin/service-providers`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new Error('Failed to fetch service providers')
@@ -1214,7 +1190,7 @@ export const api = {
       hasPanel?: boolean
     },
   ) {
-    const res = await fetch(`${API_URL}/admin/service-providers/${id}`, {
+    const res = await apiFetch(`${API_URL}/admin/service-providers/${id}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1227,7 +1203,7 @@ export const api = {
   },
 
   async getTechnicianWorkspace(token: string, tamboId: string) {
-    const res = await fetch(
+    const res = await apiFetch(
       `${API_URL}/service-requests/workspace?tamboId=${encodeURIComponent(tamboId)}`,
       { headers: { Authorization: `Bearer ${token}` } },
     )
@@ -1247,7 +1223,7 @@ export const api = {
       resolutionNotes?: string | null
     },
   ) {
-    const res = await fetch(`${API_URL}/service-requests/${id}`, {
+    const res = await apiFetch(`${API_URL}/service-requests/${id}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1263,7 +1239,7 @@ export const api = {
   },
 
   async getMyServiceRequests(token: string) {
-    const res = await fetch(`${API_URL}/my/service-requests`, {
+    const res = await apiFetch(`${API_URL}/my/service-requests`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) {
@@ -1291,7 +1267,7 @@ export const api = {
   },
 
   async switchTenant(token: string, tenantId: string) {
-    const res = await fetch(`${API_URL}/auth/switch-tenant`, {
+    const res = await apiFetch(`${API_URL}/auth/switch-tenant`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1309,7 +1285,7 @@ export const api = {
   async getServiceRequests(token: string, tamboId: string, status?: string) {
     const params = new URLSearchParams({ tamboId })
     if (status) params.set('status', status)
-    const res = await fetch(`${API_URL}/service-requests?${params}`, {
+    const res = await apiFetch(`${API_URL}/service-requests?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) {
@@ -1320,7 +1296,7 @@ export const api = {
   },
 
   async approveServiceRequest(token: string, id: string) {
-    const res = await fetch(`${API_URL}/service-requests/${id}/approve`, {
+    const res = await apiFetch(`${API_URL}/service-requests/${id}/approve`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1336,7 +1312,7 @@ export const api = {
   },
 
   async rejectServiceRequest(token: string, id: string) {
-    const res = await fetch(`${API_URL}/service-requests/${id}/reject`, {
+    const res = await apiFetch(`${API_URL}/service-requests/${id}/reject`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1352,7 +1328,7 @@ export const api = {
   },
 
   async getPendingPhotos(token: string, tamboId: string) {
-    const res = await fetch(
+    const res = await apiFetch(
       `${API_URL}/tambos/${encodeURIComponent(tamboId)}/photos/pending-review`,
       { headers: { Authorization: `Bearer ${token}` } },
     )
@@ -1364,7 +1340,7 @@ export const api = {
   },
 
   async getDevices(token: string, tamboId: string) {
-    const res = await fetch(`${API_URL}/devices?tamboId=${encodeURIComponent(tamboId)}`, {
+    const res = await apiFetch(`${API_URL}/devices?tamboId=${encodeURIComponent(tamboId)}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los dispositivos')
@@ -1384,7 +1360,7 @@ export const api = {
       label?: string | null
     },
   ) {
-    const res = await fetch(`${API_URL}/devices`, {
+    const res = await apiFetch(`${API_URL}/devices`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1397,7 +1373,7 @@ export const api = {
   },
 
   async rotateDeviceToken(token: string, id: string) {
-    const res = await fetch(`${API_URL}/devices/${id}/rotate-token`, {
+    const res = await apiFetch(`${API_URL}/devices/${id}/rotate-token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1410,7 +1386,7 @@ export const api = {
   },
 
   async retireDevice(token: string, id: string) {
-    const res = await fetch(`${API_URL}/devices/${id}/retire`, {
+    const res = await apiFetch(`${API_URL}/devices/${id}/retire`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1423,7 +1399,7 @@ export const api = {
   },
 
   async getPartInstances(token: string, tamboId: string) {
-    const res = await fetch(`${API_URL}/part-instances?tamboId=${encodeURIComponent(tamboId)}`, {
+    const res = await apiFetch(`${API_URL}/part-instances?tamboId=${encodeURIComponent(tamboId)}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudieron cargar las piezas')
@@ -1431,7 +1407,7 @@ export const api = {
   },
 
   async getPartTypeConfig(token: string) {
-    const res = await fetch(`${API_URL}/part-type-config`, {
+    const res = await apiFetch(`${API_URL}/part-type-config`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudo cargar la vida útil')
@@ -1443,7 +1419,7 @@ export const api = {
     partTypeId: string,
     data: { usageThreshold?: number | null; lifeMonths?: number | null },
   ) {
-    const res = await fetch(`${API_URL}/part-type-config/${partTypeId}`, {
+    const res = await apiFetch(`${API_URL}/part-type-config/${partTypeId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -1456,7 +1432,7 @@ export const api = {
   },
 
   async deletePartTypeConfig(token: string, partTypeId: string) {
-    const res = await fetch(`${API_URL}/part-type-config/${partTypeId}`, {
+    const res = await apiFetch(`${API_URL}/part-type-config/${partTypeId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -1465,7 +1441,7 @@ export const api = {
   },
 
   async getAdminPartTypes(token: string) {
-    const res = await fetch(`${API_URL}/admin/part-types`, {
+    const res = await apiFetch(`${API_URL}/admin/part-types`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudo cargar el catálogo')
@@ -1486,7 +1462,7 @@ export const api = {
       quantityPerInstance?: number
     },
   ) {
-    const res = await fetch(`${API_URL}/admin/part-types`, {
+    const res = await apiFetch(`${API_URL}/admin/part-types`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1514,7 +1490,7 @@ export const api = {
       quantityPerInstance: number
     }>,
   ) {
-    const res = await fetch(`${API_URL}/admin/part-types/${id}`, {
+    const res = await apiFetch(`${API_URL}/admin/part-types/${id}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1541,7 +1517,7 @@ export const api = {
       sortOrder?: number
     },
   ) {
-    const res = await fetch(`${API_URL}/admin/part-types/${partTypeId}/fields`, {
+    const res = await apiFetch(`${API_URL}/admin/part-types/${partTypeId}/fields`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1570,7 +1546,7 @@ export const api = {
       active: boolean
     }>,
   ) {
-    const res = await fetch(`${API_URL}/admin/part-types/${partTypeId}/fields/${fieldId}`, {
+    const res = await apiFetch(`${API_URL}/admin/part-types/${partTypeId}/fields/${fieldId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1583,7 +1559,7 @@ export const api = {
   },
 
   async patchAdminTambo(token: string, id: string, data: { powerSupply: PowerSupply | null }) {
-    const res = await fetch(`${API_URL}/admin/tambos/${id}`, {
+    const res = await apiFetch(`${API_URL}/admin/tambos/${id}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1596,7 +1572,7 @@ export const api = {
   },
 
   async reviewPhoto(token: string, animalId: string, photoId: string) {
-    const res = await fetch(`${API_URL}/animals/${animalId}/photos/${photoId}/review`, {
+    const res = await apiFetch(`${API_URL}/animals/${animalId}/photos/${photoId}/review`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -1607,7 +1583,7 @@ export const api = {
   async uploadPhoto(token: string, file: File) {
     const form = new FormData()
     form.append('file', file)
-    const res = await fetch(`${API_URL}/uploads/photo`, {
+    const res = await apiFetch(`${API_URL}/uploads/photo`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: form,
@@ -1625,7 +1601,7 @@ export const api = {
     if (query?.from) params.set('from', query.from)
     if (query?.to) params.set('to', query.to)
     if (query?.serviceRequestId) params.set('serviceRequestId', query.serviceRequestId)
-    const res = await fetch(`${API_URL}/work-reports?${params}`, {
+    const res = await apiFetch(`${API_URL}/work-reports?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los informes')
@@ -1633,7 +1609,7 @@ export const api = {
   },
 
   async getWorkReport(token: string, id: string) {
-    const res = await fetch(`${API_URL}/work-reports/${id}`, {
+    const res = await apiFetch(`${API_URL}/work-reports/${id}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudo cargar el informe')
@@ -1644,7 +1620,7 @@ export const api = {
     token: string,
     data: { tamboId: string; serviceRequestId?: string | null; performedAt?: string },
   ) {
-    const res = await fetch(`${API_URL}/work-reports`, {
+    const res = await apiFetch(`${API_URL}/work-reports`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1668,7 +1644,7 @@ export const api = {
       photoUrls?: string[]
     },
   ) {
-    const res = await fetch(`${API_URL}/work-reports/${id}`, {
+    const res = await apiFetch(`${API_URL}/work-reports/${id}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1690,7 +1666,7 @@ export const api = {
       notes?: string | null
     },
   ) {
-    const res = await fetch(`${API_URL}/work-reports/${id}/replace-parts`, {
+    const res = await apiFetch(`${API_URL}/work-reports/${id}/replace-parts`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1703,7 +1679,7 @@ export const api = {
   },
 
   async submitWorkReport(token: string, id: string) {
-    const res = await fetch(`${API_URL}/work-reports/${id}/submit`, {
+    const res = await apiFetch(`${API_URL}/work-reports/${id}/submit`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1724,7 +1700,7 @@ export const api = {
       notes?: string | null
     },
   ) {
-    const res = await fetch(`${API_URL}/part-instances/replace-batch`, {
+    const res = await apiFetch(`${API_URL}/part-instances/replace-batch`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1737,7 +1713,7 @@ export const api = {
   },
 
   async getAdminHardwareProducts(token: string) {
-    const res = await fetch(`${API_URL}/admin/hardware-products`, {
+    const res = await apiFetch(`${API_URL}/admin/hardware-products`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudo cargar el catálogo de equipos')
@@ -1757,7 +1733,7 @@ export const api = {
       sortOrder?: number
     },
   ) {
-    const res = await fetch(`${API_URL}/admin/hardware-products`, {
+    const res = await apiFetch(`${API_URL}/admin/hardware-products`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1784,7 +1760,7 @@ export const api = {
       active: boolean
     }>,
   ) {
-    const res = await fetch(`${API_URL}/admin/hardware-products/${id}`, {
+    const res = await apiFetch(`${API_URL}/admin/hardware-products/${id}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1800,7 +1776,7 @@ export const api = {
     token: string,
     data: { selectedProductIds: string[]; bajadaCount: number; pumpCount: number },
   ) {
-    const res = await fetch(`${API_URL}/admin/hardware-products/budget`, {
+    const res = await apiFetch(`${API_URL}/admin/hardware-products/budget`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1813,7 +1789,7 @@ export const api = {
   },
 
   async getAdminDevices(token: string, tamboId: string) {
-    const res = await fetch(`${API_URL}/admin/devices?tamboId=${encodeURIComponent(tamboId)}`, {
+    const res = await apiFetch(`${API_URL}/admin/devices?tamboId=${encodeURIComponent(tamboId)}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw await toApiError(res, 'No se pudieron cargar los dispositivos')
@@ -1833,7 +1809,7 @@ export const api = {
       label?: string | null
     },
   ) {
-    const res = await fetch(`${API_URL}/admin/devices`, {
+    const res = await apiFetch(`${API_URL}/admin/devices`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1846,7 +1822,7 @@ export const api = {
   },
 
   async rotateAdminDeviceToken(token: string, id: string) {
-    const res = await fetch(`${API_URL}/admin/devices/${id}/rotate-token`, {
+    const res = await apiFetch(`${API_URL}/admin/devices/${id}/rotate-token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1859,7 +1835,7 @@ export const api = {
   },
 
   async retireAdminDevice(token: string, id: string) {
-    const res = await fetch(`${API_URL}/admin/devices/${id}/retire`, {
+    const res = await apiFetch(`${API_URL}/admin/devices/${id}/retire`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
