@@ -4,8 +4,19 @@ import {
   createLineFramer,
   createSilenceFramer,
   createStartEndFramer,
+  createStartLengthFramer,
 } from './framing.ts'
-import { asciiDigits, automatico, isoBe, isoLe } from './decoders.ts'
+import {
+  asciiDigits,
+  automatico,
+  AVISO_SUMA,
+  buildWl134Frame,
+  esLecturaValida,
+  isoBe,
+  isoLe,
+  isoLeFdxb,
+  wl134,
+} from './decoders.ts'
 import { findNumberInFrames } from './findNumber.ts'
 import { testsToCsv } from './storage.ts'
 
@@ -192,6 +203,135 @@ function textFrom(frame: Uint8Array | undefined) {
   if (!frame) return ''
   return [...frame].map((b) => String.fromCharCode(b)).join('')
 }
+
+const wlReal = bytes(
+  0x02, 0x33, 0x39, 0x38, 0x44, 0x38, 0x35, 0x42, 0x30, 0x30,
+  0x30, 0x36, 0x44, 0x33, 0x30, 0x30, 0x31, 0x30, 0x30, 0x30,
+  0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x79, 0x86, 0x03,
+)
+const wlRealDecoded = wl134.decode(wlReal)
+check(
+  'WL-134 captura real 982000190371987',
+  wlRealDecoded.eid15 === '982000190371987'
+    && wlRealDecoded.campos.formato === 'confirmado por suma de control'
+    && esLecturaValida(wlRealDecoded),
+  JSON.stringify(wlRealDecoded),
+)
+
+const wlSynthetic = bytes(
+  0x02, 0x30, 0x34, 0x36, 0x43, 0x44, 0x30, 0x34, 0x35, 0x32,
+  0x30, 0x30, 0x32, 0x30, 0x30, 0x30, 0x31, 0x30, 0x30, 0x30,
+  0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x05, 0xfa, 0x03,
+)
+const wlSyntheticDecoded = wl134.decode(wlSynthetic)
+check(
+  'WL-134 sintético 032010000123456',
+  wlSyntheticDecoded.eid15 === '032010000123456' && esLecturaValida(wlSyntheticDecoded),
+  String(wlSyntheticDecoded.eid15),
+)
+
+const wlBuilt = buildWl134Frame('032010000123456')
+check('WL-134 armado coincide con sintético', Boolean(wlBuilt) && Array.from(wlBuilt ?? []).join(',') === Array.from(wlSynthetic).join(','))
+
+const wlBad = Uint8Array.from(wlSynthetic)
+wlBad[27] = (wlBad[27]! ^ 1) & 0xff
+const wlBadDecoded = wl134.decode(wlBad)
+check(
+  'WL-134 suma mala es dudosa y no válida',
+  wlBadDecoded.eid15 === '032010000123456'
+    && wlBadDecoded.avisos.includes(AVISO_SUMA)
+    && !esLecturaValida(wlBadDecoded),
+  JSON.stringify(wlBadDecoded.avisos),
+)
+
+const wl28 = wlSynthetic.subarray(1, 29)
+check('WL-134 28 bytes sin delimitadores', wl134.decode(wl28).eid15 === '032010000123456')
+check('WL-134 largo inválido', wl134.decode(bytes(0x02, 0x03)).eid15 == null)
+
+const autoWl = automatico.decode(wlSynthetic)
+check('automático elige WL-134 en trama 30 bytes', autoWl.campos.decodificador === 'wl134' && autoWl.eid15 === '032010000123456')
+
+const startLen = createStartLengthFramer(0x02, 30, 0x03)
+const splitA = startLen.push(wlSynthetic.subarray(0, 10), 0)
+const splitB = startLen.push(wlSynthetic.subarray(10), 1)
+check(
+  'framing inicio+largo partido',
+  splitA.length === 0 && splitB.length === 1 && Array.from(splitB[0] ?? []).join(',') === Array.from(wlSynthetic).join(','),
+)
+
+const skipStart = createStartLengthFramer(0x02, 30, 0x03)
+const prefixed = bytes(0x02, ...wlSynthetic)
+const skipped = skipStart.push(prefixed, 0)
+check(
+  'framing inicio+largo salta un 0x02 falso',
+  skipped.length === 1 && Array.from(skipped[0] ?? []).join(',') === Array.from(wlSynthetic).join(','),
+  `n=${skipped.length}`,
+)
+
+let checksum03: Uint8Array | null = null
+for (let n = 1; n < 200000 && !checksum03; n++) {
+  const candidate = buildWl134Frame(`032${String(n).padStart(12, '0')}`)
+  if (candidate && candidate[27] === 0x03) checksum03 = candidate
+}
+check('hay una trama WL-134 con suma 0x03 para el recorte', Boolean(checksum03))
+if (checksum03) {
+  const startEnd = createStartEndFramer(0x02, 0x03)
+  const cut = startEnd.push(checksum03, 0)
+  check(
+    'inicio/fin corta mal si la suma es 0x03',
+    cut.length === 1 && cut[0]!.length === 26,
+    `len=${cut[0]?.length ?? 'ninguna'}`,
+  )
+  const intact = createStartLengthFramer(0x02, 30, 0x03).push(checksum03, 0)
+  check(
+    'inicio+largo conserva la trama si la suma es 0x03',
+    intact.length === 1 && intact[0]!.length === 30,
+  )
+}
+
+const fdxbLe = bytes(0x40, 0xc6, 0x0d, 0x54, 0x02, 0x08, 0x00, 0x80)
+const fdxbDecoded = isoLeFdxb.decode(fdxbLe)
+check(
+  'FDX-B LE 032010000123456 puntaje 2',
+  fdxbDecoded.eid15 === '032010000123456' && fdxbDecoded.campos.puntaje === '2',
+  JSON.stringify(fdxbDecoded),
+)
+const fdxbAsTabla = isoLe.decode(fdxbLe)
+check(
+  'misma trama como tabla ISO da 013137439084693 puntaje 0',
+  fdxbAsTabla.eid15 === '013137439084693' && fdxbAsTabla.campos.puntaje === '0',
+  JSON.stringify(fdxbAsTabla),
+)
+const autoFdxb = automatico.decode(fdxbLe)
+check(
+  'automático elige FDX-B por puntaje 2',
+  autoFdxb.eid15 === '032010000123456' && autoFdxb.campos.decodificador === 'iso11784-8bytes-le-fdxb' && !autoFdxb.avisos.includes('ambiguo'),
+  JSON.stringify(autoFdxb),
+)
+const autoFdxbPrinted = automatico.decode(fdxbLe, '013137439084693')
+check(
+  'automático respeta el número impreso aunque el puntaje sea 0',
+  autoFdxbPrinted.eid15 === '013137439084693'
+    && autoFdxbPrinted.campos.decodificador === 'iso11784-8bytes-le'
+    && autoFdxbPrinted.avisos.includes('desambiguado por el número impreso'),
+  JSON.stringify(autoFdxbPrinted),
+)
+
+const isoScore = isoLe.decode(isoA)
+check('ISO tabla LE de 032010000123456 tiene puntaje 2', isoScore.campos.puntaje === '2', isoScore.campos.puntaje)
+
+const hexNat = findNumberInFrames([wlSynthetic], '032010000123456')
+check(
+  'detective hex nacional invertido en WL-134',
+  hexNat.hallazgos.some((h) => h.codificacion === 'hex-nacional-invertido'),
+  hexNat.hallazgos.map((h) => h.codificacion).join(','),
+)
+const fdxbHit = findNumberInFrames([fdxbLe], '032010000123456')
+check(
+  'detective FDX-B LE crudo',
+  fdxbHit.hallazgos.some((h) => h.codificacion === 'iso11784-8bytes-le-fdxb'),
+  fdxbHit.hallazgos.map((h) => h.codificacion).join(','),
+)
 
 if (failed > 0) {
   console.error(`\n${failed} caso(s) fallaron`)

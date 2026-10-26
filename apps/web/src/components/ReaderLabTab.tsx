@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { bytesToAscii, bytesToHex, decoderById, DECODERS, eidToIsoValue, isoLeBytesFromValue } from '../lib/readerLab/decoders'
+import {
+  AVISO_SUMA,
+  buildWl134Frame,
+  bytesToAscii,
+  bytesToHex,
+  decoderById,
+  DECODERS,
+  eidToIsoValue,
+  esLecturaValida,
+  isoLeBytesFromValue,
+} from '../lib/readerLab/decoders'
 import { matchTyped, normalizeTyped } from '../lib/readerLab/electronicId'
 import { findNumberInFrames, type FindNumberResult } from '../lib/readerLab/findNumber'
 import { addTest, deleteTest, listTests, testsToCsv, type TestResultado } from '../lib/readerLab/storage'
@@ -7,7 +17,7 @@ import { createFramer, type Framer, type FramingKind } from '../lib/readerLab/fr
 import { Badge, Button, Card, EmptyState, Field, SelectField } from './ui'
 
 type Model = 'WL-134' | 'ZOCORFID' | 'Otro'
-type SimFormat = 'ascii-separador' | 'ascii-15' | 'iso-le' | 'iso-be'
+type SimFormat = 'ascii-separador' | 'ascii-15' | 'iso-le' | 'iso-be' | 'fdxb-le' | 'fdxb-be' | 'wl134' | 'wl134-suma-mala'
 type PortState = {
   id: string
   name: string
@@ -51,6 +61,8 @@ type CapturedFrame = {
   decoder: string
   warning: string
   ambiguous: boolean
+  dudosa?: boolean
+  wl134Confirmado?: boolean
   candidateLE?: string
   candidateBE?: string
 }
@@ -148,17 +160,29 @@ function makeFrame(eid: string, format: SimFormat): Uint8Array {
     return new TextEncoder().encode(`${eid.slice(0, 3)}_${eid.slice(3)}\r\n`)
   }
   if (format === 'ascii-15') return new TextEncoder().encode(`${eid}\r\n`)
+  if (format === 'wl134' || format === 'wl134-suma-mala') {
+    return buildWl134Frame(eid, { corruptChecksum: format === 'wl134-suma-mala' }) ?? new Uint8Array()
+  }
+  if (format === 'fdxb-le' || format === 'fdxb-be') {
+    const le = isoLeBytesFromValue(eidToIsoValue(eid, true, false, 'fdxb-nacional-primero'))
+    return format === 'fdxb-be' ? Uint8Array.from(le).reverse() : le
+  }
   const le = isoLeBytesFromValue(eidToIsoValue(eid))
   return format === 'iso-be' ? Uint8Array.from(le).reverse() : le
 }
 
+function framerOptions(config: PortState['config']) {
+  return {
+    silenceMs: config.silenceMs,
+    length: config.frameLength,
+    start: hexByte(config.startHex, 0x02),
+    end: hexByte(config.endHex, 0x03),
+    requireEnd: config.framing !== 'inicio-largo' || config.endHex.trim() !== '',
+  }
+}
+
 function makeFramer(port: PortState): Framer {
-  return createFramer(port.config.framing, {
-    silenceMs: port.config.silenceMs,
-    length: port.config.frameLength,
-    start: hexByte(port.config.startHex, 0x02),
-    end: hexByte(port.config.endHex, 0x03),
-  })
+  return createFramer(port.config.framing, framerOptions(port.config))
 }
 
 export function ReaderLabTab() {
@@ -223,23 +247,26 @@ export function ReaderLabTab() {
         decoder: result.campos.decodificador ?? decoder.id,
         warning: result.avisos.join('; '),
         ambiguous: result.avisos.includes('ambiguo'),
+        dudosa: result.avisos.includes(AVISO_SUMA),
+        wl134Confirmado: result.campos.formato === 'confirmado por suma de control',
         ...(result.campos.candidatoLE ? { candidateLE: result.campos.candidatoLE } : {}),
         ...(result.campos.candidatoBE ? { candidateBE: result.campos.candidatoBE } : {}),
       }
     })
     updatePort(id, (current) => {
-      const validTimes = [...current.validTimes, ...decoded.filter((frame) => frame.eid15).map(() => now)].filter((at) => now - at <= 60_000)
+      const countable = decoded.filter((frame) => frame.eid15 && !frame.ambiguous && !frame.warning.includes(AVISO_SUMA))
+      const validTimes = [...current.validTimes, ...countable.map(() => now)].filter((at) => now - at <= 60_000)
       return {
         ...current,
         raw: [...current.raw, raw].slice(-500),
         frames: [...current.frames, ...decoded].slice(-500),
         byteCount: current.byteCount + bytes.length,
         frameCount: current.frameCount + frames.length,
-        validCount: current.validCount + decoded.filter((frame) => frame.eid15).length,
+        validCount: current.validCount + countable.length,
         validTimes,
         distinctEids: [...new Set([
           ...current.distinctEids,
-          ...decoded.flatMap((frame) => frame.eid15 ? [frame.eid15] : []),
+          ...countable.flatMap((frame) => frame.eid15 ? [frame.eid15] : []),
         ])],
       }
     })
@@ -381,22 +408,28 @@ export function ReaderLabTab() {
     if (!existingPort) return
     const config = { ...existingPort.config, ...patch }
     if (existingPort.source === 'simulado' && patch.simFormat) {
-      config.framing = patch.simFormat.startsWith('iso') ? 'fija' : 'lineas'
-      if (patch.simFormat.startsWith('iso')) {
+      if (patch.simFormat.startsWith('ascii')) {
+        config.framing = 'lineas'
+        config.decoder = 'automatico'
+      } else if (patch.simFormat.startsWith('wl134')) {
+        config.framing = 'inicio-largo'
+        config.frameLength = 30
+        config.startHex = '02'
+        config.endHex = '03'
+        config.decoder = 'wl134'
+      } else if (patch.simFormat.startsWith('fdxb')) {
+        config.framing = 'fija'
+        config.frameLength = 8
+        config.decoder = patch.simFormat === 'fdxb-be' ? 'iso11784-8bytes-be-fdxb' : 'iso11784-8bytes-le-fdxb'
+      } else {
+        config.framing = 'fija'
         config.frameLength = 8
         config.decoder = patch.simFormat === 'iso-be' ? 'iso11784-8bytes-be' : 'iso11784-8bytes-le'
-      } else {
-        config.decoder = 'automatico'
       }
     }
     const connection = connections.current.get(id)
     if (connection) {
-      connection.framer = createFramer(config.framing, {
-        silenceMs: config.silenceMs,
-        length: config.frameLength,
-        start: hexByte(config.startHex, 0x02),
-        end: hexByte(config.endHex, 0x03),
-      })
+      connection.framer = createFramer(config.framing, framerOptions(config))
       if (existingPort.source === 'simulado' && existingPort.connected && patch.simInterval != null && connection.timer != null) {
         window.clearInterval(connection.timer)
         connection.timer = window.setInterval(() => emitSimulatedFrame(id, connection), config.simInterval)
@@ -495,6 +528,8 @@ export function ReaderLabTab() {
       decoder: result.campos.decodificador ?? decoder.id,
       warning: result.avisos.join('; '),
       ambiguous: result.avisos.includes('ambiguo'),
+      dudosa: result.avisos.includes(AVISO_SUMA),
+      wl134Confirmado: result.campos.formato === 'confirmado por suma de control',
       candidateLE: result.campos.candidatoLE,
       candidateBE: result.campos.candidatoBE,
       portId: port.id,
@@ -543,7 +578,7 @@ export function ReaderLabTab() {
       .filter((frame) => frame.time >= run.startedAt)
       .map((frame) => decoderById(port.config.decoder).decode(frame.bytes, run.printedNumber))
     const ambiguous = frames.filter((frame) => frame.avisos.includes('ambiguo')).length
-    const valid = frames.filter((frame) => frame.eid15 && !frame.avisos.includes('ambiguo'))
+    const valid = frames.filter((frame) => esLecturaValida(frame))
     const matched = valid.filter((frame) => matchTyped(run.printedNumber, frame.eid15 ?? '') === 'coincide').length
     const mismatched = valid.length - matched
     const result: TestResultado = valid.length === 0
@@ -657,9 +692,9 @@ export function ReaderLabTab() {
         {ports.length === 0 ? <EmptyState>Agregá un lector o un puerto simulado para empezar.</EmptyState> : (
           <div className="space-y-5">
             {ports.map((port, index) => {
-              const latest = allReadings.find((reading) => reading.portId === port.id && reading.eid15)
+              const latest = allReadings.find((reading) => reading.portId === port.id && reading.eid15 && !reading.ambiguous && !reading.dudosa)
               const portReadings = allReadings.filter((reading) => reading.portId === port.id)
-              const validReadings = portReadings.filter((reading) => reading.eid15 && !reading.ambiguous)
+              const validReadings = portReadings.filter((reading) => reading.eid15 && !reading.ambiguous && !reading.dudosa)
               const ambiguousCount = portReadings.filter((reading) => reading.ambiguous).length
               const distinct = new Set(validReadings.flatMap((reading) => reading.eid15 ? [reading.eid15] : [])).size
               const rpm = validReadings.filter((reading) => clockNow - reading.time <= 60_000).length
@@ -682,7 +717,23 @@ export function ReaderLabTab() {
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <SelectField label="Modelo" value={port.model} onChange={(event) => updatePort(port.id, (current) => ({ ...current, model: event.target.value as Model }))}>
+                    <SelectField label="Modelo" value={port.model} onChange={(event) => {
+                      const model = event.target.value as Model
+                      updatePort(port.id, (current) => ({ ...current, model }))
+                      if (model === 'WL-134') {
+                        updateConfig(port.id, {
+                          baudRate: 9600,
+                          dataBits: 8,
+                          stopBits: 1,
+                          parity: 'none',
+                          framing: 'inicio-largo',
+                          frameLength: 30,
+                          startHex: '02',
+                          endHex: '03',
+                          decoder: 'wl134',
+                        })
+                      }
+                    }}>
                       <option>WL-134</option><option>ZOCORFID</option><option>Otro</option>
                     </SelectField>
                     <SelectField label="Baudios" value={port.config.baudRate} disabled={port.source === 'serial' && port.connected} onChange={(event) => updateConfig(port.id, { baudRate: Number(event.target.value) })}>
@@ -698,20 +749,39 @@ export function ReaderLabTab() {
                       <option value={1}>1</option><option value={2}>2</option>
                     </SelectField>
                     <SelectField label="Tramado" value={port.config.framing} onChange={(event) => updateConfig(port.id, { framing: event.target.value as FramingKind })}>
-                      <option value="lineas">Por líneas</option><option value="silencio">Por silencio</option><option value="fija">Longitud fija</option><option value="inicio-fin">Inicio y fin</option>
+                      <option value="lineas">Por líneas</option><option value="silencio">Por silencio</option><option value="fija">Longitud fija</option><option value="inicio-fin">Inicio y fin</option><option value="inicio-largo">Inicio y largo fijo</option>
                     </SelectField>
                     {port.config.framing === 'silencio' && <Field label="Silencio (ms)" type="number" min={1} value={port.config.silenceMs} onChange={(event) => updateConfig(port.id, { silenceMs: Math.max(1, Number(event.target.value) || 1) })} />}
                     {port.config.framing === 'fija' && <Field label="Longitud (bytes)" type="number" min={1} value={port.config.frameLength} onChange={(event) => updateConfig(port.id, { frameLength: Math.max(1, Number(event.target.value) || 1) })} />}
                     {port.config.framing === 'inicio-fin' && <>
                       <Field label="Inicio (hex)" value={port.config.startHex} onChange={(event) => updateConfig(port.id, { startHex: event.target.value })} />
                       <Field label="Fin (hex)" value={port.config.endHex} onChange={(event) => updateConfig(port.id, { endHex: event.target.value })} />
+                      <p className="sm:col-span-2 text-xs text-ink-muted">Si la suma de control puede valer 0x02 o 0x03, este recorte puede cortar mal la trama. Preferí inicio y largo fijo.</p>
                     </>}
+                    {port.config.framing === 'inicio-largo' && <>
+                      <Field label="Inicio (hex)" value={port.config.startHex} onChange={(event) => updateConfig(port.id, { startHex: event.target.value })} />
+                      <Field label="Largo (bytes)" type="number" min={1} value={port.config.frameLength} onChange={(event) => updateConfig(port.id, { frameLength: Math.max(1, Number(event.target.value) || 1) })} />
+                      <Field label="Fin (hex, opcional)" value={port.config.endHex} onChange={(event) => updateConfig(port.id, { endHex: event.target.value })} />
+                    </>}
+                    <div className="flex items-end">
+                      <Button variant="secondary" onClick={() => updateConfig(port.id, {
+                        baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none',
+                        framing: 'inicio-largo', frameLength: 30, startHex: '02', endHex: '03', decoder: 'wl134',
+                      })}>Usar formato publicado del WL-134</Button>
+                    </div>
                     <SelectField label="Decodificador" value={port.config.decoder} onChange={(event) => updateConfig(port.id, { decoder: event.target.value })}>
                       {DECODERS.map((decoder) => <option key={decoder.id} value={decoder.id}>{decoder.nombre}</option>)}
                     </SelectField>
                     {port.source === 'simulado' && <>
                       <SelectField label="Formato simulado" value={port.config.simFormat} onChange={(event) => updateConfig(port.id, { simFormat: event.target.value as SimFormat })}>
-                        <option value="ascii-separador">ASCII con separador</option><option value="ascii-15">ASCII 15 dígitos</option><option value="iso-le">ISO 11784 · LE</option><option value="iso-be">ISO 11784 · BE</option>
+                        <option value="ascii-separador">ASCII con separador</option>
+                        <option value="ascii-15">ASCII 15 dígitos</option>
+                        <option value="iso-le">ISO 11784 · tabla · LE</option>
+                        <option value="iso-be">ISO 11784 · tabla · BE</option>
+                        <option value="fdxb-le">FDX-B · nacional primero · LE</option>
+                        <option value="fdxb-be">FDX-B · nacional primero · BE</option>
+                        <option value="wl134">WL-134 (suma correcta)</option>
+                        <option value="wl134-suma-mala">WL-134 (suma incorrecta)</option>
                       </SelectField>
                       <Field label="Intervalo (s)" type="number" min={0.5} max={5} step={0.5} value={port.config.simInterval / 1000} onChange={(event) => updateConfig(port.id, { simInterval: Math.max(500, Math.min(5000, (Number(event.target.value) || 0.5) * 1000)) })} />
                       <label className="flex items-center gap-2 pt-7 text-sm font-semibold text-ink"><input type="checkbox" checked={port.config.simNoise} onChange={(event) => updateConfig(port.id, { simNoise: event.target.checked })} /> Ruido ocasional</label>
@@ -807,32 +877,37 @@ export function ReaderLabTab() {
         {allReadings.length === 0 ? <EmptyState>Las lecturas de todos los puertos aparecerán aquí, de la más reciente a la más antigua.</EmptyState> : (
           <div className="max-h-[36rem] space-y-2 overflow-auto">
             {allReadings.slice(0, 500).map((reading, index) => {
-              const duplicate = !reading.ambiguous && reading.eid15 != null && allReadings.some((other) =>
-                !other.ambiguous && other.portId !== reading.portId && other.eid15 === reading.eid15 && Math.abs(other.time - reading.time) < 2000,
+              const countable = Boolean(reading.eid15) && !reading.ambiguous && !reading.dudosa
+              const duplicate = countable && reading.eid15 != null && allReadings.some((other) =>
+                other.portId !== reading.portId && other.eid15 === reading.eid15 && !other.ambiguous && !other.dudosa && Math.abs(other.time - reading.time) < 2000,
               )
               const typed = normalizeTyped(printedNumber)
-              const match = !reading.ambiguous && reading.eid15 && printedNumber
+              const match = countable && reading.eid15 && printedNumber
                 ? matchTyped(typed, reading.eid15)
                 : 'formato_no_reconocido'
               const resultChip = reading.ambiguous
-                ? <Badge tone="warn">Orden ambiguo (LE o BE)</Badge>
-                : match === 'coincide'
-                  ? <Badge tone="ok">Coincide</Badge>
-                  : match === 'no_coincide'
-                    ? <Badge tone="danger">No coincide</Badge>
-                    : <Badge tone="neutral">Sin dato</Badge>
+                ? <Badge tone="warn">Orden ambiguo</Badge>
+                : reading.dudosa
+                  ? <Badge tone="warn">Suma de control no coincide</Badge>
+                  : match === 'coincide'
+                    ? <Badge tone="ok">Coincide</Badge>
+                    : match === 'no_coincide'
+                      ? <Badge tone="danger">No coincide</Badge>
+                      : <Badge tone="neutral">Sin dato</Badge>
               return (
                 <div key={`${reading.portId}-${reading.time}-${index}`} className="flex flex-wrap items-center gap-2 rounded-lg border border-line p-3">
                   <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${PORT_COLORS[reading.portIndex % PORT_COLORS.length]}`}>{reading.portName}</span>
                   <span className="min-w-48 font-mono font-semibold text-ink">{reading.eid15 ? reading.eid15.replace(/^(\d{3})(\d{12})$/, '$1 $2') : 'Ilegible'}</span>
                   {duplicate && <Badge tone="warn">Doble lectura</Badge>}
+                  {reading.wl134Confirmado && <Badge tone="ok">Formato WL-134 confirmado</Badge>}
                   {resultChip}
                   {reading.ambiguous && (
                     <span className="w-full pl-2 text-xs text-ink-muted">
-                      LE: <span className="font-mono">{reading.candidateLE}</span> · BE: <span className="font-mono">{reading.candidateBE}</span>
+                      LE tabla: <span className="font-mono">{reading.candidateLE ?? '—'}</span>
+                      {' · '}BE tabla: <span className="font-mono">{reading.candidateBE ?? '—'}</span>
                     </span>
                   )}
-                  {!reading.eid15 && <span className="text-sm text-ink-muted">{reading.warning || 'Sin aviso del decodificador.'}</span>}
+                  {(!reading.eid15 || reading.dudosa) && <span className="text-sm text-ink-muted">{reading.warning || 'Sin aviso del decodificador.'}</span>}
                   <time className="ml-auto text-xs text-ink-muted">{timeLabel(reading.time)}</time>
                 </div>
               )

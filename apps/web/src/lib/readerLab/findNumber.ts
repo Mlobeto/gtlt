@@ -1,5 +1,5 @@
 import { isEid15, matchTyped, normalizeTyped, parseEid } from './electronicId.ts'
-import { automatico, bytesToHex, eidToIsoValue, isoLeBytesFromValue, textFromBytes } from './decoders.ts'
+import { automatico, bytesToHex, eidToIsoValue, isoLeBytesFromValue, textFromBytes, type IsoDisposicion } from './decoders.ts'
 
 export type NumberHit = {
   codificacion: string
@@ -113,46 +113,72 @@ export function findNumberInFrames(
     }
 
     if (parsed && matchingEid) {
-      const le = isoLeBytesFromValue(eidToIsoValue(matchingEid))
-      const be = Uint8Array.from(le).reverse()
-      const hexLe = bytesToHex(le)
-      const hexBe = bytesToHex(be)
       const textUpper = text.toUpperCase()
-      const hexAtLe = textUpper.indexOf(hexLe)
-      if (hexAtLe >= 0) {
-        pushHit(hallazgos, seen, {
-          codificacion: 'hex-iso-le',
-          indiceTrama,
-          desplazamiento: hexAtLe,
-          longitud: hexLe.length,
-        })
+      const nationalHex = BigInt(parsed.national).toString(16).toUpperCase().padStart(10, '0')
+      const countryHex = Number(parsed.country).toString(16).toUpperCase().padStart(4, '0')
+      const hexNeedles: Array<[string, string]> = [
+        ['hex-nacional', nationalHex],
+        ['hex-nacional-invertido', [...nationalHex].reverse().join('')],
+        ['hex-pais', countryHex],
+        ['hex-pais-invertido', [...countryHex].reverse().join('')],
+      ]
+      for (const [codificacion, needle] of hexNeedles) {
+        const at = textUpper.indexOf(needle)
+        if (at >= 0) {
+          pushHit(hallazgos, seen, {
+            codificacion,
+            indiceTrama,
+            desplazamiento: at,
+            longitud: needle.length,
+          })
+        }
       }
-      const hexAtBe = textUpper.indexOf(hexBe)
-      if (hexAtBe >= 0) {
-        pushHit(hallazgos, seen, {
-          codificacion: 'hex-iso-be',
-          indiceTrama,
-          desplazamiento: hexAtBe,
-          longitud: hexBe.length,
-        })
-      }
-      const rawLe = findSubarray(trama, le)
-      if (rawLe >= 0) {
-        pushHit(hallazgos, seen, {
-          codificacion: 'iso11784-8bytes-le',
-          indiceTrama,
-          desplazamiento: rawLe,
-          longitud: 8,
-        })
-      }
-      const rawBe = findSubarray(trama, be)
-      if (rawBe >= 0) {
-        pushHit(hallazgos, seen, {
-          codificacion: 'iso11784-8bytes-be',
-          indiceTrama,
-          desplazamiento: rawBe,
-          longitud: 8,
-        })
+
+      const layouts: Array<[IsoDisposicion, string, string]> = [
+        ['iso-tabla', 'iso11784-8bytes-le', 'iso11784-8bytes-be'],
+        ['fdxb-nacional-primero', 'iso11784-8bytes-le-fdxb', 'iso11784-8bytes-be-fdxb'],
+      ]
+      for (const [layout, leId, beId] of layouts) {
+        const le = isoLeBytesFromValue(eidToIsoValue(matchingEid, true, false, layout))
+        const be = Uint8Array.from(le).reverse()
+        const hexLe = bytesToHex(le)
+        const hexBe = bytesToHex(be)
+        const hexAtLe = textUpper.indexOf(hexLe)
+        if (hexAtLe >= 0) {
+          pushHit(hallazgos, seen, {
+            codificacion: layout === 'iso-tabla' ? 'hex-iso-le' : 'hex-iso-le-fdxb',
+            indiceTrama,
+            desplazamiento: hexAtLe,
+            longitud: hexLe.length,
+          })
+        }
+        const hexAtBe = textUpper.indexOf(hexBe)
+        if (hexAtBe >= 0) {
+          pushHit(hallazgos, seen, {
+            codificacion: layout === 'iso-tabla' ? 'hex-iso-be' : 'hex-iso-be-fdxb',
+            indiceTrama,
+            desplazamiento: hexAtBe,
+            longitud: hexBe.length,
+          })
+        }
+        const rawLe = findSubarray(trama, le)
+        if (rawLe >= 0) {
+          pushHit(hallazgos, seen, {
+            codificacion: leId,
+            indiceTrama,
+            desplazamiento: rawLe,
+            longitud: 8,
+          })
+        }
+        const rawBe = findSubarray(trama, be)
+        if (rawBe >= 0) {
+          pushHit(hallazgos, seen, {
+            codificacion: beId,
+            indiceTrama,
+            desplazamiento: rawBe,
+            longitud: 8,
+          })
+        }
       }
     }
 

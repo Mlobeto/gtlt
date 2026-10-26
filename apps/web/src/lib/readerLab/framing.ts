@@ -123,16 +123,60 @@ export function createStartEndFramer(start: number, end: number): Framer {
   }
 }
 
-export type FramingKind = 'lineas' | 'silencio' | 'fija' | 'inicio-fin'
+export function createStartLengthFramer(start: number, length: number, end?: number): Framer {
+  let buf: Uint8Array<ArrayBufferLike> = new Uint8Array(0)
+  const size = Math.max(1, length)
+  return {
+    push(bytes) {
+      buf = concat(buf, bytes)
+      const frames: Uint8Array[] = []
+      while (true) {
+        let startIndex = -1
+        for (let i = 0; i < buf.length; i++) {
+          if (buf[i] === start) {
+            startIndex = i
+            break
+          }
+        }
+        if (startIndex < 0) {
+          buf = new Uint8Array(0)
+          break
+        }
+        if (startIndex > 0) buf = buf.subarray(startIndex)
+        if (buf.length < size) break
+        const candidate = buf.subarray(0, size)
+        if (end != null && candidate[size - 1] !== end) {
+          buf = buf.subarray(1)
+          continue
+        }
+        frames.push(candidate.slice())
+        buf = buf.subarray(size)
+      }
+      return frames
+    },
+    reset() {
+      buf = new Uint8Array(0)
+    },
+  }
+}
+
+export type FramingKind = 'lineas' | 'silencio' | 'fija' | 'inicio-fin' | 'inicio-largo'
 
 export function createFramer(
   kind: FramingKind,
-  options: { silenceMs?: number; length?: number; start?: number; end?: number } = {},
+  options: { silenceMs?: number; length?: number; start?: number; end?: number; requireEnd?: boolean } = {},
 ): Framer {
   if (kind === 'silencio') return createSilenceFramer(options.silenceMs ?? 40)
   if (kind === 'fija') return createFixedLengthFramer(options.length ?? 8)
   if (kind === 'inicio-fin') {
     return createStartEndFramer(options.start ?? 0x02, options.end ?? 0x03)
+  }
+  if (kind === 'inicio-largo') {
+    return createStartLengthFramer(
+      options.start ?? 0x02,
+      options.length ?? 30,
+      options.requireEnd === false ? undefined : options.end ?? 0x03,
+    )
   }
   return createLineFramer()
 }
