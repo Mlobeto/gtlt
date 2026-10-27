@@ -10,6 +10,7 @@ const http = createHttp({
 });
 
 const { request, apiFetch } = http;
+export { request };
 export const {
   setSessionRevokedHandler,
   resetSessionRevokedLatch,
@@ -1384,6 +1385,4 @@ export function isTechnicianOnly(roles: string[]): boolean {
   return roles.includes("TECNICO") && !roles.some((r) => farm.includes(r));
 }
 
-export function isOwnerOrAdmin(roles: string[]): boolean {
-  return roles.includes("DUENIO") || roles.includes("ADMIN");
-}
+export { isOwnerOrAdmin } from "./roles";

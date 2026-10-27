@@ -86,6 +86,7 @@ import {
 import { ownerOnly } from "./src/roles";
 import { BottomBar, type BottomBarTab } from "./src/BottomBar";
 import { TambosScreen } from "./src/TambosScreen";
+import { TeamScreen } from "./src/TeamScreen";
 import { buildActionLists, type ActionLists } from "./src/animals/actionLists";
 import {
   countPendingOutbox,
@@ -161,6 +162,7 @@ type Screen =
   | "notifications"
   | "today"
   | "tambos"
+  | "team"
   | "switchTambo"
   | "account"
   | "photosReview"
@@ -533,6 +535,7 @@ function AppContent() {
   const [status, setStatus] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [availableTambos, setAvailableTambos] = useState<TamboItem[]>([]);
+  const [teamReloadAt, setTeamReloadAt] = useState(0);
 
   const [email, setEmail] = useState(__DEV__ ? "admin@gtlt.local" : "");
   const [password, setPassword] = useState(__DEV__ ? "demo1234" : "");
@@ -2459,6 +2462,9 @@ function AppContent() {
     if (destination === "delivery" && session) {
       void loadDeliveryComparisons(session);
     }
+    if (destination === "team") {
+      setTeamReloadAt(Date.now());
+    }
   }
 
   function handleDictate() {
@@ -3049,6 +3055,12 @@ function AppContent() {
                               label: "Mis tambos",
                               hint: "Crear, archivar y cambiar",
                             },
+                            {
+                              key: "team" as const,
+                              icon: "equipo" as const,
+                              label: "Equipo",
+                              hint: "Tamberos y veterinarios",
+                            },
                           ]
                         : []),
                       {
@@ -3121,6 +3133,17 @@ function AppContent() {
                     </Pressable>
                   ))}
                 </View>
+              ) : null}
+
+              {screen === "team" ? (
+                <TeamScreen
+                  token={session.token}
+                  tambos={availableTambos}
+                  currentTamboId={session.tamboId}
+                  online={online}
+                  inviterName={session.userName}
+                  reloadToken={teamReloadAt}
+                />
               ) : null}
 
               {screen === "tambos" ? (

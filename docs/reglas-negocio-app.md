@@ -1,6 +1,6 @@
 # Reglas de negocio — capa aplicación / API
 
-**Última actualización:** 2026-10-23 (identidad correo o teléfono)
+**Última actualización:** 2026-10-25 (equipo en el celular)
 
 Validaciones que **no** se expresan como constraint de PostgreSQL (dependen de otra tabla o de lógica de dominio). Implementar en servicios antes de dar por cerrado el CRUD/sync.
 
@@ -147,6 +147,7 @@ Aplica a `MilkingSession`, `ControlLechero` (header) y `MilkDelivery`:
 - `DUENIO`/`ADMIN` + `TAMBERO`: supervisión **y** las listas de acción de "Hoy", más el menú operativo.
 - Tambero o veterinario solos: el menú operativo como hasta ahora (el veterinario no se cambia). Técnico: sin cambios.
 - Interruptor **Yo también ordeño** (`PATCH /memberships/me/tambero-role`): solo dueño/admin, sobre la membresía propia. Agrega o quita `TAMBERO` y reemite el JWT. No toca `DUENIO`/`ADMIN` ni otros roles.
+- Dueño y administrador manejan su equipo desde el celular: alta con clave temporal, edición, baja, reactivación, restablecer clave y cancelar invitaciones. Lo gestionable es solo tambero y veterinario. Si la persona también trabaja con otra cuenta, no se le cambia el nombre, el teléfono, el correo ni la clave desde acá (sí el rol, los tambos, la baja y la reactivación).
 
 ### Alta de cuenta (desarrolladora)
 

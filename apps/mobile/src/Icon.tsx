@@ -12,6 +12,7 @@ const ICONS = {
   service: require("../assets/icons/ic-service.png"),
   maquinas: require("../assets/icons/ic-maquinas.png"),
   cuenta: require("../assets/icons/ic-cuenta.png"),
+  equipo: require("../assets/icons/ic-equipo.png"),
   campana: require("../assets/icons/ic-campana.png"),
   microfono: require("../assets/icons/ic-microfono.png"),
   "flecha-abajo": require("../assets/icons/ic-flecha-abajo.png"),

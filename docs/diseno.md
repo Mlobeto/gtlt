@@ -220,7 +220,7 @@ Mensajes de feedback **dentro del formulario**, arriba de los botones — nunca 
 - Íconos simples, trazo medio; preferir pocos.
 - Fotos de animales/piezas: ratio claro, esquinas `radius.md`.
 - No depender solo del color (acompañar con texto).
-- **Íconos mobile (`src/Icon.tsx`):** PNG blancos en `assets/icons/ic-<nombre>.png`, coloreados con `tintColor`. Nombres: `home`, `vacas`, `ordene`, `sanidad`, `repro`, `entrega`, `control`, `service`, `maquinas`, `cuenta`, `campana`, `microfono`, `flecha-abajo`, `flecha-derecha`, `flecha-izquierda`, `check`, `camara`, `cerrar`, `ubicacion`, `bomba`, `alerta`, `frio`. Uso: `Icon({ name, size, color })`. No usar librerías de íconos ni emojis en el menú de inicio.
+- **Íconos mobile (`src/Icon.tsx`):** PNG blancos en `assets/icons/ic-<nombre>.png`, coloreados con `tintColor`. Nombres: `home`, `vacas`, `ordene`, `sanidad`, `repro`, `entrega`, `control`, `service`, `maquinas`, `cuenta`, `equipo`, `campana`, `microfono`, `flecha-abajo`, `flecha-derecha`, `flecha-izquierda`, `check`, `camara`, `cerrar`, `ubicacion`, `bomba`, `alerta`, `frio`. Uso: `Icon({ name, size, color })`. No usar librerías de íconos ni emojis en el menú de inicio.
 - **Anillos de vida útil (`src/Ring.tsx`):** pista `ring-track.png` + avance `ring-005`…`ring-100` (de 5 en 5). Color según estado: OK → `success`, SOON → `warning`, OVERDUE → `danger`. El chip al lado lleva siempre el texto (OK / Cambiar pronto / Para cambiar).
 - En el celular, las piezas de ordeñe y frío se llaman **Máquinas** (no "Equipo": en el web "Equipo" son las personas).
 
@@ -238,7 +238,7 @@ Mensajes de feedback **dentro del formulario**, arriba de los botones — nunca 
 ## 9. Navegación mobile
 
 - **`apps/mobile/src/BottomBar.tsx`:** barra fija inferior negra, con esquinas superiores `radius.lg`, cuatro pestañas y un botón amarillo central elevado. Usa `Icon` y los tokens de `theme.ts`; incluye el margen seguro inferior del dispositivo.
-- **Dueño o administrador que no ordeña:** Inicio, Vacas, Service al centro, Máquinas y Cuenta.
+- **Dueño o administrador que no ordeña:** Inicio, Vacas, Service al centro, Máquinas y Cuenta. En Inicio, **Equipo** (no es pestaña de la barra) para tamberos y veterinarios: alta con clave temporal, edición, baja, reactivación, restablecer clave y cancelar invitaciones. Las cuentas compartidas no dejan cambiar nombre, teléfono, correo ni clave.
 - **Tambero, veterinario o dueño que también ordeña:** Inicio, Vacas, Dictar al centro, Sanidad y Cuenta.
 - Las pestañas reutilizan los mismos manejadores del menú de inicio. Dictar abre la captura de voz solo si el turno ya está activo; no inicia un turno.
 - La barra se oculta con el teclado y no aparece en el login, el cambio obligatorio de clave ni para el técnico solo. El contenido desplazable reserva espacio para que su último elemento no quede debajo de la barra; cuando esta está visible, el margen seguro inferior lo gestiona la propia barra.
